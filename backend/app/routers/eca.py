@@ -1,0 +1,202 @@
+"""Extra-curricular activities (ECA) routes - the 'well-rounded student' moat.
+
+Same verified-data lifecycle as skills (sports, cultural, leadership, ...):
+  * STUDENT logs an activity with proof -> starts `pending`; can view/delete own.
+  * TEACHER or TPO reviews the queue and verifies/flags each claim.
+  * Only `verified` activities count toward the profile / recruiter view.
+
+Unlike skills there is no AI proof-scoring step (a teacher/TPO simply confirms
+the certificate/evidence). Mounted under the `/eca` prefix by `main.py`.
+"""
+
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.core.db import get_db
+from app.models import ExtraCurricular, SkillStatus, User, UserRole
+from pagination import Pagination, paginate, pagination_params
+from app.schemas import ECACreate, ECADecision, ECAOut
+from app.core.security import get_current_user, require_roles
+from app.routers.audit import record_audit
+
+router = APIRouter(prefix="/eca", tags=["eca"])
+
+# Either a teacher (mentor) or the TPO may verify ECA claims and read a
+# student's activities (e.g. for eligibility / placement context).
+reviewer_only = require_roles(UserRole.teacher, UserRole.tpo)
+# Phase 5R: an ECA claim is a STUDENT's own verified-profile claim.
+student_only = require_roles(UserRole.student)
+staff_only = require_roles(UserRole.teacher, UserRole.tpo)
+
+
+# --- Student: log & view own activities ------------------------------------
+@router.post("", response_model=ECAOut, status_code=status.HTTP_201_CREATED)
+def claim_eca(
+    payload: ECACreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(student_only),
+) -> ExtraCurricular:
+    """Log an extra-curricular activity for yourself (starts `pending`).
+    Activity title must be unique per student."""
+    eca = ExtraCurricular(
+        student_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+        title=payload.title,
+        category=payload.category,
+        organization=payload.organization,
+        description=payload.description,
+        evidence_url=payload.evidence_url,
+        status=SkillStatus.pending,
+    )
+    db.add(eca)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You have already logged an activity with this title",
+        )
+    db.refresh(eca)
+    return eca
+
+
+@router.get("/me", response_model=list[ECAOut])
+def my_eca(
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    page: Pagination = Depends(pagination_params),
+) -> list[ExtraCurricular]:
+    """List the logged-in user's own ECA claims (any status)."""
+    stmt = (
+        select(ExtraCurricular)
+        .where(ExtraCurricular.student_id == current_user.id)
+        .where(ExtraCurricular.tenant_id == current_user.tenant_id)
+        .order_by(ExtraCurricular.created_at.desc())
+    )
+    return list(paginate(db, response, stmt, page))
+
+
+@router.delete("/{eca_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_my_eca(
+    eca_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Delete an ECA claim.
+
+    Phase 5Q decision-record policy: an UNDECIDED claim (still `pending`,
+    never reviewed) may be deleted by its owner. Once verified / flagged /
+    reviewed it is a decision record: ONLY an institute admin may delete it,
+    and the deletion is audited in the SAME transaction as the delete.
+    """
+    eca = db.get(ExtraCurricular, eca_id)
+    if eca is None or eca.tenant_id != current_user.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Activity not found"
+        )
+    decided = eca.status != SkillStatus.pending or eca.reviewed_at is not None
+    if decided:
+        if current_user.role != UserRole.admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "This activity has a verification decision and is kept as a "
+                    "record; only an institute admin can delete it"
+                ),
+            )
+        record_audit(
+            db,
+            current_user,
+            action="eca.delete",
+            summary=(
+                f"Deleted activity #{eca.id} ({eca.status.value}) of student "
+                f"#{eca.student_id} - decision record"
+            ),
+            target_type="extracurricular",
+            target_id=eca.id,
+        )
+    elif eca.student_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete your own activities",
+        )
+    db.delete(eca)
+    db.commit()
+
+
+# --- Reviewer (teacher/TPO): verification queue & decisions ----------------
+@router.get("/queue", response_model=list[ECAOut])
+def verification_queue(
+    response: Response,
+    status_filter: SkillStatus = SkillStatus.pending,
+    db: Session = Depends(get_db),
+    reviewer: User = Depends(reviewer_only),
+    page: Pagination = Depends(pagination_params),
+) -> list[ExtraCurricular]:
+    """The reviewer's queue. Defaults to pending claims (oldest first)."""
+    stmt = (
+        select(ExtraCurricular)
+        .where(ExtraCurricular.tenant_id == reviewer.tenant_id)
+        .where(ExtraCurricular.status == status_filter)
+        .order_by(ExtraCurricular.created_at.asc())
+    )
+    return list(paginate(db, response, stmt, page))
+
+
+@router.patch("/{eca_id}/decision", response_model=ECAOut)
+def decide_eca(
+    eca_id: int,
+    payload: ECADecision,
+    db: Session = Depends(get_db),
+    reviewer: User = Depends(reviewer_only),
+) -> ExtraCurricular:
+    """Teacher/TPO verifies or flags an ECA claim. `pending` is not a target."""
+    if payload.status not in (SkillStatus.verified, SkillStatus.flagged):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Decision must be 'verified' or 'flagged'",
+        )
+    eca = db.get(ExtraCurricular, eca_id)
+    if eca is None or eca.tenant_id != reviewer.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Activity not found"
+        )
+    eca.status = payload.status
+    eca.review_note = payload.review_note
+    eca.reviewed_by_id = reviewer.id
+    eca.reviewed_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(eca)
+    return eca
+
+
+# --- Staff: read a student's activities -------------------------------------
+@router.get(
+    "/student/{student_id}",
+    response_model=list[ECAOut],
+)
+def student_eca(
+    student_id: int,
+    response: Response,
+    status_filter: SkillStatus | None = None,
+    db: Session = Depends(get_db),
+    staff: User = Depends(staff_only),
+    page: Pagination = Depends(pagination_params),
+) -> list[ExtraCurricular]:
+    """List a student's activities (teacher/TPO). Filter by status, e.g. verified."""
+    stmt = (
+        select(ExtraCurricular)
+        .where(ExtraCurricular.tenant_id == staff.tenant_id)
+        .where(ExtraCurricular.student_id == student_id)
+    )
+    if status_filter is not None:
+        stmt = stmt.where(ExtraCurricular.status == status_filter)
+    return list(
+        paginate(db, response, stmt.order_by(ExtraCurricular.created_at.desc()), page)
+    )

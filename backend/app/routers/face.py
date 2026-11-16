@@ -1,0 +1,189 @@
+"""Face attendance - enrollment routes (backend side).
+
+Teachers/admins enroll a student's reference face: the uploaded photo is
+forwarded to the AI worker (InsightFace + Qdrant), which detects exactly one
+face and upserts its 512-dim embedding keyed by the student's id. We persist
+only a lightweight enrollment *record* here (who enrolled, when, and the
+detection confidence) - the embedding itself never touches Postgres, it lives
+in the vector store.
+
+Reads (enrollment status per roster) are open to all staff roles; enrolling or
+removing a face is teacher/admin only. Mounted under the `/face` prefix by
+`main.py`.
+
+Location:
+    E:\\campus-ai\\backend\\face.py
+"""
+
+from __future__ import annotations
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+import ai_client
+from app.core.db import get_db
+from app.models import FaceEnrollment, Section, User, UserRole
+from pagination import Pagination, paginate, pagination_params
+from app.schemas import FaceEnrollRequest, FaceEnrollmentOut, FaceEnrollmentStatusOut
+from app.core.security import get_scoped_user, require_roles
+from uploads import validate_base64_image
+
+router = APIRouter(prefix="/face", tags=["face"])
+
+# Enrolling/removing a face is teacher or admin work; reads also allow the TPO.
+enroll_roles = require_roles(UserRole.teacher, UserRole.admin)
+staff_roles = require_roles(UserRole.teacher, UserRole.tpo, UserRole.admin)
+
+
+def _worker_error(exc: Exception) -> HTTPException:
+    """Map an AI-worker call failure to a clean HTTP error for the client.
+
+    A worker HTTP error (e.g. 422 'zero or multiple faces') is surfaced with
+    its own status + detail; a transport failure means the worker is down.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        detail = "Face worker rejected the request."
+        try:
+            detail = exc.response.json().get("detail", detail)
+        except Exception:  # noqa: BLE001 - fall back to the generic message
+            pass
+        return HTTPException(status_code=exc.response.status_code, detail=detail)
+    return HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail="AI face worker is unavailable. Make sure it is running on :8100.",
+    )
+
+
+@router.post("/enroll", response_model=FaceEnrollmentOut)
+def enroll_face(
+    payload: FaceEnrollRequest,
+    db: Session = Depends(get_db),
+    staff: User = Depends(enroll_roles),
+) -> FaceEnrollment:
+    """Enroll a student's reference face (teacher/admin).
+
+    The photo must contain exactly one clear, front-facing face - the worker
+    enforces this and returns 422 otherwise. Re-enrolling the same student
+    overwrites both the stored embedding (in Qdrant) and this record.
+
+    Note: the very first enrollment after a worker restart also triggers the
+    one-time InsightFace model download (~300 MB), so it can take a while.
+    """
+    student = get_scoped_user(
+        db, payload.student_id, staff.tenant_id, role=UserRole.student
+    )
+    if student is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Student not found"
+        )
+
+    # Gate the upload before it reaches the worker: size + image magic bytes.
+    validate_base64_image(payload.image_base64)
+
+    try:
+        result = ai_client.enroll_face(
+            student.id, payload.image_base64, tenant_id=staff.tenant_id
+        )
+    except Exception as exc:  # noqa: BLE001 - mapped to a clean HTTP error
+        raise _worker_error(exc)
+
+    det_score = result.get("det_score")
+    record = db.get(FaceEnrollment, payload.student_id)
+    if record is None:
+        record = FaceEnrollment(
+            student_id=payload.student_id,
+            enrolled_by_id=staff.id,
+            det_score=det_score,
+        )
+        db.add(record)
+    else:
+        # Re-enrollment: refresh who/when (via onupdate) + the detection score.
+        record.enrolled_by_id = staff.id
+        record.det_score = det_score
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+@router.get(
+    "/enrollments",
+    response_model=list[FaceEnrollmentStatusOut],
+)
+def list_enrollments(
+    response: Response,
+    section_id: int | None = None,
+    db: Session = Depends(get_db),
+    staff: User = Depends(staff_roles),
+    page: Pagination = Depends(pagination_params),
+) -> list[FaceEnrollmentStatusOut]:
+    """List students + whether each has an enrolled face.
+
+    Pass ?section_id=<id> to scope the roster to one section (e.g. the class a
+    teacher is about to take attendance for). Powers the enrollment-roster UI.
+    """
+    stmt = select(User).where(
+        User.role == UserRole.student,
+        User.tenant_id == staff.tenant_id,
+    )
+    if section_id is not None:
+        section = db.get(Section, section_id)
+        if section is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Section not found"
+            )
+        stmt = stmt.where(User.section_id == section_id)
+    students = list(paginate(db, response, stmt.order_by(User.full_name), page))
+
+    # face_enrollments has no tenant_id/RLS: only load the rows for students
+    # already scoped to the caller's tenant above.
+    student_ids = [s.id for s in students]
+    enrolled = {
+        e.student_id: e
+        for e in db.scalars(
+            select(FaceEnrollment).where(
+                FaceEnrollment.student_id.in_(student_ids or [0])
+            )
+        )
+    }
+    return [
+        FaceEnrollmentStatusOut(
+            student_id=s.id,
+            full_name=s.full_name,
+            email=s.email,
+            enrolled=s.id in enrolled,
+            det_score=enrolled[s.id].det_score if s.id in enrolled else None,
+            enrolled_at=enrolled[s.id].enrolled_at if s.id in enrolled else None,
+        )
+        for s in students
+    ]
+
+
+@router.delete("/enroll/{student_id}")
+def remove_enrollment(
+    student_id: int,
+    db: Session = Depends(get_db),
+    staff: User = Depends(enroll_roles),
+) -> dict:
+    """Remove a student's enrolled face from both the worker (Qdrant) and here.
+
+    Tenant ownership is verified BEFORE the external worker is called:
+    ``face_enrollments`` has no tenant_id/RLS and the vector store is shared,
+    so a student outside the caller's institute is a 404 and nothing is
+    touched. Idempotent for an own-tenant student who was never enrolled.
+    """
+    student = get_scoped_user(db, student_id, staff.tenant_id, role=UserRole.student)
+    if student is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Student not found"
+        )
+    try:
+        ai_client.delete_face_enrollment(student.id, tenant_id=staff.tenant_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _worker_error(exc)
+    record = db.get(FaceEnrollment, student_id)
+    if record is not None:
+        db.delete(record)
+        db.commit()
+    return {"student_id": student_id, "deleted": True}

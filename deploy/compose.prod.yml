@@ -1,0 +1,144 @@
+# Campus AI - PRODUCTION / STAGING Compose TEMPLATE (Phase 7).
+#
+# NOT the dev stack: ../docker-compose.yml is local-only (superuser DB, dev
+# secrets, ENVIRONMENT=development) and must never be deployed.
+#
+# This file contains NO secrets and NO hosting decisions. Every value comes
+# from the host environment / secret store (see prod.env.example for the key
+# list). `${VAR:?}` makes `docker compose` refuse to start when a required
+# value is missing instead of falling back to an insecure default.
+#
+# Assumptions (deliberately minimal - hosting is not decided yet):
+#   * Postgres, Redis and Qdrant are reached by URL (managed or separately
+#     hosted). No data service is defined here.
+#   * A TLS-terminating reverse proxy / platform router sits in front of the
+#     published backend + frontend ports. Ports bind to BIND_ADDRESS
+#     (default 127.0.0.1, i.e. only the local proxy can reach them).
+#   * Images are referenced by DIGEST (built + verified in Phase 7 step 3).
+#
+# Usage (after review/approval only):
+#   docker compose -f deploy/compose.prod.yml --env-file <secret env> config --quiet
+#   docker compose -f deploy/compose.prod.yml --env-file <secret env> --profile migrate run --rm migrate
+#   docker compose -f deploy/compose.prod.yml --env-file <secret env> up -d
+# NEVER run `config` without --quiet against a real env file: it prints secrets.
+
+name: campus_ai_prod
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs:
+    - /tmp:size=64m
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+x-backend-env: &backend_env
+  ENVIRONMENT: production
+  # Runtime role: NOBYPASSRLS, non-superuser (startup gate refuses otherwise).
+  DATABASE_URL: ${APP_DATABASE_URL:?set APP_DATABASE_URL (NOBYPASSRLS app role)}
+  REDIS_URL: ${REDIS_URL:?set REDIS_URL (shared rate limits + queue)}
+  SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY (>= 32 random chars)}
+  AI_WORKER_URL: ${AI_WORKER_URL:-http://ai-worker:7860}
+  AI_WORKER_TOKEN: ${AI_WORKER_TOKEN:?set AI_WORKER_TOKEN (>= 32 random chars)}
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+  SUPABASE_URL: ${SUPABASE_URL:-}
+  SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY:-}
+  SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-campus-uploads}
+
+services:
+  # One-off schema migration. Only this container ever gets the OWNER role.
+  # It does not need SECRET_KEY (alembic/env.py uses a throwaway one).
+  migrate:
+    profiles: ["migrate"]
+    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE (name@sha256:digest)}
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      ENVIRONMENT: production
+      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:?set MIGRATION_DATABASE_URL (owner role)}
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:?set MIGRATION_DATABASE_URL (owner role)}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:size=64m"]
+    restart: "no"
+
+  backend:
+    <<: *hardening
+    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE (name@sha256:digest)}
+    environment:
+      <<: *backend_env
+      # Exact frontend origin(s), comma-separated. Also the CSRF allow-list.
+      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS (exact https frontend origin)}
+      # Number of proxies that APPEND to X-Forwarded-For. Must match the real
+      # topology (0 = trust none). Not guessed here.
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:?set TRUSTED_PROXY_HOPS (0..10)}
+      # Cookie policy is decided with the domain layout; empty = code default
+      # (production: SameSite=None + Secure, host-only cookie).
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      # HSTS: 0 = off. Enable only when HTTPS-only on the final domain.
+      HSTS_MAX_AGE: ${HSTS_MAX_AGE:-0}
+      HSTS_INCLUDE_SUBDOMAINS: ${HSTS_INCLUDE_SUBDOMAINS:-false}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [edge, internal]
+
+  worker:
+    <<: *hardening
+    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE (name@sha256:digest)}
+    command: ["python", "worker.py"]
+    environment:
+      <<: *backend_env
+    networks: [internal]
+
+  ai-worker:
+    <<: *hardening
+    image: ${AI_WORKER_IMAGE:?set AI_WORKER_IMAGE (name@sha256:digest)}
+    environment:
+      ENVIRONMENT: production
+      PORT: "7860"
+      AI_WORKER_TOKEN: ${AI_WORKER_TOKEN:?set AI_WORKER_TOKEN (>= 32 random chars)}
+      # Required: the read-only container has no embedded-Qdrant fallback.
+      QDRANT_URL: ${QDRANT_URL:?set QDRANT_URL}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-groq}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      SENTRY_DSN: ${AI_WORKER_SENTRY_DSN:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+    # Model caches (InsightFace / fastembed). Pre-seeded at staging after the
+    # model download is approved; the root filesystem stays read-only.
+    volumes:
+      - ai_models:/home/user/.insightface
+      - ai_cache:/home/user/.cache
+    # NOT published: only the backend + worker reach it on the internal network.
+    networks: [internal]
+
+  frontend:
+    <<: *hardening
+    # Build-time values (API origin, CSP extras, HSTS) are baked into this image.
+    image: ${FRONTEND_IMAGE:?set FRONTEND_IMAGE (name@sha256:digest)}
+    tmpfs:
+      - /tmp:size=64m
+      - /app/.next/cache:size=64m,uid=1000,gid=1000
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-3000}:3000"
+    networks: [edge]
+
+networks:
+  edge: {}
+  internal: {}
+
+volumes:
+  ai_models: {}
+  ai_cache: {}

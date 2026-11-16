@@ -1,0 +1,27 @@
+[project]
+name = "ai-worker"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.138.0",
+    "fastembed>=0.4.0",
+    "insightface>=1.0.1",
+    "langchain>=1.3.11",
+    "langchain-google-genai>=4.2.5",
+    "langchain-groq>=1.1.3",
+    "langgraph>=1.0.0",
+    "langfuse>=3.0.0",
+    "numpy>=2.5.0",
+    "onnxruntime>=1.27.0",
+    "opencv-python-headless>=4.13.0.92",
+    "pillow>=12.2.0",
+    "pydantic-settings>=2.14.2",
+    # Prometheus client: exposes aggregate request metrics at GET /metrics
+    # (metrics.py). Optional at runtime; declared here so deploys can scrape it.
+    "prometheus-client>=0.21.0",
+    "qdrant-client>=1.18.0",
+    "sentry-sdk[fastapi]>=2.63.0",
+    "uvicorn[standard]>=0.49.0",
+]

@@ -1,0 +1,140 @@
+# Local full-stack dev environment for Campus AI.
+#
+# Brings up the whole system on one Docker network so a new contributor can run
+# everything with a single command instead of wiring Postgres, Redis, Qdrant,
+# the API, the job worker, the AI worker and the frontend by hand:
+#
+#     docker compose up --build
+#
+# Then open:  http://localhost:3000  (frontend)  /  http://localhost:8000/docs (API)
+#
+# Services:
+#   db         Postgres 16           the app database              :5432
+#   redis      Redis 7               rate-limit + read cache       :6379
+#   qdrant     Qdrant                vector store (face + RAG)     :6333
+#   backend    FastAPI API           depends on db + redis         :8000
+#   worker     RQ job worker         drains the AI-scoring queue
+#   ai-worker  FastAPI AI worker     LLM / RAG / face ops          :7860
+#   frontend   Next.js               the web UI                    :3000
+#
+# LOCAL DEVELOPMENT ONLY. The credentials below (database password, SECRET_KEY,
+# worker token) are throwaway dev defaults and must never be reused anywhere
+# reachable from a network. Published ports are bound to 127.0.0.1 for the
+# same reason.
+#
+# NOTE: for LOCAL dev the backend connects as the Postgres superuser, so RLS is
+# NOT enforced here. To exercise RLS locally, create a NOBYPASSRLS application
+# role and point DATABASE_URL at it - see backend/scripts/app_role.template.sql
+# (an unverified draft).
+#
+# Images are pinned to the digests verified in the Phase 4-6 local builds.
+#
+# AI features (mentor / resume scoring) need an LLM key. Drop a `.env` next to
+# this file with GROQ_API_KEY=... (or GOOGLE_API_KEY=... + LLM_PROVIDER=gemini);
+# without it the stack still boots, only the LLM calls will fail.
+
+services:
+  db:
+    image: postgres:16@sha256:63e83b5a3dc36a917dccb76fe1bd2ac51f1ec9c1deb47ff20d4f04233bf6eae9
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: campus
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d campus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.4.12-alpine3.22@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.18.3@sha256:0bd98fa7977f1e75694779359ca4e212822e5a71334e28421182f72f209d5286
+    ports:
+      - "127.0.0.1:6333:6333"   # REST + dashboard (http://localhost:6333/dashboard)
+      - "127.0.0.1:6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  backend:
+    build: ./backend
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      # Superuser URL for local dev convenience (RLS not enforced locally).
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/campus
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/campus
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: local-dev-secret-change-me-please
+      AI_WORKER_URL: http://ai-worker:7860
+      AI_WORKER_TOKEN: local-dev-worker-token
+      ENVIRONMENT: development
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    command: python worker.py
+    environment:
+      # Same env as the backend so jobs open their own DB session + call the
+      # AI worker. REDIS_URL is what makes this process pick up queued jobs.
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/campus
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: local-dev-secret-change-me-please
+      AI_WORKER_URL: http://ai-worker:7860
+      AI_WORKER_TOKEN: local-dev-worker-token
+      ENVIRONMENT: development
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  ai-worker:
+    build: ./ai-worker
+    ports:
+      - "127.0.0.1:7860:7860"
+    environment:
+      # Must match the backend's AI_WORKER_TOKEN above.
+      AI_WORKER_TOKEN: local-dev-worker-token
+      PORT: "7860"
+      # Use the local Qdrant server for BOTH face attendance and career RAG.
+      QDRANT_URL: http://qdrant:6333
+      # LLM keys are optional; supply them via a root .env to enable AI calls.
+      LLM_PROVIDER: ${LLM_PROVIDER:-groq}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+    depends_on:
+      qdrant:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the JS bundle at build time (browser hits the host ports).
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+        NEXT_PUBLIC_API_PREFIX: /v1
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  qdrant_data:

@@ -1,0 +1,96 @@
+# Campus AI - root ignore rules (rewritten in Phase 3).
+# Goal: real env files, secrets, build output, migration bookkeeping and the
+# untrusted _reference/ material can never be committed by accident.
+# If something here must be tracked later, add a narrow, explicit exception.
+
+# --- Migration bookkeeping / untrusted old-project material -----------------
+COPY_MANIFEST.csv
+_reference/
+# Internal migration/security notes about the old project - not for publication.
+PHASE3_REPORT.md
+
+# --- Environment files & secrets (only *.example templates are tracked) -----
+.env
+.env.*
+*.env
+!.env.example
+!*.env.example
+.envrc
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+*credentials*.json
+*service-account*.json
+.npmrc
+.pypirc
+.netrc
+
+# --- Database dumps / backups (may contain personal data) -------------------
+*.dump
+*.dump.sha256
+*.sql.gz
+*.bak
+backups/
+*.sqlite
+*.sqlite3
+*.db
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# --- Node / Next.js ---------------------------------------------------------
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+.vercel/
+coverage/
+
+# --- Build / packaging output -----------------------------------------------
+build/
+dist/
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# --- Test & demo artefacts (screenshots can contain real faces / data) ------
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+demo-assets*/
+ui_shots/
+
+# --- Local data stores ------------------------------------------------------
+qdrant_storage/
+qdrant_local*/
+.insightface/
+
+# --- Logs, OS, editors, local tooling ---------------------------------------
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.claude/settings.local.json
