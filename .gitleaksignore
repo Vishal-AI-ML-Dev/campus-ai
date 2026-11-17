@@ -1,0 +1,9 @@
+# Reviewed gitleaks exceptions. Each entry is one exact finding fingerprint
+# (commit:path:rule:line), so it covers only that line in that commit.
+# Never add a whole path or rule here.
+#
+# 2026-11-17: synthetic password in the recruiter invite-accept request body of
+# the disposable-Postgres test suite (tests_pg_api). It is used only by those
+# tests, is not a real or staging credential, and only occurs in these 2 places.
+f6de3d51226a4522b3e7265e81378cab6226163c:backend/tests_pg_api/test_recruiter_face_authz.py:generic-api-key:118
+f6de3d51226a4522b3e7265e81378cab6226163c:backend/tests_pg_api/test_recruiter_tenancy.py:generic-api-key:35
