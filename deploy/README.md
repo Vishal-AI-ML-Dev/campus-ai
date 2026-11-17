@@ -1,8 +1,10 @@
 # Campus AI - deployment notes (Phase 7)
 
-Status: **templates only.** Nothing here has been deployed. Hosting, domain,
-proxy topology and cookie policy are **not decided**; no value below is a guess
-at them.
+Status: the files in this folder are **templates** for a self-hosted Compose
+deployment, and that deployment has not been run. Separately, a **public
+free-tier staging demo** exists on hosted services (see below). A production
+host, domain, proxy topology and cookie policy are **not decided**; no value
+below is a guess at them.
 
 | File | Purpose |
 |---|---|
@@ -12,6 +14,118 @@ at them.
 
 `../docker-compose.yml` is the **local dev stack only** (superuser DB, dev
 secrets, `ENVIRONMENT=development`). Never deploy it.
+
+## Free-tier public staging: known limitations
+
+Staging uses free plans: Vercel (frontend), Render web services (backend and
+ai-worker), Supabase (Postgres + Storage), and Qdrant Cloud, with synthetic
+data only. Since 2026-11-17 the production frontend URL is **public** (Vercel
+Deployment Protection set to Standard Protection). The backend still answers
+only requests carrying the staging-gate header, which the frontend's `/v1`
+proxy adds server-side, and the ai-worker still requires its token.
+
+Where each item below was checked:
+
+- **On the hosted services (2026-11-16 and 2026-11-17):**
+  - Production mode: `/docs`, `/openapi.json` and `/metrics` return 404.
+  - Backend gate: 403 without the gate header.
+  - Worker token: 401 without it, or with a wrong one.
+  - Public frontend and its `/v1` proxy.
+  - AI proof-scoring of one synthetic skill claim, run in-process.
+  - One mentor question.
+  - One résumé generation and PDF upload.
+  - The Storage deletion diagnostic.
+  - Face routes disabled.
+  - The RLS and role-permission checks.
+- **Locally only (2026-11-16):** the memory figures and the 170 s
+  cold-start timing at 0.1 CPU.
+  These were measured on images built from commit `f6de3d5`, with each
+  container capped at 512 MB RAM and the ai-worker also capped at 0.1 CPU.
+  They have not been measured on Render.
+
+- **`ENVIRONMENT=production` on staging.** The setting accepts only
+  `development`, `test` or `production`. Staging runs as `production` so the
+  startup secret checks, the closed `/docs` and `/metrics`, and Secure cookies
+  all apply.
+- **No Redis and no separate job worker.** Render does not offer background
+  workers on its free plan. With `REDIS_URL` unset, AI proof-scoring runs
+  in-process as FastAPI `BackgroundTasks` (see `backend/jobs.py`).
+  - **Limitation:** a job is lost if the API instance restarts, redeploys or
+    goes to sleep while the job is running. The claim then stays `pending`
+    with no `ai_score`. Nothing retries it. A teacher still reviews and
+    decides every claim, so the score is advisory only.
+  - Rate-limit counters are kept in memory, per instance, and reset on
+    restart.
+- **The ai-worker is a public Render URL protected only by its token.**
+  Private networking is not available on the free plan.
+  - Every path except `/` and `/health` returns 401 without the correct
+    `X-Worker-Token`.
+  - In production, the worker refuses to start if the token is shorter than
+    32 characters.
+- **Mentor cold start.** Free Render services sleep after 15 minutes idle.
+  After a wake, the first mentor request downloads and loads the embedding
+  model. On Render (2026-11-17) the first question took about 49 s
+  server-side and succeeded, close to the backend's 60 s worker timeout. In
+  the local test at 0.1 CPU it took about 170 s. So the first mentor question
+  after a wake may fail; timing varies after each wake. Later requests took
+  about 1 s locally. To warm the worker up, send one mentor question and retry
+  after about 3 minutes if it fails.
+- **Memory measured locally at 512 MB:**
+  - backend: about 120 MiB
+  - ai-worker: about 85 MiB idle and about 305 MiB peak during mentor
+    retrieval
+  - Not measured yet: LLM scoring with a real key, and resume/ATS.
+- **Deleted files stay downloadable until each issued link expires.** Supabase
+  serves signed downloads through Cloudflare's cache. In the 2026-11-17
+  diagnostic, a file deleted from Storage was still served from that cache
+  through a link issued before the delete, until the link expired. After
+  expiry the link returned 400 (`InvalidJWT`, the expiry check). A new link
+  for the deleted path was refused. So the window lasts as long as the link
+  does: 10 minutes by default and up to 24 hours (`backend/storage.py`).
+  Shortening it would need a code change.
+- **Face attendance is disabled and UNTESTED.** The Render ai-worker runs
+  with `FACE_ENABLED=false`. Verified on 2026-11-17 with requests that cannot
+  reach the face handlers: `/face/match`, `/face/enroll` and `/face/embed`
+  return 503 ("Face attendance is disabled on this deployment.") before any
+  model loads. Qdrant held only `career_kb` before and after the check; no
+  face collection exists. The InsightFace model, its licence terms and its
+  real behaviour have not been verified. Its memory use at 512 MB is unknown,
+  and loading it may crash the worker. Keep it disabled.
+- **Tables without forced RLS.** On 2026-11-17, at migration head
+  `f0a1b2c3d4e5`, 31 of the 39 tables in `public` had RLS enabled and forced.
+  The other 8 did not:
+  - With a `tenant_id` column: `feedback`, `leads`, `users`,
+    `tenant_invites` and `refresh_tokens` (the last has RLS enabled with one
+    policy, but not forced).
+  - Without one: `tenants`, `alembic_version` and `face_enrollments` (keyed
+    by `student_id`).
+
+  `app_user` can read all 8. It can also insert, update and delete in all of
+  them except `alembic_version`, where it can only read. On these tables
+  isolation therefore depends on the application code filtering by tenant,
+  not on the database.
+- **Restricted-role permissions observed (2026-11-17, read-only checks).**
+  - All 39 tables are owned by `campus_owner` (not superuser, not
+    `BYPASSRLS`).
+  - `app_user` (not superuser, not `BYPASSRLS`) has `SELECT` on all 39
+    tables, `INSERT`/`UPDATE`/`DELETE` on 38, `TRUNCATE` on none, and no
+    `CREATE` on schema `public`.
+  - Supabase's API roles (`anon`, `authenticated`, `service_role`) have
+    `USAGE` on schema `public` but **no table privileges** on any of the 39
+    tables. There are no `PUBLIC` table grants. None of them, nor
+    `authenticator`, is a member of `app_user` or `campus_owner`.
+    `service_role` has `BYPASSRLS`, but that does not grant table
+    privileges.
+  - Supabase's admin role `postgres` is a member of both `app_user` and
+    `campus_owner`.
+  - **Supabase Data API: not disabled.** The REST endpoint is still
+    reachable. During the check, every request (including the API root)
+    returned 503 `PGRST002` (schema cache could not be loaded), so no table
+    data was returned. This is a failure state, not a deliberate setting, and
+    may change.
+  - These are point-in-time observations. Re-run the privilege check after
+    any migration or role change. The optional `REVOKE` in
+    `backend/scripts/app_role.template.sql` has not been applied.
 
 ## Public endpoint exposure (production)
 
