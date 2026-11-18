@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     # the worker refuses to start unless this is >= 32 characters (Phase 7).
     AI_WORKER_TOKEN: str = ""
 
+    # AI Mock Interview engine (feature flag, OFF by default). While False the
+    # /interview/* routes are not mounted at all (404). Must be switched on
+    # together with the backend's AI_MOCK_INTERVIEW_ENABLED.
+    MOCK_INTERVIEW_ENABLED: bool = False
+
     # --- Observability ----------------------------------------------------
     # Deploy environment label + optional Sentry error tracking.
     # SENTRY_DSN empty = disabled (worker runs fine without it).

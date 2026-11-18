@@ -1,0 +1,29 @@
+# Campus AI — notes for Claude Code
+
+Multi-tenant campus platform: `backend/` (FastAPI, SQLAlchemy 2, Alembic, Postgres RLS), `ai-worker/` (separate FastAPI
+service: LangChain/LangGraph, Groq|Gemini, Qdrant), `frontend/` (Next.js 16 — read `frontend/AGENTS.md` first).
+
+## Hard rules
+- Never commit to or push `main`: Vercel deploys every push to `main`. No deploys, no pushes without explicit approval.
+- Never read or print `.env` values (list key names only). Never connect to staging/production databases.
+- Never run Alembic against anything but a throwaway local DB. Migrations are additive only.
+- Don't change existing API responses, tables, columns or env vars. New features go behind a flag that defaults OFF.
+- Never run `git reset --hard`, `git clean`, force-push or force-checkout. Stage files explicitly.
+
+## Conventions
+- Routers: `backend/app/routers/<feature>.py`, added once to `FEATURE_ROUTERS` in `backend/main.py` (mounted at `/v1` and unversioned).
+- Tenant-scoped routers use `dependencies=[Depends(apply_tenant_guc)]` and filter every query by `tenant_id`; objects outside the caller's tenant or ownership return 404.
+- New tenant tables: `tenant_id` FK + `ENABLE/FORCE ROW LEVEL SECURITY` + `tenant_isolation` policy (copy `a1b2c3d4e5f7_mentor_conversations_and_messages.py`). Types must also work on SQLite.
+- The AI worker is stateless; the backend owns persistence and calls the worker through `ai_client._worker_request`.
+- Frontend: pages in `src/app/dashboard/<feature>/page.tsx`, panels and API helpers in `src/components/<feature>/`; use `useApiResource` and `components/ui/states.tsx`.
+
+## Testing
+- Backend: `cd backend && .venv/Scripts/python -m pytest` (SQLite, offline, ~10+ min). All runs share `%TEMP%\campus_ai_test.db`, so **never run two at once**.
+- Postgres suites (`tests_pg_api/`, `test_rls_postgres.py`) are opt-in and need a local throwaway Postgres.
+- Frontend: `npx tsc --noEmit` and `npm run lint`.
+- Write test output to the session scratchpad, never to a drive root.
+
+## AI Mock Interview (in progress)
+State, plan and audits: `docs/mock-interview/` — start with `PROJECT_STATE.md`.
+Flags (all default off): backend `AI_MOCK_INTERVIEW_ENABLED`, `AI_MOCK_INTERVIEW_TENANT_IDS`; worker `MOCK_INTERVIEW_ENABLED`;
+frontend build `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED`.

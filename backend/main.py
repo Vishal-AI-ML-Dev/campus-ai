@@ -103,6 +103,7 @@ from app.routers.leads import router as leads_router
 from app.routers.leaveod import router as leaveod_router
 from app.routers.materials import router as materials_router
 from app.routers.mentor import router as mentor_router
+from app.routers.mock_interview import router as mock_interview_router
 from app.routers.notifications import router as notifications_router
 from app.routers.people import router as people_router
 from app.routers.placement import router as placement_router
@@ -271,6 +272,9 @@ FEATURE_ROUTERS = [
     timetable_router,
     leaveod_router,
     tenants_router,
+    # AI Mock Interview: feature-flagged (AI_MOCK_INTERVIEW_ENABLED, default
+    # off). Only /mock-interview/status answers while it is off.
+    mock_interview_router,
 ]
 
 for _feature_router in FEATURE_ROUTERS:

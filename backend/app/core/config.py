@@ -148,6 +148,17 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_KEY: str = ""
     SUPABASE_STORAGE_BUCKET: str = "campus-uploads"
 
+    # --- AI Mock Interview (feature flag, OFF by default) -----------------
+    # Master switch. While False every /mock-interview/* route except
+    # /mock-interview/status returns 404 and the rest of the app is untouched.
+    # Turning it off again is the rollback: no code or data is removed.
+    AI_MOCK_INTERVIEW_ENABLED: bool = False
+    # Optional pilot allow-list of tenant ids, comma-separated (e.g. "3,7").
+    # Empty = every institute once the master switch is on. Entries that are
+    # not integers are ignored; if none are valid, NO institute is enabled
+    # (fail closed). See app/routers/mock_interview.py.
+    AI_MOCK_INTERVIEW_TENANT_IDS: str = ""
+
     @property
     def docs_enabled(self) -> bool:
         """Swagger UI, ReDoc and /openapi.json (Phase 7).

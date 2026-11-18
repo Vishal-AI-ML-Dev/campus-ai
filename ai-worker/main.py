@@ -125,6 +125,13 @@ app.include_router(mentor_router)
 app.include_router(resume_router)
 app.include_router(face_router)
 
+# AI Mock Interview engine: mounted ONLY when MOCK_INTERVIEW_ENABLED is true
+# (default off). Its routes sit behind the worker-token middleware above.
+if settings.MOCK_INTERVIEW_ENABLED:
+    from interview import router as interview_router
+
+    app.include_router(interview_router)
+
 
 @app.get("/")
 def root() -> dict:

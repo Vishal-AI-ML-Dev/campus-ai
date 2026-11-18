@@ -16,11 +16,14 @@ import { api, clearToken } from "@/lib/api"
 import { useCurrentUser, NAV_BY_ROLE } from "@/lib/auth"
 import ThemeToggle from "@/components/ThemeToggle"
 import NotificationBell from "@/components/notifications/NotificationBell"
+import { useMockInterviewNavItem } from "@/components/mock-interview/mockInterviewFlags"
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
 	const router = useRouter()
 	const pathname = usePathname()
 	const { user, loading } = useCurrentUser()
+	// AI Mock Interview nav entry: null (and no request) unless its build flag is on.
+	const mockInterviewNavItem = useMockInterviewNavItem(user?.role)
 
 	// While the provider is loading (or redirecting), show a simple splash.
 	if (loading || !user) {
@@ -31,7 +34,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 		)
 	}
 
-	const nav = NAV_BY_ROLE[user.role] ?? []
+	const baseNav = NAV_BY_ROLE[user.role] ?? []
+	const nav = mockInterviewNavItem ? [...baseNav, mockInterviewNavItem] : baseNav
 
 	function isActive(href: string): boolean {
 		// "Overview" (/dashboard) should only match exactly; others match prefix.
