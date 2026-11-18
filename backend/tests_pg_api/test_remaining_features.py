@@ -439,6 +439,16 @@ def test_b4_self_registration_creates_student_in_slug_tenant(campus, sql):
                                                  "password": pw, "tenant_slug": b.slug}).status_code == 404
     finally:
         sql("UPDATE tenants SET is_active = true WHERE id = :t", {"t": b.tenant})
+    # Self-registration creates a PENDING (inactive) account: no login until approved.
+    assert r.json()["is_active"] is False, _d(r)
+    assert campus.new_client().post("/v1/auth/login", data={"username": email, "password": pw}).status_code == 401
+    uid = r.json()["id"]
+    assert r.json()["approval_pending"] is True, _d(r)
+    assert b.admin.post(f"/v1/admin/users/{uid}/approve").status_code == 404  # other institute
+    assert a.teacher.post(f"/v1/admin/users/{uid}/approve").status_code == 403
+    # The generic status toggle cannot activate a pending request.
+    assert a.admin.patch(f"/v1/admin/users/{uid}/status", json={"is_active": True}).status_code == 409
+    assert a.admin.post(f"/v1/admin/users/{uid}/approve").status_code == 200
     me = campus.login(email, pw, "selfreg")
     assert me.role == "student"
 

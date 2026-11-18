@@ -46,6 +46,16 @@ def register(
     Multi-tenancy: the student joins the institute identified by
     `payload.tenant_slug`; the account is scoped to that tenant. An unknown or
     inactive slug is rejected so we never create orphan (tenant-less) users.
+
+    SECURITY (approval): the account is created INACTIVE (pending approval).
+    Knowing an institute's slug must not be enough to join it. An inactive
+    account cannot log in, refresh, or use an access token (login,
+    get_current_user and refresh all require is_active). It is also marked
+    ``approval_pending`` so it stays distinct from accounts an admin disabled.
+    Only an admin of the SAME institute can approve it, via
+    POST /admin/users/{id}/approve (the generic status toggle refuses to
+    activate a pending account). No session or cookies are issued here, and
+    no email is sent (the app has no email verification).
     """
     tenant = db.scalar(select(Tenant).where(Tenant.slug == payload.tenant_slug))
     if tenant is None or not tenant.is_active:
@@ -67,6 +77,8 @@ def register(
         hashed_password=hash_password(payload.password),
         role=UserRole.student,
         tenant_id=tenant.id,
+        is_active=False,  # pending until an admin of this institute approves
+        approval_pending=True,
     )
     db.add(user)
     db.commit()

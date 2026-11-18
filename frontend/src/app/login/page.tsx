@@ -99,9 +99,12 @@ export default function LoginPage() {
 						</div>
 
 						{error && (
-							<p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
-								{error}
-							</p>
+							<div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
+								<p>{error}</p>
+								<p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+									Requested a student account recently? You can sign in only after an admin of your institute approves it.
+								</p>
+							</div>
 						)}
 
 						<button
@@ -115,6 +118,13 @@ export default function LoginPage() {
 				</div>
 
 				<p className="mt-4 text-center text-sm text-slate-500 dark:text-slate-400">
+					Student?{" "}
+					<Link href="/register" className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300">
+						Request to join your institute
+					</Link>
+				</p>
+
+				<p className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">
 					New college?{" "}
 					<Link href="/create-institution" className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300">
 						Create your institution

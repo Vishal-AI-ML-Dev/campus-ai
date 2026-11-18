@@ -5,6 +5,8 @@ so both surfaces must resolve to the same handlers. Ops endpoints (/health,
 /metrics, /version) stay unversioned.
 """
 
+import app.models as models
+
 
 def test_version_endpoint(client):
     resp = client.get("/version")
@@ -15,9 +17,10 @@ def test_version_endpoint(client):
     assert "version" in body
 
 
-def test_versioned_register_and_login(client, make_tenant):
-    """The canonical /v1 surface works end-to-end (register + login + me)."""
-    make_tenant(slug="acme")
+def test_versioned_register_and_login(client, make_tenant, make_user, token_header):
+    """The canonical /v1 surface works end-to-end (register + approve + login + me)."""
+    acme = make_tenant(slug="acme")
+    make_user("v1admin@test.dev", role=models.UserRole.admin, tenant=acme)
     reg = client.post(
         "/v1/auth/register",
         json={
@@ -28,6 +31,13 @@ def test_versioned_register_and_login(client, make_tenant):
         },
     )
     assert reg.status_code == 201, reg.text
+
+    # Pending until an admin of the institute approves it.
+    approve = client.post(
+        f"/v1/admin/users/{reg.json()['id']}/approve",
+        headers=token_header("v1admin@test.dev"),
+    )
+    assert approve.status_code == 200, approve.text
 
     login = client.post(
         "/v1/auth/login",

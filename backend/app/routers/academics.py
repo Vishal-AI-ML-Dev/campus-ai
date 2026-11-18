@@ -131,10 +131,12 @@ def upsert_result(
     student = db.get(User, payload.student_id)
     # Results are student grades: a staff/admin account of the same institute
     # is treated exactly like an unknown id (Phase 5Q).
+    # A never-approved sign-up request is not yet a member of the institute.
     if (
         student is None
         or student.tenant_id != teacher.tenant_id
         or student.role != UserRole.student
+        or student.approval_pending
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Student not found"

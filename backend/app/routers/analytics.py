@@ -217,6 +217,7 @@ def _assess_section(db: Session, section: Section) -> list[StudentRiskOut]:
                 User.role == UserRole.student,
                 User.tenant_id == section.tenant_id,
                 User.section_id == section.id,
+                User.is_active.is_(True),  # pending / disabled are not assessed
             )
             .order_by(User.full_name)
         )

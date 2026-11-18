@@ -16,7 +16,8 @@ def test_register_creates_student(client, make_tenant):
     body = resp.json()
     assert body["email"] == "s1@test.dev"
     assert body["role"] == "student"
-    assert body["is_active"] is True
+    # Self-registered accounts start pending (inactive) until an admin approves.
+    assert body["is_active"] is False
 
 
 def test_register_ignores_role_escalation(client, make_tenant):

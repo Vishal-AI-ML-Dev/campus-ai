@@ -137,12 +137,16 @@ def mark_attendance(
     # of the caller's tenant; otherwise reject the whole batch with the same
     # response as an unknown id (no cross-tenant existence oracle).
     requested_ids = {item.student_id for item in payload.records}
+    # Only ACTIVE students can receive new attendance: a pending sign-up
+    # request or a disabled student is rejected like an unknown id. Existing
+    # (historical) records are never touched here.
     own_student_ids = set(
         db.scalars(
             select(User.id).where(
                 User.id.in_(requested_ids),
                 User.tenant_id == staff.tenant_id,
                 User.role == UserRole.student,
+                User.is_active.is_(True),
             )
         )
     )
@@ -246,6 +250,7 @@ def match_class_photo(
                 User.id.in_(list(raw_matches) or [0]),
                 User.tenant_id == staff.tenant_id,
                 User.role == UserRole.student,
+                User.is_active.is_(True),
             )
         )
     )
@@ -258,6 +263,7 @@ def match_class_photo(
             .where(User.role == UserRole.student)
             .where(User.tenant_id == staff.tenant_id)
             .where(User.section_id == payload.section_id)
+            .where(User.is_active.is_(True))
             .order_by(User.full_name)
         )
     )
