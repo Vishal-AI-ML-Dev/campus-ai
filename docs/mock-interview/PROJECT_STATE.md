@@ -11,7 +11,7 @@ _Last updated: 2026-11-18 (end of Phase 2)_
 | Alembic head | **`b4d8f2a6c9e1`** (Phase 2, single head) → `a7c3e9d2b4f1` |
 | Original folder | `D:/Campus_Ai`, on `feature/student-approval`; its `backend/.venv` is the interpreter used for worktree tests (the worktree has no venv or `.env`) |
 
-Phase 1 is committed locally (`f17d2bd`, docs `3bce105`). **Phase 2 is not committed yet** (waiting for your approval).
+Phase 1 is committed locally (`f17d2bd`, docs `3bce105`). Phase 2 is committed locally as `0fadaa8` (8 files, staged by name).
 Nothing is pushed, merged or deployed.
 
 ## Completed phases
@@ -98,8 +98,7 @@ on the 3 tables (`app_role.template.sql` audit query) → enable flags for a pil
 Phases 3–10 per IMPLEMENTATION_PLAN.md. Open decisions: voice provider (Phase 5), code sandbox host (Phase 7), recording retention.
 
 ## Next exact action
-1. Your review and approval to **commit Phase 2 locally**: stage the 7 files above by name; no push.
-2. Then, on your go-ahead, **Phase 3**: text HR + technical interview end-to-end.
+Wait for your go-ahead to start **Phase 3**: text HR + technical interview end-to-end.
    - **Backend:** routes `/options`, `/sessions` CRUD, `/start`, `/answer`, `/finish`, all behind `require_mock_interview`, with ownership and tenant 404s, including the resume check from M1.
    - **Worker:** `POST /interview/plan` and `/interview/turn`.
    - **Tests:** worker graph tests with a stubbed LLM.
