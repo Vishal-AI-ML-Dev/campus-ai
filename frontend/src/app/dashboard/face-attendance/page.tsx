@@ -6,6 +6,7 @@
  * Place at: src/app/dashboard/face-attendance/page.tsx
  */
 
+import FaceUnavailableNotice, { FACE_ENABLED } from "@/components/face/FaceUnavailableNotice"
 import PhotoAttendancePanel from "@/components/face/PhotoAttendancePanel"
 
 export default function PhotoAttendancePage() {
@@ -15,12 +16,14 @@ export default function PhotoAttendancePage() {
 				<h1 className="text-xl font-semibold text-gray-900 dark:text-slate-100">
 					Photo Attendance
 				</h1>
-				<p className="text-sm text-gray-500 dark:text-slate-400">
-					Upload a class photo, review the AI&apos;s present/absent
-					suggestions, then confirm to mark attendance.
-				</p>
+				{FACE_ENABLED && (
+					<p className="text-sm text-gray-500 dark:text-slate-400">
+						Upload a class photo, review the AI&apos;s present/absent
+						suggestions, then confirm to mark attendance.
+					</p>
+				)}
 			</div>
-			<PhotoAttendancePanel />
+			{FACE_ENABLED ? <PhotoAttendancePanel /> : <FaceUnavailableNotice />}
 		</div>
 	)
 }
