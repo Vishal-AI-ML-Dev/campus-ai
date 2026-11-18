@@ -11,7 +11,11 @@ _Last updated: 2026-11-18 (end of Phase 1)_
 | Alembic head | `a7c3e9d2b4f1` (single head, committed). Phase 1 adds no migration. |
 | Original folder | `D:/Campus_Ai`, now on `feature/student-approval`, same files on disk as before; non-approval untracked files left as they were |
 
-Nothing is pushed, merged or deployed. Phase 1 changes are **uncommitted** in the worktree, waiting for review.
+Phase 1 is committed **locally** as `f17d2bd` "feat(mock-interview): add disabled feature isolation and status routes"
+(20 files, staged by name). Nothing is pushed, merged or deployed.
+
+**Still unverified after the commit:** the frontend production build (`next build`, blocked locally by Windows Application
+Control) and the PostgreSQL test suites (`tests_pg_api/`, `test_rls_postgres.py`; not run, since Phase 1 has no database code).
 
 ## Completed phases
 - **Phase 0:** audit docs and baseline (see BASELINE_TEST_RESULTS.md).
@@ -67,4 +71,4 @@ Phases 2–10 per IMPLEMENTATION_PLAN.md. Decisions still open: voice provider (
 Phase 1: keep the flags off (the default) for no effect, or discard the worktree branch. Nothing to undo in any database.
 
 ## Next exact action
-You review the Phase 1 diff in `D:/Campus_Ai-mock-interview` and decide whether I commit it to `feature/ai-mock-interview`. Then **Phase 2**: `mock_interview_sessions`, `_turns` and `_reports` models plus an additive, RLS-protected migration on top of `a7c3e9d2b4f1`, tested on throwaway SQLite and a local docker Postgres.
+Wait for your go-ahead to start **Phase 2** (not started): `mock_interview_sessions`, `_turns` and `_reports` models plus an additive, RLS-protected migration on top of `a7c3e9d2b4f1`, tested on throwaway SQLite and a local docker Postgres.
