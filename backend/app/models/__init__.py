@@ -77,6 +77,11 @@ from app.models.mentor import (
 from app.models.notifications import (
     Notification,
 )
+from app.models.mock_interview import (
+    MockInterviewSession,
+    MockInterviewTurn,
+    MockInterviewReport,
+)
 
 __all__ = [
     "Base",
@@ -134,4 +139,7 @@ __all__ = [
     "MentorConversation",
     "MentorMessage",
     "Notification",
+    "MockInterviewSession",
+    "MockInterviewTurn",
+    "MockInterviewReport",
 ]

@@ -117,6 +117,10 @@ def test_turning_flag_off_again_disables_immediately(client, make_user, token_he
     assert client.get("/v1/mock-interview/catalog", headers=h).status_code == 404
 
 
-def test_no_new_tables_in_phase_1():
-    """Phase 1 must not add database tables."""
-    assert not [t for t in models.Base.metadata.tables if "interview" in t]
+def test_only_planned_interview_tables_exist():
+    """Phase 1 added no tables; Phase 2 adds exactly sessions, turns, reports."""
+    assert sorted(t for t in models.Base.metadata.tables if "interview" in t) == [
+        "mock_interview_reports",
+        "mock_interview_sessions",
+        "mock_interview_turns",
+    ]

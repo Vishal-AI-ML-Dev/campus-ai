@@ -79,6 +79,9 @@ RLS_TABLES = [
     "leave_requests",
     "mentor_conversations",
     "mentor_messages",
+    "mock_interview_sessions",
+    "mock_interview_turns",
+    "mock_interview_reports",
 ]
 
 
