@@ -58,6 +58,56 @@ export class ApiError extends Error {
 
 type JsonBody = Record<string, unknown>;
 
+/** "admin_email" -> "Admin email". */
+function fieldLabel(name: string): string {
+  const words = name.replace(/_/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * Turn a FastAPI error body into one readable sentence.
+ *
+ * `detail` is usually a string, but request-validation errors (HTTP 422) send
+ * a LIST of objects like {loc: ["body", "admin_email"], msg: "..."}; calling
+ * String() on that shows "[object Object]". Only `loc` and `msg` are used: the
+ * `input` key echoes what the user submitted (possibly a password), so it is
+ * never displayed.
+ */
+function formatDetail(data: unknown, status: number): string {
+  const fallback = `Request failed (${status})`;
+  if (!data || typeof data !== "object" || !("detail" in data)) return fallback;
+  const detail = (data as JsonBody).detail;
+  if (typeof detail === "string") return detail || fallback;
+
+  const items = Array.isArray(detail) ? detail : [detail];
+  const messages = items
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (!item || typeof item !== "object") return null;
+      const { loc, msg } = item as { loc?: unknown; msg?: unknown };
+      if (typeof msg !== "string") return null;
+      const text = msg.replace(/^Value error,\s*/i, "");
+      const field = Array.isArray(loc)
+        ? loc.filter((p) => typeof p === "string" && p !== "body").pop()
+        : undefined;
+      return field ? `${fieldLabel(field as string)}: ${text}` : text;
+    })
+    .filter((m): m is string => Boolean(m));
+
+  return messages.length > 0 ? messages.join(" ") : fallback;
+}
+
+/** Build the ApiError for a non-OK response body. */
+function toApiError(res: Response, data: unknown): ApiError {
+  // Every error carries a request id (body + X-Request-ID header) so it can be
+  // quoted in a bug report and traced in the backend logs.
+  const requestId =
+    (data && typeof data === "object" && "request_id" in data
+      ? String((data as JsonBody).request_id)
+      : res.headers.get("X-Request-ID")) ?? undefined;
+  return new ApiError(res.status, formatDetail(data, res.status), requestId);
+}
+
 // --- 401 -> refresh -> retry (single-flight) --------------------------------
 
 // Endpoints where a 401 must NOT trigger a refresh attempt (a 401 there means
@@ -112,20 +162,7 @@ async function parse<T>(res: Response): Promise<T> {
 
   const data = await res.json().catch(() => null);
 
-  if (!res.ok) {
-    // FastAPI returns human-readable errors under the "detail" key.
-    const detail =
-      data && typeof data === "object" && "detail" in data
-        ? String((data as JsonBody).detail)
-        : `Request failed (${res.status})`;
-    // Every error now carries a request id (body + X-Request-ID header) so it
-    // can be quoted in a bug report and traced in the backend logs.
-    const requestId =
-      (data && typeof data === "object" && "request_id" in data
-        ? String((data as JsonBody).request_id)
-        : res.headers.get("X-Request-ID")) ?? undefined;
-    throw new ApiError(res.status, detail, requestId);
-  }
+  if (!res.ok) throw toApiError(res, data);
 
   return data as T;
 }
@@ -178,17 +215,7 @@ async function requestBlob(path: string): Promise<Blob> {
   const res = await authedFetch(path, { method: "GET" });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    const detail =
-      data && typeof data === "object" && "detail" in data
-        ? String((data as JsonBody).detail)
-        : `Request failed (${res.status})`;
-    // Every error now carries a request id (body + X-Request-ID header) so it
-    // can be quoted in a bug report and traced in the backend logs.
-    const requestId =
-      (data && typeof data === "object" && "request_id" in data
-        ? String((data as JsonBody).request_id)
-        : res.headers.get("X-Request-ID")) ?? undefined;
-    throw new ApiError(res.status, detail, requestId);
+    throw toApiError(res, data);
   }
   return res.blob();
 }
@@ -224,17 +251,7 @@ async function requestStream(
   });
   if (!res.ok || !res.body) {
     const data = await res.json().catch(() => null);
-    const detail =
-      data && typeof data === "object" && "detail" in data
-        ? String((data as JsonBody).detail)
-        : `Request failed (${res.status})`;
-    // Every error now carries a request id (body + X-Request-ID header) so it
-    // can be quoted in a bug report and traced in the backend logs.
-    const requestId =
-      (data && typeof data === "object" && "request_id" in data
-        ? String((data as JsonBody).request_id)
-        : res.headers.get("X-Request-ID")) ?? undefined;
-    throw new ApiError(res.status, detail, requestId);
+    throw toApiError(res, data);
   }
 
   let provider: string | null = null;

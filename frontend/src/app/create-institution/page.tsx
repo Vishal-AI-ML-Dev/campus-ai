@@ -24,10 +24,19 @@ function slugify(value: string): string {
 		.slice(0, 63)
 }
 
+// While the user types in the slug box: keep only allowed characters but do
+// NOT trim hyphens, otherwise "acme-" collapses to "acme" and a hyphen can
+// never be typed. Edge hyphens are trimmed on submit by slugify().
+function normaliseSlugInput(value: string): string {
+	return value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").slice(0, 63)
+}
+
 export default function CreateInstitutionPage() {
 	const router = useRouter()
 	const [institutionName, setInstitutionName] = useState("")
-	const [institutionSlug, setInstitutionSlug] = useState("")
+	const [slugInput, setSlugInput] = useState("")
+	// The slug follows the institution name until the user edits it by hand.
+	const [slugEdited, setSlugEdited] = useState(false)
 	const [adminFullName, setAdminFullName] = useState("")
 	const [adminEmail, setAdminEmail] = useState("")
 	const [adminPassword, setAdminPassword] = useState("")
@@ -35,21 +44,31 @@ export default function CreateInstitutionPage() {
 	const [loading, setLoading] = useState(false)
 
 	const suggestedSlug = useMemo(() => slugify(institutionName), [institutionName])
+	const institutionSlug = slugEdited ? slugInput : suggestedSlug
 
-	function handleInstitutionName(value: string) {
-		setInstitutionName(value)
-		setInstitutionSlug((current) => (current ? current : slugify(value)))
+	function handleSlugChange(value: string) {
+		setSlugInput(normaliseSlugInput(value))
+		// Once touched, the slug is the user's own (even when emptied, so it can
+		// be cleared and retyped); `required` blocks submitting it empty.
+		setSlugEdited(true)
 	}
 
 	async function handleSubmit(e: React.FormEvent) {
 		e.preventDefault()
 		setError(null)
+		const finalSlug = slugify(institutionSlug)
+		// The browser's minLength check skips values the page filled in itself,
+		// so check here too (the backend rejects slugs under 2 characters).
+		if (finalSlug.length < 2) {
+			setError("Institution slug must be at least 2 characters (lowercase letters, numbers, hyphens).")
+			return
+		}
 		setLoading(true)
 		try {
 			// Backend auto-logs in by setting httpOnly cookies on success.
 			await api.post<SignupResponse>("/tenants/signup", {
-				institution_name: institutionName,
-				institution_slug: institutionSlug || suggestedSlug,
+				institution_name: institutionName.trim(),
+				institution_slug: finalSlug,
 				admin_full_name: adminFullName,
 				admin_email: adminEmail,
 				admin_password: adminPassword,
@@ -87,18 +106,18 @@ export default function CreateInstitutionPage() {
 						<div className="grid gap-4 sm:grid-cols-2">
 							<div className="sm:col-span-2">
 								<label htmlFor="institutionName" className="block text-sm font-medium text-slate-600 dark:text-slate-300">Institution name</label>
-								<input id="institutionName" required value={institutionName} onChange={(e) => handleInstitutionName(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-white/10 dark:bg-slate-900" placeholder="Acme Institute of Technology" />
+								<input id="institutionName" required maxLength={255} value={institutionName} onChange={(e) => setInstitutionName(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-white/10 dark:bg-slate-900" placeholder="Acme Institute of Technology" />
 							</div>
 
 							<div className="sm:col-span-2">
 								<label htmlFor="institutionSlug" className="block text-sm font-medium text-slate-600 dark:text-slate-300">Institution slug</label>
-								<input id="institutionSlug" required pattern="[a-z0-9-]+" minLength={2} maxLength={63} value={institutionSlug} onChange={(e) => setInstitutionSlug(slugify(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-white/10 dark:bg-slate-900" placeholder="acme-institute" />
+								<input id="institutionSlug" required pattern="[a-z0-9\-]+" minLength={2} maxLength={63} value={institutionSlug} onChange={(e) => handleSlugChange(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-white/10 dark:bg-slate-900" placeholder="acme-institute" />
 								<p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Lowercase letters, numbers, and hyphens only.</p>
 							</div>
 
 							<div>
 								<label htmlFor="adminFullName" className="block text-sm font-medium text-slate-600 dark:text-slate-300">Admin full name</label>
-								<input id="adminFullName" required value={adminFullName} onChange={(e) => setAdminFullName(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-white/10 dark:bg-slate-900" placeholder="Campus Admin" />
+								<input id="adminFullName" required maxLength={255} value={adminFullName} onChange={(e) => setAdminFullName(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-white/10 dark:bg-slate-900" placeholder="Campus Admin" />
 							</div>
 
 							<div>
@@ -109,11 +128,11 @@ export default function CreateInstitutionPage() {
 
 						<div>
 							<label htmlFor="adminPassword" className="block text-sm font-medium text-slate-600 dark:text-slate-300">Admin password</label>
-							<input id="adminPassword" type="password" autoComplete="new-password" required minLength={6} value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-white/10 dark:bg-slate-900" placeholder="Minimum 6 characters" />
+							<input id="adminPassword" type="password" autoComplete="new-password" required minLength={6} maxLength={128} value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-white/10 dark:bg-slate-900" placeholder="Minimum 6 characters" />
 						</div>
 
 						{error && (
-							<p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
+							<p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
 								{error}
 							</p>
 						)}
