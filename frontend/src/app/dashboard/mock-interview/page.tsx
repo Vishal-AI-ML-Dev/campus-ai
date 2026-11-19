@@ -3,15 +3,27 @@
 /**
  * Placement Preparation -> AI Mock Interview (landing).
  *
- * Feature-flagged. Phase 1 only decides whether the feature is available and
- * says so; interview setup arrives in Phase 3.
+ * Feature-flagged (build flag + GET /mock-interview/status). Phase 3: text HR
+ * and technical interviews. The server is the source of truth: on load,
+ * GET /mock-interview/sessions/active decides which step to show, so a
+ * refresh resumes an interview exactly where it was.
  *
- * Backend: GET /mock-interview/status -> { enabled }
+ *   no active session -> setup form
+ *   setup             -> instructions + start
+ *   in_progress       -> interview room
+ *   ended             -> closing message + transcript
  */
+
+import { useState } from "react"
 
 import { useCurrentUser } from "@/lib/auth"
 import { useApiResource } from "@/lib/useApiResource"
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states"
+import { ErrorState, LoadingState } from "@/components/ui/states"
+import InterviewFinished from "@/components/mock-interview/InterviewFinished"
+import InterviewInstructions from "@/components/mock-interview/InterviewInstructions"
+import InterviewRoom from "@/components/mock-interview/InterviewRoom"
+import InterviewSetupForm from "@/components/mock-interview/InterviewSetupForm"
+import type { InterviewSession } from "@/components/mock-interview/mockInterviewApi"
 import MockInterviewUnavailableNotice from "@/components/mock-interview/MockInterviewUnavailableNotice"
 import {
 	MOCK_INTERVIEW_BUILD_ENABLED,
@@ -56,10 +68,37 @@ function MockInterviewLanding() {
 	if (!status.data?.enabled || user?.role !== "student")
 		return <MockInterviewUnavailableNotice />
 
-	return (
-		<EmptyState
-			title="Interview setup is coming soon"
-			description="Mock interviews are switched on for your institute. HR and technical practice interviews will appear here first."
-		/>
-	)
+	return <InterviewWorkspace />
+}
+
+function InterviewWorkspace() {
+	const active = useApiResource<InterviewSession | null>("/mock-interview/sessions/active", {
+		fallbackMessage: "Could not load your interview.",
+	})
+	// undefined = follow the server's active session; null = show the setup form.
+	const [local, setLocal] = useState<InterviewSession | null | undefined>(undefined)
+	const session = local === undefined ? active.data : local
+
+	if (local === undefined && active.loading)
+		return <LoadingState message="Loading your interview…" />
+	if (local === undefined && active.error)
+		return (
+			<ErrorState message={active.error} onRetry={active.reload} requestId={active.requestId} />
+		)
+
+	if (!session)
+		return (
+			<InterviewSetupForm
+				onCreated={setLocal}
+				onConflict={() => {
+					setLocal(undefined)
+					active.reload()
+				}}
+			/>
+		)
+	if (session.status === "setup" || session.awaiting === "start")
+		return <InterviewInstructions session={session} onChange={setLocal} />
+	if (session.status === "in_progress")
+		return <InterviewRoom session={session} onChange={setLocal} />
+	return <InterviewFinished session={session} onNew={() => setLocal(null)} />
 }

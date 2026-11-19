@@ -8,7 +8,11 @@ Phase 1 ships only the isolation layer:
   * GET /mock-interview/catalog -> static setup choices. Gated: 404 while the
     feature is off for the caller's institute.
 
-Every future mock-interview route must depend on ``require_mock_interview``
+Phase 3 adds the text interview (HR / technical, optional resume + JD
+grounding), students only. Business logic lives in
+``app.services.mock_interview``; see docs/mock-interview/API.md.
+
+Every mock-interview route except /status depends on ``require_mock_interview``
 so it disappears (404) whenever the flag is off.
 
 Flags (app/core/config.py, both default OFF / empty):
@@ -19,12 +23,28 @@ Mounted under the `/mock-interview` prefix by `main.py` (at /v1 and the
 deprecated unversioned path, like every feature router).
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import hashlib
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.security import apply_tenant_guc, get_current_user
+from app.core.db import get_db
+from app.core.rate_limit import client_ip, limiter
+from app.core.security import ACCESS_COOKIE_NAME, apply_tenant_guc, get_current_user
 from app.models import User, UserRole
-from app.schemas.mock_interview import MockInterviewCatalogOut, MockInterviewStatusOut
+from app.schemas.mock_interview import (
+    MockInterviewAnswerIn,
+    MockInterviewCatalogOut,
+    MockInterviewChoice,
+    MockInterviewOptionsOut,
+    MockInterviewResumeOption,
+    MockInterviewSessionCreate,
+    MockInterviewSessionOut,
+    MockInterviewSessionSummaryOut,
+    MockInterviewStatusOut,
+)
+from app.services import mock_interview as svc
 
 router = APIRouter(
     prefix="/mock-interview",
@@ -105,3 +125,185 @@ def mock_interview_catalog(
         languages=["en", "hi", "hinglish"],
         durations_minutes=[10, 20, 30, 45],
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: text interviews (students only)
+# ---------------------------------------------------------------------------
+
+
+def _caller_key(request: Request) -> str:
+    """Rate-limit key per signed-in caller (hash of their access token).
+
+    Per IP would throttle a whole campus behind one NAT (see rate_limit.py).
+    Falls back to the IP when no token is present (those calls 401 anyway).
+    """
+    auth = request.headers.get("authorization") or ""
+    token = auth[7:] if auth.lower().startswith("bearer ") else ""
+    token = token or request.cookies.get(ACCESS_COOKIE_NAME) or ""
+    if not token:
+        return f"mi-ip:{client_ip(request)}"
+    return "mi-user:" + hashlib.sha256(token.encode("utf-8")).hexdigest()[:32]
+
+
+# Each call can run several LLM requests; one student never needs more.
+_AI_STEP_LIMIT = "20/minute"
+
+
+def require_mock_interview_student(
+    current_user: User = Depends(require_mock_interview),
+) -> User:
+    """Feature gate (404 when off) + students only (403 for staff)."""
+    if current_user.role != UserRole.student:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Mock interviews are available to students only",
+        )
+    return current_user
+
+
+@router.get("/options", response_model=MockInterviewOptionsOut)
+def mock_interview_options(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_mock_interview_student),
+) -> MockInterviewOptionsOut:
+    """Setup choices for a Phase 3 text interview, plus the caller's resumes."""
+    return MockInterviewOptionsOut(
+        interview_types=[
+            MockInterviewChoice(value="hr", label="HR"),
+            MockInterviewChoice(value="technical", label="Technical"),
+        ],
+        difficulties=[
+            MockInterviewChoice(value="easy", label="Beginner"),
+            MockInterviewChoice(value="medium", label="Intermediate"),
+            MockInterviewChoice(value="hard", label="Advanced"),
+        ],
+        durations_minutes=[15, 30, 45],
+        languages=[
+            MockInterviewChoice(value="en", label="English"),
+            MockInterviewChoice(value="hi", label="Hindi"),
+            MockInterviewChoice(value="hinglish", label="Hinglish"),
+        ],
+        resumes=[
+            MockInterviewResumeOption(
+                id=r.id,
+                title=r.title,
+                target_role=r.target_role,
+                is_primary=r.is_primary,
+                created_at=r.created_at,
+            )
+            for r in svc.list_resumes(db, user)
+        ],
+    )
+
+
+@router.post(
+    "/sessions",
+    response_model=MockInterviewSessionOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_mock_interview_session(
+    payload: MockInterviewSessionCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_mock_interview_student),
+) -> dict:
+    """Create an interview (status ``setup``). Nothing is sent to the AI yet."""
+    return svc.to_detail(db, svc.create_session(db, user, payload))
+
+
+@router.get("/sessions", response_model=list[MockInterviewSessionSummaryOut])
+def list_mock_interview_sessions(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_mock_interview_student),
+) -> list:
+    """My interviews, newest first (max 50)."""
+    return svc.list_sessions(db, user)
+
+
+@router.get("/sessions/active", response_model=MockInterviewSessionOut | None)
+def get_active_mock_interview_session(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_mock_interview_student),
+) -> dict | None:
+    """My interview in ``setup`` or ``in_progress`` (to resume after a refresh), or null."""
+    s = svc.active_session(db, user)
+    return svc.to_detail(db, s) if s else None
+
+
+@router.get("/sessions/{session_id}", response_model=MockInterviewSessionOut)
+def get_mock_interview_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_mock_interview_student),
+) -> dict:
+    """One of my interviews with its transcript (404 if not mine)."""
+    return svc.to_detail(db, svc.get_owned_session(db, session_id, user))
+
+
+@router.post("/sessions/{session_id}/start", response_model=MockInterviewSessionOut)
+@limiter.limit(_AI_STEP_LIMIT, key_func=_caller_key)
+def start_mock_interview_session(
+    request: Request,
+    response: Response,
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_mock_interview_student),
+) -> dict:
+    """Plan the interview and ask the opening question. Idempotent."""
+    s = svc.get_owned_session(db, session_id, user)
+    return svc.to_detail(db, svc.start_session(db, user, s))
+
+
+@router.post("/sessions/{session_id}/answer", response_model=MockInterviewSessionOut)
+@limiter.limit(_AI_STEP_LIMIT, key_func=_caller_key)
+def answer_mock_interview_question(
+    request: Request,
+    response: Response,
+    session_id: int,
+    payload: MockInterviewAnswerIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_mock_interview_student),
+) -> dict:
+    """Save my answer to question ``turn_seq``, then get the next question.
+
+    The answer is saved before the AI is called. On 503 it is kept and
+    ``POST /next`` continues. Re-sending the same answer is a no-op.
+    """
+    s = svc.get_owned_session(db, session_id, user)
+    return svc.to_detail(db, svc.submit_answer(db, user, s, payload.turn_seq, payload.answer))
+
+
+@router.post("/sessions/{session_id}/next", response_model=MockInterviewSessionOut)
+@limiter.limit(_AI_STEP_LIMIT, key_func=_caller_key)
+def next_mock_interview_question(
+    request: Request,
+    response: Response,
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_mock_interview_student),
+) -> dict:
+    """Fetch the next question after a saved answer (retry path). Idempotent."""
+    s = svc.get_owned_session(db, session_id, user)
+    return svc.to_detail(db, svc.advance(db, user, s))
+
+
+@router.post("/sessions/{session_id}/finish", response_model=MockInterviewSessionOut)
+def finish_mock_interview_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_mock_interview_student),
+) -> dict:
+    """End early: completed if at least one answer was given, else abandoned."""
+    s = svc.get_owned_session(db, session_id, user)
+    return svc.to_detail(db, svc.end_session(db, s, abandon=False))
+
+
+@router.post("/sessions/{session_id}/abandon", response_model=MockInterviewSessionOut)
+def abandon_mock_interview_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_mock_interview_student),
+) -> dict:
+    """Abandon the interview. Idempotent."""
+    s = svc.get_owned_session(db, session_id, user)
+    return svc.to_detail(db, svc.end_session(db, s, abandon=True))
