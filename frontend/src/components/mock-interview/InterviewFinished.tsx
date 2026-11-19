@@ -1,18 +1,27 @@
 "use client"
 
-/** Ended interview: closing message + transcript. Reports arrive in Phase 4. */
+/**
+ * Ended interview: closing message, the feedback report (completed
+ * interviews; generated on first view) and the transcript.
+ */
 
+import InterviewReportPanel from "./InterviewReport"
 import type { InterviewSession } from "./mockInterviewApi"
 
 export default function InterviewFinished({
 	session,
 	onNew,
+	newLabel = "Start another interview",
+	reportExists = false,
 }: {
 	session: InterviewSession
 	onNew: () => void
+	newLabel?: string
+	reportExists?: boolean
 }) {
 	const abandoned = session.status === "abandoned"
 	const answered = session.turns.filter((t) => t.answer_text !== null).length
+	const hasReport = session.status === "completed" && answered > 0
 	return (
 		<section
 			aria-labelledby="mi-finished-title"
@@ -29,9 +38,11 @@ export default function InterviewFinished({
 				) : null}
 				<p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
 					{answered} question{answered === 1 ? "" : "s"} answered.
-					{abandoned ? "" : " A detailed feedback report is coming soon."}
+					{abandoned ? " Cancelled interviews don't get a feedback report." : ""}
 				</p>
 			</div>
+
+			{hasReport ? <InterviewReportPanel sessionId={session.id} exists={reportExists} /> : null}
 
 			{session.turns.length > 0 ? (
 				<details className="rounded-lg border border-slate-200 p-3 text-sm dark:border-white/10">
@@ -56,7 +67,7 @@ export default function InterviewFinished({
 				onClick={onNew}
 				className="rounded-lg bg-gradient-to-r from-indigo-500 to-violet-500 px-5 py-2 text-sm font-medium text-white"
 			>
-				Start another interview
+				{newLabel}
 			</button>
 		</section>
 	)

@@ -1,4 +1,4 @@
-# AI Mock Interview — API (Phase 3)
+# AI Mock Interview — API (Phases 3–4)
 
 ## Where and who
 
@@ -29,6 +29,9 @@
 | POST | `/sessions/{id}/next` | – | `Session` |
 | POST | `/sessions/{id}/finish` | – | `Session` |
 | POST | `/sessions/{id}/abandon` | – | `Session` |
+| GET | `/history` | – | `HistoryItem[]` (newest first, ≤50). Phase 4 |
+| GET | `/sessions/{id}/report` | – | `Report`; **404 "Report not generated yet"** until generated. Phase 4 |
+| POST | `/sessions/{id}/report` | – | `Report`: generates it once, or returns the stored one with no AI call. Phase 4 |
 
 ## Schemas
 
@@ -123,3 +126,55 @@ Mounted only when the worker's `MOCK_INTERVIEW_ENABLED=true`.
   - Response: `{action: opening|follow_up|next_topic|end, evaluation?, question?{seq, topic, is_follow_up, text}, closing_message?, end_reason?, level, provider}`.
   - 422: transcript out of order, or the last question unanswered.
   - 502: no question could be generated (no provider details in the body).
+
+## Phase 4: reports and history
+
+**Gates:** the same as Phase 3. Behind the flag, students only, own sessions only (others get 404).
+
+**`HistoryItem`:**
+- the `SessionSummary` fields;
+- `answered` (int);
+- `report: {overall_score, created_at} | null`.
+
+**`Report`:**
+```json
+{
+  "session_id": 12, "interview_type": "hr", "target_role": "Backend Developer", "company_name": null,
+  "difficulty": "medium", "language": "en", "duration_minutes": 30,
+  "started_at": "...", "completed_at": "...", "created_at": "...",
+  "overall_score": 63.5, "rubric_version": "hr-v1",
+  "categories": [{"key": "relevance", "label": "Relevance", "weight": 0.25,
+                  "description": "Answers the question that was asked", "score": 70.0, "assessed": 4}],
+  "questions": [{"seq": 1, "topic": "Introduction", "question": "...", "is_follow_up": false,
+                 "answer_text": "...", "status": "scored",
+                 "scores": [{"key": "relevance", "label": "Relevance", "score": 4,
+                             "evidence": "verbatim words from the answer"}],
+                 "feedback": "..."}],
+  "strengths": [{"text": "...", "seq": 1, "evidence": "..."}],
+  "weaknesses": [{"text": "...", "seq": null, "evidence": ""}],
+  "recommendations": ["..."],
+  "disclaimer": "This is AI-generated practice feedback ..."
+}
+```
+
+**Field rules:**
+- `status` is one of `scored`, `no_answer`, `dont_know` or `not_assessed`.
+- `no_answer` and `dont_know` questions score 0 in every category.
+- Every non-zero score has an `evidence` quote taken from the student's own answer.
+- `category.score` is `null` when nothing could be assessed.
+- The question text and answers come from the turns. The plan, the resume and the JD are never returned.
+
+| Situation (POST `/report`) | Code |
+|---|---|
+| Report already exists | 200, the stored report, no AI call (reports are final) |
+| Session `setup` / `in_progress` | 409 "Finish the interview…" |
+| Session `abandoned` | 409 "Cancelled interviews don't have a feedback report." |
+| Another request is generating | 409 "already being prepared" |
+| Worker down, failed or timed out, or its output is invalid | 503; nothing stored, retry. After a **timeout**, retries get 409 until the 180 s lease expires |
+| 3 × "no answer could be assessed with evidence" | 409 "We couldn't assess the answers in this interview…" (final) |
+| More than 5 POSTs per minute (per student) | 429 |
+
+**Worker contract:** `POST /interview/report`, internal, `X-Worker-Token`, mounted only when `MOCK_INTERVIEW_ENABLED`.
+- **Request:** `{config, plan?: {topics[{name, focus}], question_budget}, transcript[{seq, topic, question, is_follow_up, answer|null}]}`. The seqs must run 1..n (otherwise 422).
+- **Response:** `{rubric_version, overall_score, categories[], questions[{seq, status, scores{key: {score 0-5, evidence}}, feedback}], strengths[], weaknesses[], recommendations[], provider}`.
+- **Errors:** 502 when a scoring call failed (retryable); 422 when nothing could be assessed with evidence.

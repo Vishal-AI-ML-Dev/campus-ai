@@ -22,6 +22,7 @@ print(json.dumps({
     "default": Settings.model_fields["MOCK_INTERVIEW_ENABLED"].default,
     "ping": c.get("/interview/ping", headers={"X-Worker-Token": "t" * 40}).status_code,
     "ping_no_token": c.get("/interview/ping").status_code,
+    "report": c.post("/interview/report", json={}, headers={"X-Worker-Token": "t" * 40}).status_code,
     "health": c.get("/health").status_code,
 }))
 """
@@ -51,6 +52,7 @@ def test_default_off_routes_absent():
     r = _probe("false")
     assert r["default"] is False
     assert r["ping"] == 404
+    assert r["report"] == 404
     assert r["health"] == 200
 
 
@@ -58,4 +60,5 @@ def test_enabled_routes_present_and_token_protected():
     r = _probe("true")
     assert r["ping"] == 200
     assert r["ping_no_token"] == 401
+    assert r["report"] == 422  # mounted; empty body rejected before any LLM call
     assert r["health"] == 200

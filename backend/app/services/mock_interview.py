@@ -198,14 +198,20 @@ def _lease_active(meta: dict, now: datetime) -> bool:
     return until is not None and until > now
 
 
-def _claim(db: Session, s: MockInterviewSession) -> tuple[datetime, dict]:
+def _claim(
+    db: Session,
+    s: MockInterviewSession,
+    *,
+    seconds: int = LEASE_SECONDS,
+    busy: str = _BUSY,
+) -> tuple[datetime, dict]:
     """Take the session's AI lease or raise 409. Returns (token, base meta)."""
     now = utcnow()
     meta = _plan_meta(s)
     if _lease_active(meta, now):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_BUSY)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=busy)
     meta.pop("lease", None)
-    leased = {**meta, "lease": {"until": (now + timedelta(seconds=LEASE_SECONDS)).isoformat()}}
+    leased = {**meta, "lease": {"until": (now + timedelta(seconds=seconds)).isoformat()}}
     result = db.execute(
         update(MockInterviewSession)
         .where(
@@ -217,7 +223,7 @@ def _claim(db: Session, s: MockInterviewSession) -> tuple[datetime, dict]:
     )
     db.commit()
     if result.rowcount != 1:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_BUSY)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=busy)
     return now, meta
 
 

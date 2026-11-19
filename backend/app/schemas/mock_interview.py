@@ -157,3 +157,131 @@ class MockInterviewSessionOut(MockInterviewSessionSummaryOut):
     turns: list[MockInterviewTurnOut]
     closing_message: str | None
     end_reason: str | None
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: evaluation report + history
+# ---------------------------------------------------------------------------
+
+ReportQuestionStatus = Literal["scored", "no_answer", "dont_know", "not_assessed"]
+
+
+class MockInterviewReportCategoryOut(BaseModel):
+    key: str
+    label: str
+    weight: float
+    description: str
+    # 0-100; null when no answer could be assessed for this category.
+    score: float | None
+    assessed: int
+
+
+class MockInterviewReportScoreOut(BaseModel):
+    key: str
+    label: str
+    score: int  # 0-5
+    evidence: str  # verbatim quote from the answer ("" only for a 0)
+
+
+class MockInterviewReportQuestionOut(BaseModel):
+    seq: int
+    topic: str | None
+    question: str
+    is_follow_up: bool
+    answer_text: str | None
+    status: ReportQuestionStatus
+    scores: list[MockInterviewReportScoreOut]
+    feedback: str
+
+
+class MockInterviewReportItemOut(BaseModel):
+    text: str
+    seq: int | None
+    evidence: str
+
+
+class MockInterviewReportOut(BaseModel):
+    session_id: int
+    interview_type: str
+    target_role: str | None
+    company_name: str | None
+    difficulty: str
+    language: str
+    duration_minutes: int
+    started_at: datetime | None
+    completed_at: datetime | None
+    overall_score: float
+    rubric_version: str
+    created_at: datetime
+    categories: list[MockInterviewReportCategoryOut]
+    questions: list[MockInterviewReportQuestionOut]
+    strengths: list[MockInterviewReportItemOut]
+    weaknesses: list[MockInterviewReportItemOut]
+    recommendations: list[str]
+    disclaimer: str
+
+
+class MockInterviewReportBriefOut(BaseModel):
+    overall_score: float
+    created_at: datetime
+
+
+class MockInterviewHistoryItemOut(MockInterviewSessionSummaryOut):
+    answered: int
+    report: MockInterviewReportBriefOut | None
+
+
+# --- Worker report output, re-validated before anything is stored -----------
+class _WorkerModel(BaseModel):
+    """Unknown fields are dropped; every kept text field is control-char free."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    @field_validator("*", mode="after")
+    @classmethod
+    def _strip_controls(cls, v):
+        return _clean(v) if isinstance(v, str) else v
+
+
+class WorkerAnswerScore(_WorkerModel):
+    score: int = Field(ge=0, le=5)
+    evidence: str = Field(default="", max_length=300)
+
+
+class WorkerQuestion(_WorkerModel):
+    seq: int = Field(ge=1)
+    status: ReportQuestionStatus
+    scores: dict[str, WorkerAnswerScore] = Field(default_factory=dict, max_length=10)
+    feedback: str = Field(default="", max_length=400)
+
+
+class WorkerCategory(_WorkerModel):
+    key: str = Field(max_length=40)
+    label: str = Field(max_length=60)
+    weight: float = Field(ge=0, le=1)
+    description: str = Field(default="", max_length=200)
+    score: float | None = Field(default=None, ge=0, le=100)
+    assessed: int = Field(default=0, ge=0)
+
+
+class WorkerItem(_WorkerModel):
+    text: str = Field(min_length=1, max_length=300)
+    seq: int | None = Field(default=None, ge=1)
+    evidence: str = Field(default="", max_length=300)
+
+
+class WorkerReport(_WorkerModel):
+    rubric_version: str = Field(min_length=1, max_length=20)
+    overall_score: float = Field(ge=0, le=100)
+    categories: list[WorkerCategory] = Field(min_length=1, max_length=10)
+    questions: list[WorkerQuestion] = Field(min_length=1, max_length=30)
+    strengths: list[WorkerItem] = Field(default_factory=list, max_length=5)
+    weaknesses: list[WorkerItem] = Field(default_factory=list, max_length=5)
+    recommendations: list[str] = Field(default_factory=list, max_length=5)
+    provider: str | None = Field(default=None, max_length=50)
+
+    @field_validator("recommendations")
+    @classmethod
+    def _recs(cls, v: list[str]) -> list[str]:
+        out = [(_clean(r) or "")[:300] for r in v]
+        return [r for r in out if r]

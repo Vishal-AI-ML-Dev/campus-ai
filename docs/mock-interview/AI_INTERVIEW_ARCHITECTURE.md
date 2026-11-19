@@ -1,4 +1,4 @@
-# AI Mock Interview — Engine Architecture (Phase 3)
+# AI Mock Interview — Engine Architecture (Phases 3–4)
 
 ## Overview
 
@@ -109,7 +109,7 @@ POST /sessions ─▶ setup ─ /start ─▶ in_progress ─ engine "end" or /f
 |---|---|
 | `mock_interview_sessions` | Configuration, status, `started_at`/`completed_at`, `plan_json = {plan, provider, closing_message?, end_reason?}` |
 | `mock_interview_turns` | One row per interviewer question in `seq` order: `topic`, `is_follow_up`, `answer_text`, `answer_source='typed'`, `answered_at`, `turn_eval_json` |
-| `mock_interview_reports` | Not used (Phase 4) |
+| `mock_interview_reports` | Phase 4: one final report per session. `category_scores_json = {categories[], questions[]}`; strengths, weaknesses and recommendations JSON; `rubric_version`; `provider` |
 
 The JSON columns are reassigned as new dicts, never mutated in place.
 
@@ -162,3 +162,52 @@ Logs carry the step name, the error class and the HTTP status only. Candidate te
 | Worker timeout | 60 s; 1 retry on connect errors only |
 | AI steps (`start` / `answer` / `next`) | 20 per minute per student per route (slowapi, keyed by access-token hash) |
 | Verified profile sent to the worker | ≤40 skills, ≤10 projects |
+
+## Phase 4: evidence-backed report
+
+```
+Browser ─ POST /sessions/{id}/report ─▶ services/mock_interview_report.py
+             (completed only; lease 180 s; idempotent; final)
+                    │ transcript + slim plan only (no resume, JD or profile)
+                    ▼ 120 s timeout, retry on connect errors only
+AI worker  POST /interview/report ─▶ interview/report.py (LangGraph)
+   report_preparer ─▶ answer_scorer ─▶ report_aggregator ─▶ report_writer
+     sanitize +        LLM, ≤4 answers    rubric.py           LLM strengths,
+     classify          per call, ≤4 in    (deterministic)     weaknesses and
+                       parallel                               recommendations,
+                                                              quotes verified
+```
+
+**Scoring:**
+- `rubric.py` holds the per-type rubrics, `hr-v1` and `technical-v1`, each with 5 weighted categories scored 0–5.
+- A score counts only with a verified, substantive quote from that answer. The quote must not be about scoring or instructions (`rubric.evidence_ok`).
+- Missing and "don't know" answers score 0 with a note and need no LLM call.
+- Answers under 8 words are capped at 2/5.
+- **Aggregation:**
+  - each category score is the mean × 20;
+  - the overall score is the weighted mean of the assessed categories, with half-up rounding.
+- **Failures:**
+  - any scoring-call failure → 502 (nothing stored);
+  - no evidence-backed score at all → 422.
+
+**Backend re-validation:**
+- It checks:
+  - the rubric version and keys;
+  - that the seqs match the transcript;
+  - the 0–5 ranges;
+  - the zero rules;
+  - that every quote is in the stored answer;
+  - that text is free of control characters.
+- It then **recomputes** the category scores and the overall score itself before storing.
+- **Single-flight:** the session lease (a read timeout keeps it) plus the unique `session_id`.
+- After 3 "nothing assessable" results it answers with a final 409.
+
+**Frontend:**
+- **`InterviewReport.tsx`:**
+  - the score card and disclaimer;
+  - accessible category bars, with text values;
+  - strengths and improvement areas with quotes;
+  - recommendations;
+  - question-by-question evidence tables.
+- **`InterviewHistory.tsx`** sits under the setup form.
+- **`InterviewFinished.tsx`** loads or generates the report and keeps the transcript.

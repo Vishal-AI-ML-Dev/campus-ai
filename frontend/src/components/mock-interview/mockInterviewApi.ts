@@ -66,6 +66,98 @@ export type InterviewSession = {
 	end_reason: string | null
 }
 
+export type ReportCategory = {
+	key: string
+	label: string
+	weight: number
+	description: string
+	/** 0-100, null when nothing could be assessed. */
+	score: number | null
+	assessed: number
+}
+
+export type ReportScore = { key: string; label: string; score: number; evidence: string }
+
+export type ReportQuestion = {
+	seq: number
+	topic: string | null
+	question: string
+	is_follow_up: boolean
+	answer_text: string | null
+	status: "scored" | "no_answer" | "dont_know" | "not_assessed"
+	scores: ReportScore[]
+	feedback: string
+}
+
+export type ReportItem = { text: string; seq: number | null; evidence: string }
+
+export type InterviewReport = {
+	session_id: number
+	interview_type: string
+	target_role: string | null
+	company_name: string | null
+	difficulty: string
+	language: string
+	duration_minutes: number
+	started_at: string | null
+	completed_at: string | null
+	overall_score: number
+	rubric_version: string
+	created_at: string
+	categories: ReportCategory[]
+	questions: ReportQuestion[]
+	strengths: ReportItem[]
+	weaknesses: ReportItem[]
+	recommendations: string[]
+	disclaimer: string
+}
+
+export type HistoryItem = {
+	id: number
+	interview_type: string
+	mode: string
+	status: InterviewSession["status"]
+	target_role: string | null
+	company_name: string | null
+	difficulty: string
+	language: string
+	duration_minutes: number
+	created_at: string
+	started_at: string | null
+	completed_at: string | null
+	answered: number
+	report: { overall_score: number; created_at: string } | null
+}
+
+const inflightReports = new Map<number, Promise<InterviewReport>>()
+
+/**
+ * Load a session's report, generating it the first time. Generation (POST) is
+ * idempotent server-side: it returns the stored report with no AI call, so a
+ * retry never creates a second report. With `exists` (from /history) it reads
+ * with GET first; otherwise it POSTs directly (no expected-404 round trip).
+ */
+export function loadOrGenerateReport(
+	id: number,
+	{ exists = false }: { exists?: boolean } = {},
+): Promise<InterviewReport> {
+	// Share one in-flight request per session (React dev mode runs effects
+	// twice; a second parallel POST would only get "already being prepared").
+	const pending = inflightReports.get(id)
+	if (pending) return pending
+	const request = (async () => {
+		if (!exists) return mockInterviewApi.generateReport(id)
+		try {
+			return await mockInterviewApi.getReport(id)
+		} catch (err) {
+			if (err instanceof ApiError && err.status === 404) return mockInterviewApi.generateReport(id)
+			throw err
+		}
+	})().finally(() => inflightReports.delete(id))
+	inflightReports.set(id, request)
+	return request
+}
+
 export type CreateInterviewInput = {
 	interview_type: string
 	difficulty: string
@@ -89,6 +181,11 @@ export const mockInterviewApi = {
 	next: (id: number) => api.post<InterviewSession>(`${base}/${id}/next`),
 	finish: (id: number) => api.post<InterviewSession>(`${base}/${id}/finish`),
 	abandon: (id: number) => api.post<InterviewSession>(`${base}/${id}/abandon`),
+	/** Stored report; 404 "Report not generated yet" until POST creates it. */
+	getReport: (id: number) => api.get<InterviewReport>(`${base}/${id}/report`),
+	/** Generate (once) or return the existing report. Idempotent. */
+	generateReport: (id: number) => api.post<InterviewReport>(`${base}/${id}/report`),
+	history: () => api.get<HistoryItem[]>("/mock-interview/history"),
 }
 
 /** A readable message for any failure, including offline / dropped connections. */

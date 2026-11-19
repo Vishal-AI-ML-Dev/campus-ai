@@ -1,6 +1,6 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-19 (Phase 3 committed locally; **live LLM NOT RUN**, accepted by you as a documented limitation; **not production-ready**)_
+_Last updated: 2026-11-19 (Phase 4 implemented and **verified, uncommitted**, awaiting your review: full SQLite regression 275 passed / 0 failed; Postgres RLS 12/12; full `tests_pg_api` 225 passed / 0 failed; live LLM NOT RUN; **not production-ready**)_
 
 ## Where the work lives
 | | |
@@ -13,6 +13,153 @@ _Last updated: 2026-11-19 (Phase 3 committed locally; **live LLM NOT RUN**, acce
 
 Phase 1 is committed locally (`f17d2bd`, docs `3bce105`). Phase 2 is committed locally as `0fadaa8` (8 files, staged by name).
 **Phase 3 is committed locally** as `926e59c` "feat(mock-interview): add text-based AI interview engine" (26 files, staged by name; `.claude/` and the `next dev`-generated `frontend/AGENTS.md` deliberately excluded). Nothing is pushed, merged or deployed, and all feature flags stay OFF.
+
+## Phase 4 — evaluation, report, history (implemented + verified, uncommitted, awaiting review)
+
+Spec: `specs/phase-4-evaluation-reports.md`. §1–§5 are the approved design; §5a lists the post-review changes. Approved by you on 2026-11-19 ("Approve as written").
+
+**What it does:**
+- A completed text interview gets **one final, evidence-backed report**:
+  - an overall score (0–100);
+  - 5 weighted category scores per rubric (`hr-v1` / `technical-v1`);
+  - per-question 0–5 scores, each with a verbatim quote from the answer, plus feedback;
+  - strengths and weaknesses that cite a question and a quote;
+  - recommendations;
+  - a disclaimer.
+- History of past interviews with their scores; a report view; the finished screen shows the report.
+
+**Files**
+- **Created:**
+  - Worker: `ai-worker/interview/{rubric,report}.py`, `ai-worker/tests/test_interview_report.py`
+  - Backend: `backend/app/services/mock_interview_report.py`, `backend/tests/test_mock_interview_reports.py`, `backend/tests/fixtures/mock_interview_worker_report.json` (worker↔backend contract), `backend/tests_pg_api/test_mock_interview_reports_pg.py`
+  - Frontend: `frontend/src/components/mock-interview/{InterviewReport,InterviewHistory}.tsx`
+  - Docs: `docs/mock-interview/specs/phase-4-evaluation-reports.md`
+- **Modified (additive):**
+  - Worker: `ai-worker/interview/{schemas,prompts,router}.py` (+report schemas, prompts, `POST /interview/report`), `ai-worker/tests/test_interview_flag.py` (+report route is absent when the flag is off)
+  - Backend:
+    - `app/routers/mock_interview.py` (+3 routes)
+    - `app/schemas/mock_interview.py` (+report/history schemas and the strict worker-output schemas)
+    - `app/services/mock_interview.py` (`_claim` gains optional `seconds`/`busy` arguments; defaults unchanged)
+    - `app/services/mock_interview_ai.py` (`generate_report`, 120 s timeout; the error now carries `status_code`/`timed_out`)
+  - Frontend: `page.tsx` (history under the setup form, past-interview view), `InterviewFinished.tsx` (report replaces "coming soon"), `mockInterviewApi.ts` (types and calls)
+  - Docs: `API.md`, `AI_INTERVIEW_ARCHITECTURE.md`, this file
+
+**Database / API / env:**
+- **No migration.** It uses the Phase 2 `mock_interview_reports` table; the session lease reuses `plan_json`, which also gains a `report_unassessable` counter.
+- **New API:**
+  - `GET /history`
+  - `GET /sessions/{id}/report`
+  - `POST /sessions/{id}/report` (5/min per student)
+  - worker `POST /interview/report`
+- No existing response, table, column, env var or flag changed. Everything sits behind the existing flags (default OFF).
+
+### Tests (actual results)
+| Suite | Result |
+|---|---|
+| New backend `tests/test_mock_interview_reports.py` (SQLite, run alone) | **Exit 0: 32 passed** (incl. 15 invalid-worker-output cases) |
+| AI worker (`run_worker_tests.py test_interview_engine test_interview_report test_interview_flag test_worker_security`) | **Exit 0: 48 passed, 0 failed** (21 engine + 19 report + 2 flag + 6 security) |
+| Mutation check (scratch): non-evidence filter disabled | The injection test and the evidence unit test **fail**, as they should |
+| Frontend `npx tsc --noEmit` / `npm run lint` | **Exit 0** / **0 errors** (2 pre-existing warnings in `e2e/smoke.spec.ts`) |
+| `ruff check` on the new and changed Python | Clean |
+| App import (flag off/on), `SAWarning` as an error; OpenAPI lists the new routes on `/v1` and unversioned | **Pass** |
+| Browser smoke test (headless Chromium; scratch backend on its own SQLite file with the flag on and a **scripted** engine and reporter; `next dev`) | **23/23 PASS** (details below) |
+| Throwaway Postgres 16 (pinned digest, tmpfs, `--rm`, 127.0.0.1:15433): full chain `upgrade head` → `downgrade -1` → `upgrade head`, single head `b4d8f2a6c9e1`; `app_user` NOSUPERUSER/NOBYPASSRLS; RLS enabled and forced on the 3 interview tables | **PASS** |
+| First full backend regression attempt (SQLite) | **Superseded.** Stopped by Claude Code at ~94% for critically low system memory. Not counted; it was re-run below |
+| **Full backend regression (SQLite)**, re-run alone (no parallel workers; memory checked before, ~3.2–5.9 GB free throughout) | **PASS. Exit 0: 275 passed, 12 skipped, 0 failed, 0 errors**, 1 warning (the pre-existing Starlette/httpx deprecation), 837 s, 11:36:38–11:51:50. 275 = Phase 3's 243 + 32 new. The 12 skips are the opt-in Postgres tests (8 mock-interview RLS + 4 base RLS), which **pass** in the Postgres run below |
+| **Postgres: the new `tests_pg_api/test_mock_interview_reports_pg.py`** (disposable `postgres:16@sha256:63e83b5a…`, tmpfs, `--rm`, `--memory 1g`, 127.0.0.1:15433, as NOBYPASSRLS `app_user`, run with the required `--confcutdir=tests_pg_api`) | **PASS. Exit 0: 3 passed** |
+| ↳ report isolation + RLS | other student / other institute: 404 on GET and POST report and empty history; staff 403; the report row is visible only under the owning tenant's GUC (0 under the other tenant, 0 with no GUC); score recomputed server-side (40.0); lease released in the same commit as the insert |
+| ↳ duplicate generation | 6 parallel POSTs → exactly **1** worker call and **1** row; codes ⊆ {200, 409}; a later POST makes no worker call |
+| ↳ eligibility, retry, timeout | setup / in-progress / abandoned → 409 with no worker call and no row; GET before generation → 404; worker 502 → 503, no row, lease released, immediate retry → 200 and 1 row; worker read timeout → 503, lease **kept**, retry → 409 "being prepared" with no 2nd call, no row |
+| **Postgres: `tests/test_rls_postgres.py` + `tests/test_mock_interview_rls_postgres.py`** as `app_user` | **PASS. Exit 0: 12 passed** (4 base + 8 mock-interview: forced RLS + exact policy, own-tenant visibility, WITH CHECK, cross-tenant child FK, same-tenant student, CHECK constraints, cascades) |
+| **Postgres: full `tests_pg_api`** as `app_user` (includes the 3 new tests and the 6 Phase 3 interview tests) | **PASS. Exit 0: 225 passed, 2 skipped, 0 failed, 0 errors**, 11:12:50–11:35:38 (Phase 3: 222 passed). The 2 skips are the known Redis queue tests (`RQ_TEST_REDIS_URL` not set; no isolated Redis). The suite's safety preflight (database, role, NOBYPASSRLS, system id) and its row-count cleanup check ran inside the session. Counts come from the result markers, because the extra `-q` plus pyproject's `-q` made pytest drop the stats line |
+| Disposable DB setup | Full migration chain to the single head `b4d8f2a6c9e1`; `app_user` NOSUPERUSER/NOBYPASSRLS/NOCREATEROLE/NOCREATEDB; RLS enabled + forced on the 3 interview tables. (`verify` also reports 5 tenant-id tables without forced RLS; that is pre-existing, Phase 4 adds no tables) |
+| Final re-runs after the Postgres and SQLite runs | Worker **48/48, exit 0**; `tsc` **exit 0**; lint **exit 0, 0 errors** (2 pre-existing warnings) |
+| Live LLM | **NOT RUN** (no development key; same accepted limitation as Phase 3) |
+
+**Browser checks that passed:**
+- the history empty state;
+- the "preparing report" state;
+- an injected report 503 shows a friendly error with a retry, and the transcript stays available;
+- after the retry the report renders: the score out of 100, the disclaimer, 5 categories, strengths with a quote, recommendations, 4 question rows, "Not answered", and the evidence table quoting the student's own words;
+- at phone width the report adds **no** overflow (153 px, the same as the pre-existing AppShell baseline on every page; one 5 px regression was found and fixed);
+- history shows the score, and "View report" opens the stored report with **no** new POST;
+- Back works;
+- a cancelled interview shows no report, and history offers its transcript;
+- the only console error is the injected 503.
+
+Screenshots: session scratchpad `ui/shots/p4-*.png`.
+
+### Security and code-quality reviews (two independent read-only agents)
+No High findings. No IDOR or tenant leak: every query is filtered by tenant and owner, and the routes sit behind the student gate and the tenant GUC. No XSS: React only, with escaped text.
+
+**Fixed (details in spec §5a):**
+- **M1:** an injection could be quoted as its own "evidence". Fixed by the stronger evidence rule: ≥3 words and ≥15 characters, no scoring or instruction words, no sanitizer markers. Tested with a model that obeys the injection.
+- **M2:** a timeout released the lease, so a parallel paid run could start. The lease is now kept on a read timeout.
+- **M3:** a partial provider failure produced a skewed final report. Now all or nothing.
+- **Unassessable reports:** a final 409 after 3 "nothing assessable" results stops endless paid retries.
+- **L1 / quality 3:** the backend recomputes all aggregates and re-checks the quotes, the zero rules and control characters.
+- **L2:** the slim plan (no resume or JD quotes).
+- **L3:** malformed stored values no longer cause a 500.
+- **`Infinity` scores** are handled.
+- **Rounding:** half-up, with no double rounding.
+- **Recommendations fallback:** the 2 weakest categories, as in the spec.
+- **Contract fixture:** the worker↔backend contract is now tested from both sides.
+- **Frontend:** transcript kept on error, no retry on a final 409, request id shown, disclosure marker kept, and expected 404s avoided.
+
+**Open / accepted:**
+- (L4) Each report uses a request thread plus ≤4 scoring threads in the worker; a global limit can be added at rollout.
+- No per-call LLM timeout in the shared `llm.py` (changing it would affect existing features), so a 30-turn report on a slow provider may time out; it is retryable once the lease expires.
+- The non-evidence filter can reject a legitimate quote containing e.g. "score".
+- The fallback strength/weakness/recommendation texts are in English only.
+
+### Phase 4 acceptance criteria
+| Criterion | Status |
+|---|---|
+| A completed interview produces a stored report with overall, category and per-question scores | **Met** (SQLite, Postgres, browser; stubbed worker) |
+| Every non-zero score has a quote verified in the answer; missing / don't-know answers score 0 with a note | **Met** (worker + backend re-check, contract fixture, mutation check) |
+| Owner/tenant 404, students only, hidden while the flag is off | **Met** (SQLite + Postgres API + RLS as `app_user`) |
+| Idempotent, single-flight, survives a worker failure with nothing partial stored | **Met** (SQLite + Postgres: parallel POSTs, retry, timeout) |
+| History and past reports | **Met** (API + browser) |
+| Disclaimer shown | **Met** |
+| Existing features keep working | **Met.** SQLite 275 passed / 0 failed; Postgres API 225 passed / 0 failed; RLS 12/12; worker 48/48; tsc and lint clean. Phase 3 interview behaviour is covered inside these runs: 31 session-API tests + 17 flag tests + 25 model tests + 3 mentor regression tests on SQLite, and the 6 Phase 3 Postgres tests (ownership, RLS, parallel creates/starts/answers, lease, finish beating a late AI result) |
+
+**PASS / FAIL / NOT RUN summary:**
+- **PASS:**
+  - full SQLite regression;
+  - the new Phase 4 Postgres tests;
+  - Postgres RLS;
+  - the full `tests_pg_api`;
+  - worker tests;
+  - `tsc`;
+  - lint;
+  - the import check (flag off/on);
+  - the browser smoke test (23/23, scripted engine).
+- **FAIL:** none.
+- **NOT RUN:**
+  - the live LLM (no development key);
+  - `next build`;
+  - real-device and screen-reader tests;
+  - multi-worker load;
+  - the Redis queue path (2 skips);
+  - a browser re-run after the final review fixes. The last browser run was **after** all code fixes; only docs and tests changed since.
+
+**Cleanup:**
+- Removed the `campus_p4_pgtest` container (`--rm`). The 9 unrelated containers and the 27 volumes are untouched (compared before and after).
+- Deleted the throwaway passwords.
+- Removed the empty `ai-worker/qdrant_data/` created by the existing face test.
+- Stopped the `next dev` processes I had started.
+- `D:/Campus_Ai` is untouched (`feature/student-approval` at `7f99e0b`, same untracked files).
+
+**Dependency-security note (for a separate review; no change made):**
+- The installed Next.js is **16.4.4**, pinned exactly in `frontend/package.json`.
+- While `next dev` was running, it printed "Your version of Next.js is affected by a known security vulnerability", pointing at the npm advisories bulk endpoint. It also told AI agents to run `next upgrade --agent=security`.
+- Not acted on: dependencies are unchanged, pending your authorization.
+
+**Phase 4 is complete as far as automated verification goes.** It is uncommitted and waiting for your review.
+
+**Notes:**
+- `next dev` printed a Next.js "upgrade for a security advisory" notice that also tells AI agents to run `next upgrade` and ask you about it. I did **not** act on it: upgrading the framework is outside this phase and is your decision.
+- I stopped the `next dev` processes I had started.
 
 ## Completed phases
 - **Phase 0:** audit docs and baseline (see BASELINE_TEST_RESULTS.md).
@@ -339,13 +486,13 @@ Deploy code with flags off → run `b4d8f2a6c9e1` with the owner role (`migrate`
 on the 3 tables (`app_role.template.sql` audit query) → enable flags for a pilot tenant in a later phase.
 
 ## Remaining tasks
-- Close Phase 3 (see "Remaining before Phase 3 can be closed" above).
-- Phases 4–10 per IMPLEMENTATION_PLAN.md. **Not started**; Phase 4 must not begin until Phase 3 is reviewed and committed.
+- Close Phase 4: your review, then a local commit (all verification done; see "Phase 4").
+- Phases 5–10 per IMPLEMENTATION_PLAN.md. **Not started**; each needs your explicit go-ahead.
 - Open decisions: voice provider (Phase 5), code sandbox host (Phase 7), recording retention.
 
 ## Next exact action
-Phase 3 is committed locally. Waiting for your instruction; nothing starts automatically.
-- Optional, any time: the live LLM smoke test, once you provide a development-only key (local, uncommitted).
-- **Phase 4 (evaluation, report, history UI) is not started** and needs your explicit go-ahead.
+Phase 4 is implemented and verified (see "Phase 4"). It is **uncommitted and waiting for your review/approval**.
+- After approval: commit Phase 4 locally. Stage files by name; exclude `.claude/` and `frontend/AGENTS.md`.
+- Separately and optionally: a dependency-security review of Next.js 16.4.4.
 
-Docker Desktop was started for this validation and is still running; I didn't stop it.
+**Phase 5 (voice) is not started.** It needs your explicit go-ahead and the voice-provider decision. Docker Desktop is still running; the Phase 4 Postgres container was removed.

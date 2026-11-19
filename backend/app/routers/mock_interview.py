@@ -9,7 +9,8 @@ Phase 1 ships only the isolation layer:
     feature is off for the caller's institute.
 
 Phase 3 adds the text interview (HR / technical, optional resume + JD
-grounding), students only. Business logic lives in
+grounding), students only. Phase 4 adds the evidence-backed report
+(``/sessions/{id}/report``) and the history list (``/history``). Business logic lives in
 ``app.services.mock_interview``; see docs/mock-interview/API.md.
 
 Every mock-interview route except /status depends on ``require_mock_interview``
@@ -37,7 +38,9 @@ from app.schemas.mock_interview import (
     MockInterviewAnswerIn,
     MockInterviewCatalogOut,
     MockInterviewChoice,
+    MockInterviewHistoryItemOut,
     MockInterviewOptionsOut,
+    MockInterviewReportOut,
     MockInterviewResumeOption,
     MockInterviewSessionCreate,
     MockInterviewSessionOut,
@@ -45,6 +48,7 @@ from app.schemas.mock_interview import (
     MockInterviewStatusOut,
 )
 from app.services import mock_interview as svc
+from app.services import mock_interview_report as report_svc
 
 router = APIRouter(
     prefix="/mock-interview",
@@ -307,3 +311,50 @@ def abandon_mock_interview_session(
     """Abandon the interview. Idempotent."""
     s = svc.get_owned_session(db, session_id, user)
     return svc.to_detail(db, svc.end_session(db, s, abandon=True))
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: reports + history (students only, own sessions only)
+# ---------------------------------------------------------------------------
+
+# A report scores every answer (several LLM calls); it is generated once.
+_REPORT_LIMIT = "5/minute"
+
+
+@router.get("/history", response_model=list[MockInterviewHistoryItemOut])
+def mock_interview_history(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_mock_interview_student),
+) -> list:
+    """My interviews, newest first (max 50), with the report score when one exists."""
+    return report_svc.history(db, user)
+
+
+@router.get("/sessions/{session_id}/report", response_model=MockInterviewReportOut)
+def get_mock_interview_report(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_mock_interview_student),
+) -> dict:
+    """My stored feedback report (404 if not mine, or not generated yet)."""
+    s = svc.get_owned_session(db, session_id, user)
+    return report_svc.to_report(db, s, report_svc.get_report(db, s))
+
+
+@router.post("/sessions/{session_id}/report", response_model=MockInterviewReportOut)
+@limiter.limit(_REPORT_LIMIT, key_func=_caller_key)
+def generate_mock_interview_report(
+    request: Request,
+    response: Response,
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_mock_interview_student),
+) -> dict:
+    """Generate my report for a completed interview, or return the existing one.
+
+    Idempotent and final: once stored, the same report is returned with no AI
+    call. 409 for cancelled / unfinished interviews, 503 when the AI is down
+    (nothing is stored; try again).
+    """
+    s = svc.get_owned_session(db, session_id, user)
+    return report_svc.to_report(db, s, report_svc.generate_report(db, s))

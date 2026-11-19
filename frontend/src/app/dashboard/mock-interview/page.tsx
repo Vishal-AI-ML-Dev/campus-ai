@@ -4,14 +4,15 @@
  * Placement Preparation -> AI Mock Interview (landing).
  *
  * Feature-flagged (build flag + GET /mock-interview/status). Phase 3: text HR
- * and technical interviews. The server is the source of truth: on load,
+ * and technical interviews; Phase 4: feedback reports + history. The server is the source of truth: on load,
  * GET /mock-interview/sessions/active decides which step to show, so a
  * refresh resumes an interview exactly where it was.
  *
  *   no active session -> setup form
  *   setup             -> instructions + start
  *   in_progress       -> interview room
- *   ended             -> closing message + transcript
+ *   ended             -> closing message + feedback report
+ * Under the setup form: past interviews; opening one shows its report.
  */
 
 import { useState } from "react"
@@ -20,10 +21,11 @@ import { useCurrentUser } from "@/lib/auth"
 import { useApiResource } from "@/lib/useApiResource"
 import { ErrorState, LoadingState } from "@/components/ui/states"
 import InterviewFinished from "@/components/mock-interview/InterviewFinished"
+import InterviewHistory from "@/components/mock-interview/InterviewHistory"
 import InterviewInstructions from "@/components/mock-interview/InterviewInstructions"
 import InterviewRoom from "@/components/mock-interview/InterviewRoom"
 import InterviewSetupForm from "@/components/mock-interview/InterviewSetupForm"
-import type { InterviewSession } from "@/components/mock-interview/mockInterviewApi"
+import type { HistoryItem, InterviewSession } from "@/components/mock-interview/mockInterviewApi"
 import MockInterviewUnavailableNotice from "@/components/mock-interview/MockInterviewUnavailableNotice"
 import {
 	MOCK_INTERVIEW_BUILD_ENABLED,
@@ -77,6 +79,8 @@ function InterviewWorkspace() {
 	})
 	// undefined = follow the server's active session; null = show the setup form.
 	const [local, setLocal] = useState<InterviewSession | null | undefined>(undefined)
+	// A past interview opened from the history list.
+	const [viewing, setViewing] = useState<HistoryItem | null>(null)
 	const session = local === undefined ? active.data : local
 
 	if (local === undefined && active.loading)
@@ -86,19 +90,52 @@ function InterviewWorkspace() {
 			<ErrorState message={active.error} onRetry={active.reload} requestId={active.requestId} />
 		)
 
+	if (!session && viewing !== null)
+		return <PastInterview item={viewing} onBack={() => setViewing(null)} />
 	if (!session)
 		return (
-			<InterviewSetupForm
-				onCreated={setLocal}
-				onConflict={() => {
-					setLocal(undefined)
-					active.reload()
-				}}
-			/>
+			<div className="space-y-6">
+				<InterviewSetupForm
+					onCreated={setLocal}
+					onConflict={() => {
+						setLocal(undefined)
+						active.reload()
+					}}
+				/>
+				<InterviewHistory onOpen={setViewing} />
+			</div>
 		)
 	if (session.status === "setup" || session.awaiting === "start")
 		return <InterviewInstructions session={session} onChange={setLocal} />
 	if (session.status === "in_progress")
 		return <InterviewRoom session={session} onChange={setLocal} />
 	return <InterviewFinished session={session} onNew={() => setLocal(null)} />
+}
+
+function PastInterview({ item, onBack }: { item: HistoryItem; onBack: () => void }) {
+	const past = useApiResource<InterviewSession>(`/mock-interview/sessions/${item.id}`, {
+		fallbackMessage: "Could not load this interview.",
+	})
+	if (past.loading) return <LoadingState message="Loading interview…" />
+	if (past.error || !past.data)
+		return (
+			<div className="space-y-3">
+				<ErrorState
+					message={past.error ?? "Could not load this interview."}
+					onRetry={past.reload}
+					requestId={past.requestId}
+				/>
+				<button type="button" onClick={onBack} className="text-sm font-medium text-indigo-600 dark:text-indigo-400">
+					Back to interviews
+				</button>
+			</div>
+		)
+	return (
+		<InterviewFinished
+			session={past.data}
+			onNew={onBack}
+			newLabel="Back to interviews"
+			reportExists={item.report !== null}
+		/>
+	)
 }

@@ -194,3 +194,94 @@ class LLMQuestion(BaseModel):
 
 class LLMClosing(BaseModel):
     message: str
+
+
+# --- Phase 4: final report ----------------------------------------------------
+QuestionStatus = Literal["scored", "no_answer", "dont_know", "not_assessed"]
+
+
+class ReportTurn(BaseModel):
+    seq: int = Field(ge=1)
+    topic: str | None = Field(default=None, max_length=100)
+    question: str = Field(max_length=3_000)
+    is_follow_up: bool = False
+    answer: str | None = Field(default=None, max_length=MAX_ANSWER_CHARS)
+
+
+class ReportRequest(BaseModel):
+    config: InterviewConfig
+    plan: InterviewPlan | None = None
+    # Every asked turn, oldest first (the last one may be unanswered).
+    transcript: list[ReportTurn] = Field(min_length=1, max_length=HARD_MAX_TURNS)
+
+
+class AnswerCategoryScore(BaseModel):
+    score: int = Field(ge=0, le=5)
+    # Verbatim quote from the answer; empty only for a 0 score.
+    evidence: str = Field(default="", max_length=300)
+
+
+class QuestionReport(BaseModel):
+    seq: int = Field(ge=1)
+    status: QuestionStatus
+    scores: dict[str, AnswerCategoryScore] = Field(default_factory=dict)
+    feedback: str = Field(default="", max_length=400)
+
+
+class CategoryResult(BaseModel):
+    key: str
+    label: str
+    weight: float
+    description: str
+    # 0-100; None when no answer could be assessed for this category.
+    score: float | None = Field(default=None, ge=0, le=100)
+    assessed: int = 0
+
+
+class ReportItem(BaseModel):
+    text: str = Field(max_length=300)
+    seq: int | None = None
+    evidence: str = Field(default="", max_length=300)
+
+
+class ReportResponse(BaseModel):
+    rubric_version: str
+    overall_score: float = Field(ge=0, le=100)
+    categories: list[CategoryResult]
+    questions: list[QuestionReport]
+    strengths: list[ReportItem]
+    weaknesses: list[ReportItem]
+    recommendations: list[str]
+    provider: str
+
+
+class LLMCategoryScore(BaseModel):
+    category: str = Field(description="One of the rubric category keys")
+    score: float = Field(description="Integer 0 (absent) to 5 (excellent)")
+    evidence: str = Field(
+        default="", description="Exact short quote copied from THIS answer that justifies the score"
+    )
+
+
+class LLMAnswerScore(BaseModel):
+    seq: int = Field(description="The question number being scored")
+    scores: list[LLMCategoryScore] = Field(default_factory=list)
+    feedback: str = Field(
+        default="", description="1-2 sentences: what was good and what to improve"
+    )
+
+
+class LLMAnswerScores(BaseModel):
+    answers: list[LLMAnswerScore] = Field(default_factory=list)
+
+
+class LLMReportItem(BaseModel):
+    text: str = Field(description="One sentence")
+    seq: int = Field(description="Question number this is based on")
+    quote: str = Field(description="Exact short quote from that answer")
+
+
+class LLMReportSummary(BaseModel):
+    strengths: list[LLMReportItem] = Field(default_factory=list)
+    weaknesses: list[LLMReportItem] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
