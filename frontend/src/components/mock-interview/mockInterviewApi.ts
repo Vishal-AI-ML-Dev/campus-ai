@@ -26,6 +26,8 @@ export type InterviewOptions = {
 	resumes: ResumeOption[]
 	job_description_max_chars: number
 	answer_max_chars: number
+	/** Phase 5: [text] or [text, voice]; absent on older backends. */
+	modes?: Choice[]
 }
 
 export type InterviewTurn = {
@@ -35,6 +37,8 @@ export type InterviewTurn = {
 	is_follow_up: boolean
 	answer_text: string | null
 	answered_at: string | null
+	/** Phase 5: "stt" = dictated in the browser. */
+	answer_source?: "typed" | "stt" | null
 }
 
 export type InterviewSession = {
@@ -167,6 +171,8 @@ export type CreateInterviewInput = {
 	resume_id?: number
 	job_description?: string
 	language: string
+	/** Phase 5; omitted for text so the request is unchanged. */
+	mode?: "voice"
 }
 
 const base = "/mock-interview/sessions"
@@ -176,8 +182,12 @@ export const mockInterviewApi = {
 		api.post<InterviewSession>(base, input as unknown as Record<string, unknown>),
 	get: (id: number) => api.get<InterviewSession>(`${base}/${id}`),
 	start: (id: number) => api.post<InterviewSession>(`${base}/${id}/start`),
-	answer: (id: number, turnSeq: number, answer: string) =>
-		api.post<InterviewSession>(`${base}/${id}/answer`, { turn_seq: turnSeq, answer }),
+	/** `source` is sent only for voice sessions; text answers keep the Phase 3 payload. */
+	answer: (id: number, turnSeq: number, answer: string, source?: "typed" | "stt") =>
+		api.post<InterviewSession>(
+			`${base}/${id}/answer`,
+			source ? { turn_seq: turnSeq, answer, source } : { turn_seq: turnSeq, answer },
+		),
 	next: (id: number) => api.post<InterviewSession>(`${base}/${id}/next`),
 	finish: (id: number) => api.post<InterviewSession>(`${base}/${id}/finish`),
 	abandon: (id: number) => api.post<InterviewSession>(`${base}/${id}/abandon`),
@@ -200,6 +210,7 @@ export function labelFor(choices: Choice[] | undefined, value: string): string {
 }
 
 export const TYPE_LABELS: Record<string, string> = { hr: "HR", technical: "Technical" }
+export const MODE_LABELS: Record<string, string> = { text: "Text", voice: "Voice" }
 export const DIFFICULTY_LABELS: Record<string, string> = {
 	easy: "Beginner",
 	medium: "Intermediate",

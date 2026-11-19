@@ -68,6 +68,10 @@ class MockInterviewOptionsOut(BaseModel):
     durations_minutes: list[int]
     languages: list[MockInterviewChoice]
     resumes: list[MockInterviewResumeOption]
+    # Phase 5: [text], or [text, voice] when the voice sub-flag is on.
+    modes: list[MockInterviewChoice] = Field(
+        default_factory=lambda: [MockInterviewChoice(value="text", label="Text")]
+    )
     job_description_max_chars: int = JD_MAX_CHARS
     answer_max_chars: int = ANSWER_MAX_CHARS
 
@@ -83,6 +87,8 @@ class MockInterviewSessionCreate(BaseModel):
     resume_id: int | None = Field(default=None, ge=1)
     job_description: str | None = Field(default=None, max_length=JD_MAX_CHARS)
     language: Literal["en", "hi", "hinglish"] = "en"
+    # Phase 5: voice is accepted only while AI_MOCK_INTERVIEW_VOICE_ENABLED is on.
+    mode: Literal["text", "voice"] = "text"
 
     @field_validator("target_role")
     @classmethod
@@ -105,6 +111,9 @@ class MockInterviewAnswerIn(BaseModel):
     # The question being answered; doubles as the idempotency key.
     turn_seq: int = Field(ge=1)
     answer: str = Field(min_length=1, max_length=ANSWER_MAX_CHARS)
+    # Phase 5: "stt" = dictated in the browser (voice sessions only). A label
+    # only; the text is validated and scored exactly like a typed answer.
+    source: Literal["typed", "stt"] = "typed"
 
     @field_validator("answer")
     @classmethod
@@ -122,6 +131,7 @@ class MockInterviewTurnOut(BaseModel):
     is_follow_up: bool
     answer_text: str | None
     answered_at: datetime | None
+    answer_source: Literal["typed", "stt"] | None = None
 
 
 class MockInterviewProgressOut(BaseModel):

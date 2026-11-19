@@ -68,8 +68,11 @@ RUBRICS = {
 }
 RUBRIC_FOR_TYPE = {"hr": "hr-v1", "technical": "technical-v1"}
 
+# Modality-independent (Phase 5): answers may be typed or speech-to-text.
+# Built at read time, so it applies to existing reports too; nothing is stored.
 DISCLAIMER = (
-    "This is AI-generated practice feedback based only on your typed answers. "
+    "This is AI-generated practice feedback based on the answers you submitted "
+    "during this practice session, including typed or speech-to-text answers. "
     "It can make mistakes, and practice scores do not predict selection in a "
     "real interview."
 )

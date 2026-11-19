@@ -1,4 +1,4 @@
-# AI Mock Interview — Engine Architecture (Phases 3–4)
+# AI Mock Interview — Engine Architecture (Phases 3–5)
 
 ## Overview
 
@@ -211,3 +211,55 @@ AI worker  POST /interview/report ─▶ interview/report.py (LangGraph)
   - question-by-question evidence tables.
 - **`InterviewHistory.tsx`** sits under the setup form.
 - **`InterviewFinished.tsx`** loads or generates the report and keeps the transcript.
+
+## Phase 5: voice (browser speech)
+
+Status: implemented, uncommitted. Automated and simulated tests pass; real-device verification is pending (see
+`PROJECT_STATE.md`). Full behaviour reference: `specs/phase-5-voice-interview.md` §5c.
+
+```
+Browser (voice session)
+  speechSynthesis ── reads each question aloud (en-IN / hi-IN)
+  SpeechRecognition / webkitSpeechRecognition ── dictation (en → en-IN, hi → hi-IN, hinglish → en-IN)
+      │  (the browser's speech provider may process mic audio, e.g. Google for Chrome)
+      ▼
+  speechDictation.ts  createDictation() + FinalTranscriptMerger   (framework-free, unit-tested)
+      ▼
+  useSpeech.ts  useSpeechRecognition() / useSpeechSynthesis()      (React hooks, session guards)
+      ▼
+  VoiceAnswerBox.tsx  editable transcript → student reviews/edits → Submit
+      │  POST /answer {turn_seq, answer: <reviewed text>, source: "stt" | "typed"}   (text only)
+      ▼
+Backend: same validation, sanitising, engine turn and Phase 4 report as typed answers
+  stores answer_text + answer_source; no audio route, field or storage
+```
+
+- **Audio.** No audio reaches or is stored by the application backend. The UI tells students that some browsers
+  send microphone audio to their own speech service.
+- **`speechDictation.ts`:**
+  - one recognition session per click (continuous mode, interim results), never auto-restarted;
+  - a word-based merger that ignores case and punctuation when matching but appends the recognised tokens
+    unchanged. It suppresses re-delivered, repeated and growing final results and never discards a genuinely new
+    phrase;
+  - unfinished interim text is kept when the engine ends on its own;
+  - each error is classified, and retry is blocked for permission and language errors.
+- **`useSpeech.ts`:**
+  - a thin React wrapper; every callback checks it belongs to the live session, so late events from an earlier
+    session are ignored;
+  - `abort()` on unmount releases the mic;
+  - the TTS state follows only the latest utterance.
+- **`VoiceAnswerBox.tsx`:**
+  - the mic opens only on a click;
+  - dictation goes into an editable textarea through a synchronously updated buffer, so no phrase is lost to a
+    render race;
+  - Submit is disabled while listening;
+  - the mic stops on submit, on End interview, at the 5,000-character limit and on unmount;
+  - it shows the recognition language and "Listening stopped…" after an unexpected end;
+  - "Hear question" is disabled while listening.
+- **`InterviewRoom.tsx`:**
+  - each new question is read once, marked only when speech starts, so it isn't replayed on refresh;
+  - reading is skipped when muted or before a click;
+  - text sessions render exactly as before.
+- **Worker and scoring: unchanged.** The worker never receives `source`, and its prompts already judge "substance, not
+  grammar or accent". The report disclaimer is modality-independent ("…including typed or speech-to-text
+  answers…"); it is built at read time.

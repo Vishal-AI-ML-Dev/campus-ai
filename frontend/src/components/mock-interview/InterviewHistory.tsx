@@ -42,6 +42,7 @@ export default function InterviewHistory({ onOpen }: { onOpen: (item: HistoryIte
 						<div className="min-w-0 flex-1">
 							<p className="truncate font-medium">
 								{TYPE_LABELS[item.interview_type] ?? item.interview_type}
+								{item.mode === "voice" ? " · Voice" : ""}
 								{item.target_role ? ` · ${item.target_role}` : ""}
 							</p>
 							<p className="text-xs text-slate-500 dark:text-slate-400">

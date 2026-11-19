@@ -158,6 +158,10 @@ class Settings(BaseSettings):
     # not integers are ignored; if none are valid, NO institute is enabled
     # (fail closed). See app/routers/mock_interview.py.
     AI_MOCK_INTERVIEW_TENANT_IDS: str = ""
+    # Phase 5 sub-flag: offer voice interviews (browser speech-to-text and
+    # text-to-speech; the server only ever receives text). Needs the master
+    # switch too. Off = text only; voice sessions already created can finish.
+    AI_MOCK_INTERVIEW_VOICE_ENABLED: bool = False
 
     @property
     def docs_enabled(self) -> bool:

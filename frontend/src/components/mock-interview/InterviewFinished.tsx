@@ -55,6 +55,9 @@ export default function InterviewFinished({
 								</p>
 								<p className="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300">
 									{t.answer_text ?? <em className="text-slate-400">Not answered</em>}
+									{t.answer_source === "stt" ? (
+										<span className="ml-2 text-[11px] uppercase tracking-wide text-slate-400">· spoken</span>
+									) : null}
 								</p>
 							</li>
 						))}

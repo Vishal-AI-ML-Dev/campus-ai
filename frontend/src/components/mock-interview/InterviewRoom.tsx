@@ -9,6 +9,10 @@
  * a network error can never create a duplicate. When the server saved the
  * answer but the AI could not produce the next question (awaiting =
  * "next_question"), the student retries with POST /next.
+ *
+ * Phase 5 voice sessions: each new question is read aloud (when the browser
+ * allows speech, i.e. after a click) and the answer box takes dictation.
+ * Text sessions render exactly as before.
  */
 
 import { useEffect, useRef, useState } from "react"
@@ -22,6 +26,8 @@ import {
 	writeDraft,
 	type InterviewSession,
 } from "./mockInterviewApi"
+import { pageHasUserActivation, speechLang, useSpeechSynthesis } from "./useSpeech"
+import VoiceAnswerBox, { type AnswerSource } from "./VoiceAnswerBox"
 
 function formatClock(totalSeconds: number): string {
 	const s = Math.max(0, totalSeconds)
@@ -140,10 +146,40 @@ export default function InterviewRoom({
 	const [error, setError] = useState<string | null>(null)
 	const [confirmEnd, setConfirmEnd] = useState(false)
 	const endRef = useRef<HTMLDivElement>(null)
+	const isVoice = session.mode === "voice"
+	const tts = useSpeechSynthesis()
+	const { speak, cancel: cancelSpeech } = tts
+	const [muted, setMuted] = useState(false)
+	const mutedRef = useRef(false)
+	const lang = speechLang(session.language)
+	const currentSeq = session.awaiting === "answer" ? session.current_turn_seq : null
+	const currentQuestion =
+		currentSeq !== null ? (session.turns.find((t) => t.seq === currentSeq)?.question ?? "") : ""
 
 	useEffect(() => {
 		endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
 	}, [session.turns.length, busy])
+
+	// Voice: read each new question aloud once. A question counts as read only
+	// when speech actually starts (so a blocked or cancelled attempt can't mark
+	// it), and the mark survives a refresh, which therefore doesn't replay it.
+	// Skipped when muted or before any click (browsers block that speech);
+	// "Hear question" is always available instead.
+	useEffect(() => {
+		if (!isVoice || currentSeq === null || !currentQuestion) return
+		const spokenKey = `mock-interview:spoken:${session.id}`
+		if (readDraft(spokenKey) === String(currentSeq)) return
+		if (mutedRef.current || !pageHasUserActivation()) return
+		speak(currentQuestion, lang, () => writeDraft(spokenKey, String(currentSeq)))
+		return () => cancelSpeech()
+	}, [isVoice, session.id, currentSeq, currentQuestion, lang, speak, cancelSpeech])
+
+	function toggleMute() {
+		const next = !muted
+		mutedRef.current = next
+		setMuted(next)
+		if (next) cancelSpeech()
+	}
 
 	/** After a failure, re-read the server state so the UI matches what was saved. */
 	async function resync(seq?: number) {
@@ -152,6 +188,7 @@ export default function InterviewRoom({
 			// The answer reached the server: its local draft is no longer needed.
 			if (seq !== undefined && fresh.current_turn_seq !== seq) {
 				writeDraft(draftKey(session.id, seq), "")
+				writeDraft(`${draftKey(session.id, seq)}:stt`, "")
 			}
 			onChange(fresh)
 		} catch {
@@ -159,11 +196,12 @@ export default function InterviewRoom({
 		}
 	}
 
-	async function submitAnswer(seq: number, text: string, clear: () => void) {
+	async function submitAnswer(seq: number, text: string, clear: () => void, source?: AnswerSource) {
 		setBusy("answer")
 		setError(null)
+		cancelSpeech()
 		try {
-			const next = await mockInterviewApi.answer(session.id, seq, text)
+			const next = await mockInterviewApi.answer(session.id, seq, text, source)
 			clear()
 			onChange(next)
 		} catch (err) {
@@ -187,10 +225,13 @@ export default function InterviewRoom({
 	}
 
 	async function finish() {
+		cancelSpeech()
 		setBusy("finish")
 		setError(null)
 		try {
-			onChange(await mockInterviewApi.finish(session.id))
+			const done = await mockInterviewApi.finish(session.id)
+			writeDraft(`mock-interview:spoken:${session.id}`, "")
+			onChange(done)
 		} catch (err) {
 			setError(describeError(err, "Could not end the interview."))
 		} finally {
@@ -229,7 +270,18 @@ export default function InterviewRoom({
 						</span>
 					</div>
 				</div>
-				<div className="flex items-center gap-3">
+				<div className="flex flex-wrap items-center gap-3">
+					{isVoice && tts.supported ? (
+						<span className="flex items-center gap-2">
+							<button
+								type="button"
+								onClick={toggleMute}
+								className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:border-indigo-300 dark:border-white/10 dark:text-slate-300"
+							>
+								{muted ? "Unmute voice" : "Mute voice"}
+							</button>
+						</span>
+					) : null}
 					{session.remaining_seconds !== null ? (
 						<Countdown
 							key={`${session.id}-${session.turns.length}-${session.awaiting}-${session.remaining_seconds}`}
@@ -288,6 +340,9 @@ export default function InterviewRoom({
 							<div className="flex justify-end">
 								<p className="max-w-[90%] whitespace-pre-wrap rounded-2xl bg-gradient-to-r from-indigo-500 to-violet-500 px-4 py-2 text-sm text-white sm:max-w-[80%]">
 									{t.answer_text}
+									{t.answer_source === "stt" ? (
+										<span className="mt-1 block text-[10px] uppercase tracking-wide text-white/70">spoken</span>
+									) : null}
 								</p>
 							</div>
 						) : null}
@@ -307,7 +362,18 @@ export default function InterviewRoom({
 				</div>
 			) : null}
 
-			{session.awaiting === "answer" ? (
+			{session.awaiting === "answer" && isVoice ? (
+				<VoiceAnswerBox
+					key={`${session.id}-${session.current_turn_seq}`}
+					session={session}
+					busy={busy !== null}
+					maxChars={answerMaxChars}
+					onSubmit={(seq, text, source, clear) => submitAnswer(seq, text, clear, source)}
+					onBeforeListen={cancelSpeech}
+					onHearQuestion={tts.supported && currentQuestion ? () => speak(currentQuestion, lang) : undefined}
+					speaking={tts.speaking}
+				/>
+			) : session.awaiting === "answer" ? (
 				<AnswerBox
 					key={`${session.id}-${session.current_turn_seq}`}
 					session={session}

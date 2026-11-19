@@ -83,6 +83,7 @@ export default function InterviewSetupForm({
 	const [difficulty, setDifficulty] = useState("medium")
 	const [duration, setDuration] = useState("30")
 	const [language, setLanguage] = useState("en")
+	const [mode, setMode] = useState("text")
 	const [role, setRole] = useState("")
 	const [company, setCompany] = useState("")
 	const [resumeId, setResumeId] = useState("")
@@ -101,6 +102,9 @@ export default function InterviewSetupForm({
 		)
 	const opts = options.data
 	const jdMax = opts.job_description_max_chars
+	const modes = opts.modes ?? []
+	const voiceOffered = modes.some((m) => m.value === "voice")
+	const voice = voiceOffered && mode === "voice"
 
 	async function onSubmit(e: React.FormEvent) {
 		e.preventDefault()
@@ -121,6 +125,7 @@ export default function InterviewSetupForm({
 				resume_id: resumeId ? Number(resumeId) : undefined,
 				job_description: jd.trim() || undefined,
 				language,
+				...(voice ? { mode: "voice" as const } : {}),
 			})
 			onCreated(created)
 		} catch (err) {
@@ -150,6 +155,19 @@ export default function InterviewSetupForm({
 			</div>
 
 			<ChoiceGroup legend="Interview type" name="type" options={opts.interview_types} value={type} onChange={setType} />
+			{voiceOffered ? (
+				<div>
+					<ChoiceGroup legend="Answer by" name="mode" options={modes} value={mode} onChange={setMode} />
+					{voice ? (
+						<p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+							The interviewer reads questions aloud and you answer by speaking (Chrome or Edge
+							recommended; you can always type). Speech is converted to text by your browser, and some
+							browsers send audio to their speech service to do this. Campus AI stores only the text you
+							submit, never audio; unsent text stays in this browser tab until you submit it.
+						</p>
+					) : null}
+				</div>
+			) : null}
 			<ChoiceGroup legend="Difficulty" name="difficulty" options={opts.difficulties} value={difficulty} onChange={setDifficulty} />
 			<div className="grid gap-5 sm:grid-cols-2">
 				<ChoiceGroup

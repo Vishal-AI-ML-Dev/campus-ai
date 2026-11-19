@@ -1,6 +1,114 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-19 (Phase 4 implemented and **verified, uncommitted**, awaiting your review: full SQLite regression 275 passed / 0 failed; Postgres RLS 12/12; full `tests_pg_api` 225 passed / 0 failed; live LLM NOT RUN; **not production-ready**)_
+_Last updated: 2026-11-19 (documentation finalised after the Phase 5 voice quality pass)._
+
+**This file is the single source of truth for status.** The "Status at a glance" block below is current. Everything
+after it is the dated, detailed history of each phase; where a historical section disagrees with this block, this
+block wins.
+
+## Status at a glance
+
+| Phase | Scope | Status | Commit |
+|---|---|---|---|
+| 0 | Audit, baseline tests, plan | Done | docs in `docs/mock-interview/` (`BASELINE_TEST_RESULTS.md`, `SAFETY_AUDIT.md`, `ARCHITECTURE_AUDIT.md`, `IMPLEMENTATION_PLAN.md`) |
+| 1 | Feature flags, `/status`, `/catalog`, worker ping, frontend notice | Done, committed | `f17d2bd` (docs `3bce105`) |
+| 2 | Models + additive RLS migration (sessions, turns, reports) | Done, committed | `0fadaa8` (docs `0ac3efc`) |
+| 3 | Text HR + technical interview engine | Implemented, committed; live LLM not run | `926e59c` (docs `f8e3485`) |
+| 4 | Evaluation report + history | Implemented, committed; live LLM not run | `18d8db0` |
+| **5** | **Voice interview (browser speech)** | **Implemented; automated/simulated tests pass; real-device tests pending; UNCOMMITTED** | none yet |
+| 6 | AI video interview | **Not started.** Handoff only: `specs/phase-6-video-interview-handoff.md` | — |
+| 7–10 | Coding, company/full simulation, faculty campaigns, final review | Not started | — |
+
+- **Branch:** `feature/ai-mock-interview` in the worktree `D:/Campus_Ai-mock-interview`. HEAD is `18d8db0`. Nothing
+  is pushed, merged or deployed.
+- **Flags:** every flag defaults to OFF: `AI_MOCK_INTERVIEW_ENABLED`, `AI_MOCK_INTERVIEW_TENANT_IDS`,
+  `AI_MOCK_INTERVIEW_VOICE_ENABLED` (Phase 5), the worker's `MOCK_INTERVIEW_ENABLED`, and the frontend build flag
+  `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED`.
+- **Production readiness: NOT established.** The live LLM, real-device speech, `next build` and multi-worker load
+  testing have not been verified, and no production rollout has been done.
+
+### Phase 5 — current status
+
+**Implemented (uncommitted):**
+- **Text-to-speech:** the browser reads questions aloud (`speechSynthesis`).
+- **Speech-to-text:** the browser's `SpeechRecognition` / `webkitSpeechRecognition`. Languages: English `en-IN`,
+  Hindi `hi-IN`, Hinglish `en-IN`.
+- **The student edits the transcript before submitting.** Only that reviewed text goes to the backend, with
+  `answer_source = stt` or `typed`.
+- **Audio:** the application backend never receives or stores audio. The browser's speech provider may process
+  microphone audio (Chrome uses Google's service), and the UI says so.
+- **Reliability:** done in the quality pass; spec §5b.
+- **Report disclaimer:** no longer modality-specific. **Scoring logic is unchanged.**
+- **Spec and design:** `specs/phase-5-voice-interview.md` (§5a review fixes, §5b quality pass, §8 verification record).
+  Architecture: `AI_INTERVIEW_ARCHITECTURE.md` → "Phase 5". API: `API.md` → "Phase 5".
+
+**Automated / simulated tests passed:**
+
+| Test (2026-11-19) | Result | Kind |
+|---|---|---|
+| Frontend unit tests `npm run test:unit` (`frontend/tests/unit/speechDictation.test.mjs`) | **26/26 passed** | automated, fake recognition engine |
+| Backend mock-interview tests (`test_mock_interview_{flags,models,sessions,reports,voice}.py`, SQLite) | **132 passed, 0 failed** | automated, stubbed AI worker |
+| Browser smoke test (headless Chromium, scripted engine and reporter) | **51/51 passed** | **simulated**: fake `SpeechRecognition`/`speechSynthesis`, no real microphone |
+| Browser smoke test, voice flag off | 3/3 passed (initial Phase 5 run; that code path is unchanged by the quality pass) | simulated |
+| TypeScript `npx tsc --noEmit` | passed | automated |
+| ESLint on the touched files | 0 problems | automated |
+| ruff on the touched Python | clean | automated |
+| Full backend regression (SQLite) | 298 passed, 0 failed (**before** the quality pass) | automated |
+| Postgres: full `tests_pg_api` / RLS suites, as NOBYPASSRLS `app_user` | 225 passed, 0 failed / 12 passed (**before** the quality pass) | automated, throwaway Postgres 16 |
+| AI worker tests | 48/48 (worker code unchanged in Phase 5) | automated |
+
+**Manual tests pending (none of these has been done; none is marked passed):**
+- A real-microphone test of the **latest** speech fixes; the final Chrome/Edge desktop microphone regression.
+- Hindi (`hi-IN`) and Hinglish (`en-IN`) recognition accuracy.
+- The final Android Chrome regression (re-delivered results, screen lock, silence timeout).
+- Brave: in your local testing, speech recognition showed a `network` error. Brave exposes the API but has no
+  working speech service, so the app shows a message and students type instead. This is expected, not a fix target.
+- The live LLM, plus a full integration regression on the latest code (the full SQLite and Postgres suites ran
+  **before** the quality pass, whose only backend change is the disclaimer string).
+
+**Known limitations:**
+- Recognition accuracy (misheard words, fillers, Hindi script, accents) is set by the browser's speech service and
+  the microphone, not by the app. The app never rewrites words.
+- Two identical phrases spoken back to back are merged.
+- The `stt` label is reported by the browser and is informational only.
+- Firefox and Brave have no usable speech recognition, so students type there.
+
+**Deferred (not implemented):**
+- A natural or neural TTS voice upgrade.
+- Hosted or server-side STT, e.g. cloud transcription. Changing where audio goes needs separate privacy approval.
+
+**Uncommitted Phase 5 files** (for a future local commit, staged by name):
+- Backend:
+  - `backend/app/core/config.py`
+  - `backend/app/routers/mock_interview.py`
+  - `backend/app/schemas/mock_interview.py`
+  - `backend/app/services/mock_interview.py`
+  - `backend/app/services/mock_interview_report.py`
+  - `backend/tests/test_mock_interview_voice.py`
+- Frontend:
+  - `frontend/package.json`
+  - `frontend/tests/unit/speechDictation.test.mjs`
+  - `frontend/src/components/mock-interview/{InterviewFinished,InterviewHistory,InterviewInstructions,InterviewRoom,InterviewSetupForm,VoiceAnswerBox}.tsx`
+  - `frontend/src/components/mock-interview/{mockInterviewApi,speechDictation,useSpeech}.ts`
+- Docs: `docs/mock-interview/{AI_INTERVIEW_ARCHITECTURE,API,IMPLEMENTATION_PLAN,PROJECT_STATE}.md` and
+  `docs/mock-interview/specs/phase-{5-voice-interview,6-video-interview-handoff}.md`
+- **Your local Docker test setup, also uncommitted.** Whether it belongs in a commit is your decision:
+  - `frontend/Dockerfile`: passes `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED`;
+  - `frontend/next.config.ts`: `Permissions-Policy` `microphone=(self)`;
+  - untracked `docker-compose.override.yml`.
+  - Voice in a deployed build needs a `microphone=(self)` policy.
+- Never commit: `.claude/` and `frontend/AGENTS.md`.
+
+### Next recommended action (approved sequence)
+1. **Phase 5 final manual verification:** follow the checklist in `specs/phase-5-voice-interview.md` §8. Then decide
+   whether to commit Phase 5 locally.
+2. **Phase 6 architecture audit.**
+3. **Phase 6 privacy and security design**, with your approval of the consent and recording decisions.
+4. **Phase 6 incremental implementation.**
+5. **Phase 6 integration and regression testing.**
+
+Phase 6 must not start before step 1 has been done or explicitly waived by you. The Phase 5 open items stay tracked
+here until they are closed.
 
 ## Where the work lives
 | | |
@@ -8,13 +116,176 @@ _Last updated: 2026-11-19 (Phase 4 implemented and **verified, uncommitted**, aw
 | Worktree | `D:/Campus_Ai-mock-interview` |
 | Branch | `feature/ai-mock-interview`, based on `7f99e0b` |
 | Base commit `7f99e0b` | "Require admin approval for student self-registration" on `feature/student-approval` (local only; `main` is its parent `2d0d9ac`) |
-| Alembic head | **`b4d8f2a6c9e1`** (Phase 2, single head) → `a7c3e9d2b4f1` |
+| Alembic head | **`b4d8f2a6c9e1`** (Phase 2, single head) → `a7c3e9d2b4f1`. Phases 3–5 added no migration |
 | Original folder | `D:/Campus_Ai`, on `feature/student-approval`; its `backend/.venv` is the interpreter used for worktree tests (the worktree has no venv or `.env`) |
 
-Phase 1 is committed locally (`f17d2bd`, docs `3bce105`). Phase 2 is committed locally as `0fadaa8` (8 files, staged by name).
-**Phase 3 is committed locally** as `926e59c` "feat(mock-interview): add text-based AI interview engine" (26 files, staged by name; `.claude/` and the `next dev`-generated `frontend/AGENTS.md` deliberately excluded). Nothing is pushed, merged or deployed, and all feature flags stay OFF.
+## Phase 5 — detailed record: initial implementation and verification (2026-11-19, uncommitted)
 
-## Phase 4 — evaluation, report, history (implemented + verified, uncommitted, awaiting review)
+_Historical record of the first Phase 5 delivery. The current status is under "Status at a glance"; the later quality pass follows below._
+
+Spec: `specs/phase-5-voice-interview.md`. §1–§7 are the approved design; §5a lists the post-review changes.
+Your decisions (2026-11-19): **browser Web Speech API** for speech-to-text and text-to-speech, and a **separate voice
+sub-flag**, default OFF. Design approved "as written".
+
+**What it does:**
+- A student can choose **Voice** instead of Text for an HR or technical interview (only when the voice flag is on).
+- Each question is read aloud by the browser. The student dictates, reviews and edits the text, then submits; typing
+  always works too.
+- Answers are stored as text with `answer_source = "stt"` and go through the same engine and Phase 4 report.
+- **No audio reaches or is stored by our servers.** The UI says that some browsers (e.g. Chrome) send audio to their
+  own speech service.
+
+**Files**
+- **Created:**
+  - `frontend/src/components/mock-interview/useSpeech.ts`
+  - `frontend/src/components/mock-interview/VoiceAnswerBox.tsx`
+  - `backend/tests/test_mock_interview_voice.py` (23 tests)
+  - `docs/mock-interview/specs/phase-5-voice-interview.md`
+- **Modified (additive):**
+  - Backend:
+    - `app/core/config.py` (+`AI_MOCK_INTERVIEW_VOICE_ENABLED`)
+    - `app/routers/mock_interview.py` (`/options.modes`, the voice gate on create, `source` passed through)
+    - `app/schemas/mock_interview.py` (+`modes`, `mode`, `source`, `answer_source`)
+    - `app/services/mock_interview.py` (`mode` from the payload; `submit_answer(source=...)`; `answer_source` in the detail)
+  - Frontend:
+    - `InterviewRoom.tsx`: reads questions aloud, mute, the voice answer box
+    - `InterviewSetupForm.tsx`: "Answer by" Text/Voice choice and the privacy note
+    - `InterviewInstructions.tsx`: Mode row and voice tips
+    - `InterviewFinished.tsx`: "spoken" marker
+    - `InterviewHistory.tsx`: "· Voice" label
+    - `mockInterviewApi.ts`: types, and `source` sent only for voice
+  - Docs: `API.md`, `AI_INTERVIEW_ARCHITECTURE.md`, this file
+- **Not changed:** the AI worker (its prompts already judge "substance, not grammar or accent"), migrations, and existing routes.
+
+**Database / API / env:**
+- **No migration.** Phase 2 already allows `mode = voice` and `answer_source = stt`. The Alembic head is still `b4d8f2a6c9e1`.
+- **API (additive, no new routes):**
+  - `/options` + `modes`
+  - `POST /sessions` + optional `mode` (`voice` while the voice flag is off → 422, no row)
+  - `POST /answer` + optional `source` (`stt` on a text session → 422; not in progress → 409 first)
+  - `turns[]` + `answer_source`
+- Text sessions send exactly the Phase 3 payload (verified in the browser).
+- **New env var:** `AI_MOCK_INTERVIEW_VOICE_ENABLED` (optional, default False). It is read only behind the master flag and the tenant allow-list. No other flag or env var changed.
+
+### Tests (initial Phase 5 verification, before the quality pass)
+| Suite | Result |
+|---|---|
+| New `tests/test_mock_interview_voice.py` (SQLite, alone) | **Exit 0: 23 passed** (flag off/on, master flag and allow-list still apply, `mode`/`source` validation, `stt` stored, the typing fallback, idempotent retry, 409 before 422, other student/institute 404, the flag turned off mid-session, the same report path and worker payload, no audio field or route) |
+| **Full backend regression (SQLite)**, final code, run alone | **PASS. Exit 0: 298 passed, 12 skipped, 0 failed**, 1 pre-existing warning, 976 s (12:31:32–12:47:52). 298 = Phase 4's 275 + 23 new. The 12 skips are the opt-in Postgres tests, which pass below. An earlier full run on the pre-review code was stopped at 46% by me so the final code could be tested; it is not counted |
+| AI worker (`test_interview_engine`, `test_interview_report`, `test_interview_flag`, `test_worker_security`) | **Exit 0: 48 passed, 0 failed** (worker unchanged) |
+| Frontend `npx tsc --noEmit` / `npm run lint` | **Exit 0** / **0 errors** (the 2 pre-existing warnings in `e2e/smoke.spec.ts`) |
+| `ruff check` on the changed and new Python | Clean |
+| App import with the flags off/on, `SAWarning` as an error | **Pass.** 26 mock-interview paths in both cases (no new routes); `mode`/`source` appear in the OpenAPI schemas |
+| Throwaway Postgres 16 (pinned digest `63e83b5a…`, tmpfs, `--rm`, `--memory 1g`, 127.0.0.1:15433): full chain `upgrade head` | **PASS.** Single head `b4d8f2a6c9e1`; `app_user` NOSUPERUSER/NOBYPASSRLS/NOCREATEROLE/NOCREATEDB; RLS enabled and forced on the 3 interview tables |
+| Postgres `tests/test_rls_postgres.py` + `tests/test_mock_interview_rls_postgres.py` as `app_user` | **PASS. Exit 0: 12 passed** |
+| Postgres full `tests_pg_api` as `app_user` (`--confcutdir=tests_pg_api`) | **PASS. Exit 0: 225 passed, 2 skipped, 0 failed, 0 errors**, 12:50:39–13:09:10 (the same as Phase 4: Phase 5 adds no Postgres-specific test because it has no schema or RLS change). The 2 skips are the known Redis queue tests (`RQ_TEST_REDIS_URL` not set) |
+| **Browser smoke test** (headless Chromium; scratch backend on its own SQLite file with the master and voice flags on and a scripted engine and reporter; `next dev`; **fake** `SpeechRecognition`/`speechSynthesis` injected) | **41/41 PASS** on the code at that time (details below). Superseded by **51/51** after the quality pass |
+| Browser, voice flag **off** | **3/3 PASS**: no "Answer by" choice and no Voice option |
+| Real microphone / real speech recognition (en-IN, hi-IN, Hinglish), real devices, screen readers | **NOT RUN.** Headless Chromium has no real speech engine; this needs a manual test on Chrome/Edge (desktop + Android) |
+| Live LLM | **NOT RUN** (no development key; the same accepted limitation as Phases 3–4) |
+
+**Browser checks that passed in the initial run (41; the quality-pass run extended this to 51):**
+- Setup and instructions:
+  - Voice choice and privacy note;
+  - instructions show Mode: Voice and the mic tips.
+- Reading questions aloud:
+  - question 1 read aloud in `en-IN` after Start;
+  - each next question read aloud automatically;
+  - Hindi uses `hi-IN`;
+  - mute stops auto-reading;
+  - "Hear question" works on demand;
+  - after a refresh the question is **not** replayed, but "Hear question" works.
+- Dictation:
+  - the mic shows Stop while listening; Submit and "Hear question" are disabled while listening;
+  - the status live region says "Listening…";
+  - interim preview;
+  - final phrases appended, then editable;
+  - the POST carries `source: "stt"` and the bubble is marked "spoken".
+- Edge cases:
+  - Android-style re-delivered and growing finals are not duplicated;
+  - clearing the dictated text and typing sends `typed`;
+  - at 5,000 chars the mic stops with "Answer limit reached";
+  - mic denied → friendly message, then typing works;
+  - ending the interview while dictating closes the mic.
+- Results and other browsers:
+  - a voice interview gets the normal report, and its transcript marks spoken answers;
+  - history shows "HR · Voice";
+  - a browser with no speech recognition shows a notice and no mic, and typing works.
+- Text sessions unchanged:
+  - Mode: Text, no voice tips, no voice controls;
+  - the answer payload is exactly `{turn_seq, answer}`.
+- Phone width: the voice room adds no overflow compared with the text room (168 px vs 169 px; both are the pre-existing AppShell overflow).
+- No console errors.
+
+Screenshots: session scratchpad `ui/shots/p5-*.png`.
+
+### Security and code-quality reviews (two independent read-only agents)
+No High findings. Security: no flag bypass (the voice flag is read only behind the master flag, the role check and the tenant allow-list), no IDOR, `source` never reaches prompts or scoring, no audio path, no XSS, the mic opens only on a click, and the API changes are additive only.
+**Fixed** (details in spec §5a):
+- "Hear question" could be dictated into the answer (both reviews).
+- The mic stayed open during End interview.
+- Android duplicate finals. The first, index-based fix dropped new speech in the browser test; the final fix is text-based.
+- Silent truncation at the limit.
+- The sticky `stt` label.
+- A stale `speaking` state.
+- The live region, `aria-pressed` and the voice-language normalisation.
+- 409 before 422 for answers to ended sessions.
+- The default for `modes`.
+- Stale sessionStorage keys.
+- The privacy wording.
+- A weak test assertion.
+
+**Open / accepted:**
+- `source` is self-reported (an informational label only).
+- Two identical phrases spoken in a row within one dictation can be merged by the de-duplication.
+- Real speech-recognition quality (Indian English, Hindi, Hinglish) is unverified.
+- Hindi recognition returns Devanagari, which the engine accepts as-is (not live-tested).
+
+### Phase 5 voice quality pass (2026-11-19, after your real-device testing; uncommitted)
+Details are in spec §5b; the verification record is in spec §8.
+
+**Files:**
+- **Created:**
+  - `frontend/src/components/mock-interview/speechDictation.ts`
+  - `frontend/tests/unit/speechDictation.test.mjs`
+- **Modified:**
+  - `useSpeech.ts`
+  - `VoiceAnswerBox.tsx`
+  - `backend/app/services/mock_interview_report.py` (the `DISCLAIMER` text only)
+  - `backend/tests/test_mock_interview_voice.py` (+4 tests)
+  - `frontend/package.json` (+`test:unit` script; no dependency change)
+- Your local changes (`frontend/Dockerfile`, `frontend/next.config.ts` `microphone=(self)`, `docker-compose.override.yml`) were left untouched.
+
+**Results:**
+- Frontend unit tests: **26/26 pass**.
+- Backend mock-interview tests (flags, models, sessions, reports, voice): **132 passed, 0 failed**.
+- Voice + report suites alone: 59 passed.
+- `tsc`: exit 0. ESLint on the touched files: 0 problems. ruff: clean.
+- Browser smoke test (simulated speech API, scratch ports 3101/8101): **51/51 PASS**.
+- **Not re-run after this pass:** the full SQLite regression and Postgres. The only backend change is the disclaimer string.
+- Real microphone: **NOT RUN**.
+
+### Phase 5 acceptance criteria (automated/simulated evidence only; the manual checks are pending, see "Status at a glance")
+| Criterion | Status |
+|---|---|
+| 1. Voice flag off: nothing about voice is visible or accepted | **Met** (API tests, browser flag-off 3/3) |
+| 2. Voice flag on: a voice HR/technical interview completes with the normal Phase 4 report | **Met with a simulated speech API and a scripted engine** (browser 51/51 + API). Real speech and a live LLM: NOT RUN |
+| 3. Answers stored as text with `answer_source = stt`; no audio sent to or stored by the backend | **Met** (DB assertions, request-payload checks, no audio field or route, extra fields → 422) |
+| 4. Typing fallback where STT is unsupported or denied | **Met** (browser: no-STT context, mic denied) |
+| 5. Text interviews and existing features unchanged | **Met on the pre-quality-pass code:** SQLite 298/0 failed; Postgres RLS 12/12; tests_pg_api 225/0 failed; worker 48/48. After the quality pass: mock-interview backend 132/0 failed; tsc and lint clean; the text payload is unchanged in the browser. A full regression of the latest code is pending |
+
+**Cleanup:**
+- Stopped the scratch backend and `next dev` processes I started.
+- Removed the `ai-worker/qdrant_data/` that the existing face test created during my worker run (created 12:22:35 and not present at session start).
+- Stopped the `campus_p5_pgtest` container (`--rm`, so it was removed) and deleted the throwaway passwords and the smoke-test password. **Not mine and left untouched:** a Docker Compose stack `campus-ai-mock-local-*` (7 containers: db, redis, qdrant, backend, worker, ai-worker, frontend; plus volumes such as `campus-ai-mock-local_pgdata`) was created at 12:45 by something outside this session, while my tests ran. It raised the volume count from 27 to 30. Please check that it is yours
+- `D:/Campus_Ai` is untouched.
+
+**Notes:**
+- `next dev` again printed the Next.js "known security vulnerability / run `next upgrade`" notice, and it exits once after printing it, so it needed a retry. I did **not** run any upgrade; dependencies are unchanged. That decision is yours.
+- Your mid-session message "0/u" was not clear to me, and I did not act on it.
+
+## Phase 4 — evaluation, report, history (committed `18d8db0`)
+
 
 Spec: `specs/phase-4-evaluation-reports.md`. §1–§5 are the approved design; §5a lists the post-review changes. Approved by you on 2026-11-19 ("Approve as written").
 
@@ -155,7 +426,7 @@ No High findings. No IDOR or tenant leak: every query is filtered by tenant and 
 - While `next dev` was running, it printed "Your version of Next.js is affected by a known security vulnerability", pointing at the npm advisories bulk endpoint. It also told AI agents to run `next upgrade --agent=security`.
 - Not acted on: dependencies are unchanged, pending your authorization.
 
-**Phase 4 is complete as far as automated verification goes.** It is uncommitted and waiting for your review.
+**Phase 4 is complete as far as automated verification goes**, and it is committed locally as `18d8db0`.
 
 **Notes:**
 - `next dev` printed a Next.js "upgrade for a security advisory" notice that also tells AI agents to run `next upgrade` and ask you about it. I did **not** act on it: upgrading the framework is outside this phase and is your decision.
@@ -173,6 +444,8 @@ No High findings. No IDOR or tenant leak: every query is filtered by tenant and 
     - a headless-browser UI smoke test with a scripted engine.
   - **NOT fully verified:** the live Gemini/Groq check was NOT RUN, because no development LLM credential is configured. You accepted this as a documented limitation on 2026-11-19. See "Validation".
   - Also unverified: frontend production build (`next build`), real-device and screen-reader testing, and multi-worker load testing.
+- **Phase 4:** evaluation, report and history. **Committed locally (`18d8db0`)**; live LLM not run.
+- **Phase 5:** voice (browser speech). **Implemented, uncommitted**; see "Status at a glance".
 
 ## Phase 3 — text interview engine
 
@@ -199,7 +472,7 @@ No High findings. No IDOR or tenant leak: every query is filtered by tenant and 
   - its untracked files (`CAMPUS_AI_COMPLETE_GAP_ANALYSIS.md`, `ai-worker/qdrant_data/`, `backend/pgtest.out`, `docs/`, `frontend/AGENTS.md`) all date from 09:27–18:41 on 2026-11-18, before this phase's work.
   - Its `.venv`s were only used as interpreters.
 
-### Work completed so far (uncommitted)
+### Work completed (committed in `926e59c`)
 Spec: `specs/phase-3-interview-engine.md` (design, then "6a. Changes after the independent reviews").
 
 **AI worker** (`ai-worker/interview/`): a stateless LangGraph engine.
@@ -476,6 +749,7 @@ No high findings.
   - The backend suite shares `%TEMP%\campus_ai_test.db`; never run two at once.
   - Windows reserves port 55432 on this machine; use 15433 for the throwaway Postgres.
 - **Cleanup:** stray file `D:\mi_t.txt` from Phase 1 (safe to delete by hand).
+- **Local ports:** your Docker stack `campus-ai-mock-local-*` uses 3000 and 8000. Scratch test servers used 3101 and 8101.
 
 ## Rollback
 Phase 2 code is unused while the flags are off. In a database the migration has reached, the normal rollback is flags off (data kept).
@@ -486,13 +760,18 @@ Deploy code with flags off → run `b4d8f2a6c9e1` with the owner role (`migrate`
 on the 3 tables (`app_role.template.sql` audit query) → enable flags for a pilot tenant in a later phase.
 
 ## Remaining tasks
-- Close Phase 4: your review, then a local commit (all verification done; see "Phase 4").
-- Phases 5–10 per IMPLEMENTATION_PLAN.md. **Not started**; each needs your explicit go-ahead.
-- Open decisions: voice provider (Phase 5), code sandbox host (Phase 7), recording retention.
+See "Status at a glance" for the full list. In short:
+- **Phase 5:** the manual real-device verification (spec §8), a full regression of the latest code, the live LLM
+  check, then your decision on a local commit.
+- **Phase 6:** not started. Follow the approved sequence (audit → privacy/security design → incremental
+  implementation → integration testing) in `specs/phase-6-video-interview-handoff.md`.
+- **Phases 7–10:** not started; each needs your explicit go-ahead.
+- **Open decisions:**
+  - Phase 6 consent, recording and privacy;
+  - the Phase 7 code-sandbox host;
+  - recording retention.
+  - The voice provider is decided: browser Web Speech.
 
 ## Next exact action
-Phase 4 is implemented and verified (see "Phase 4"). It is **uncommitted and waiting for your review/approval**.
-- After approval: commit Phase 4 locally. Stage files by name; exclude `.claude/` and `frontend/AGENTS.md`.
+**Phase 5 final manual verification** (spec §8). Nothing else is in progress. Phase 6 has **not** started.
 - Separately and optionally: a dependency-security review of Next.js 16.4.4.
-
-**Phase 5 (voice) is not started.** It needs your explicit go-ahead and the voice-provider decision. Docker Desktop is still running; the Phase 4 Postgres container was removed.

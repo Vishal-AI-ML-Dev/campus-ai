@@ -293,7 +293,7 @@ def create_session(
         tenant_id=user.tenant_id,
         student_id=user.id,
         interview_type=payload.interview_type,
-        mode="text",
+        mode=payload.mode,
         status="setup",
         target_role=payload.target_role,
         company_name=payload.company_name,
@@ -498,12 +498,22 @@ def start_session(db: Session, user: User, s: MockInterviewSession) -> MockInter
 
 
 def submit_answer(
-    db: Session, user: User, s: MockInterviewSession, turn_seq: int, answer: str
+    db: Session,
+    user: User,
+    s: MockInterviewSession,
+    turn_seq: int,
+    answer: str,
+    source: str = "typed",
 ) -> MockInterviewSession:
     if s.status != "in_progress":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This interview is not in progress",
+        )
+    if source not in ("typed", "stt") or (source == "stt" and s.mode != "voice"):
+        raise HTTPException(
+            status_code=422,  # literal: the constant name differs across Starlette versions
+            detail="Spoken answers are only accepted in a voice interview",
         )
     turns = _turns(db, s)
     target = next((t for t in turns if t.seq == turn_seq), None)
@@ -523,7 +533,7 @@ def submit_answer(
                 MockInterviewTurn.tenant_id == s.tenant_id,
                 MockInterviewTurn.answer_text.is_(None),
             )
-            .values(answer_text=answer, answer_source="typed", answered_at=utcnow())
+            .values(answer_text=answer, answer_source=source, answered_at=utcnow())
         )
         db.commit()
         if result.rowcount == 0:
@@ -689,6 +699,7 @@ def to_detail(db: Session, s: MockInterviewSession) -> dict:
                 "is_follow_up": t.is_follow_up,
                 "answer_text": t.answer_text,
                 "answered_at": t.answered_at,
+                "answer_source": t.answer_source,
             }
             for t in turns
         ],

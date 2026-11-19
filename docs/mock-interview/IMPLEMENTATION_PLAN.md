@@ -77,8 +77,8 @@ practice scores don't predict selection. Structured output with JSON-fallback (s
 | 2 | Models + migration (sessions, turns, reports) | `models/__init__.py` (+import) | Upgrade/downgrade on throwaway SQLite **and** local docker Postgres; RLS cross-tenant test |
 | 3 | Text HR + technical interview end-to-end | — | Ownership/tenant tests; worker graph unit tests with stubbed LLM |
 | 4 | Evaluation, report, history UI | — | Evidence-backed scoring tests |
-| 5 | Voice | — | **Provider decision needed** (below) |
-| 6 | Video (camera preview, captions, timer — no face/emotion analysis) | — | Same engine as text/voice |
+| 5 | Voice | — | Provider **decided 2026-11-19: browser Web Speech** (§7 a). Implemented, uncommitted; manual real-device verification pending (see PROJECT_STATE.md) |
+| 6 | Video (camera preview, captions, timer — no face/emotion analysis) | — | Same engine as text/voice. **Not started**; constraints and sequence in `specs/phase-6-video-interview-handoff.md`. Privacy/consent decision needed before implementation |
 | 7 | Coding | — | **Sandbox decision needed**; editor-only until a sandbox exists |
 | 8 | Company-based + full placement simulation (multi-round session) | — | — |
 | 9 | Faculty campaigns + analytics + export | — | RBAC tests: students/recruiters denied, cross-tenant denied |
@@ -86,7 +86,8 @@ practice scores don't predict selection. Structured output with JSON-fallback (s
 
 ## 7. Decisions needed later (not blocking Phases 1–4)
 
-- **Voice (Phase 5).** Pipecat + server STT/TTS doesn't fit the 512 MB free-tier services. Options: (a) browser Web Speech API for STT/TTS, answers posted as text to the same engine — zero new infra, weaker Hindi/Hinglish quality on some browsers; (b) a separate Pipecat service with hosted STT/TTS (e.g. Deepgram/ElevenLabs/Google) — better quality, adds cost, keys and a new deployment. Recommendation: (a) first, behind the same flag, with (b) as a later adapter.
+- **Voice (Phase 5).** Pipecat + server STT/TTS doesn't fit the 512 MB free-tier services. Options: (a) browser Web Speech API for STT/TTS, answers posted as text to the same engine — zero new infra, weaker Hindi/Hinglish quality on some browsers; (b) a separate Pipecat service with hosted STT/TTS (e.g. Deepgram/ElevenLabs/Google) — better quality, adds cost, keys and a new deployment. Recommendation: (a) first, behind the same flag, with (b) as a later adapter. **Decided 2026-11-19: (a), behind its own sub-flag `AI_MOCK_INTERVIEW_VOICE_ENABLED`.** Option (b), and any server-side audio, stays deferred and needs separate privacy approval.
+- **Video privacy and consent (Phase 6).** Camera consent wording, whether anything is recorded (default: nothing), and any provider. **Decision needed before Phase 6 implementation.** See `specs/phase-6-video-interview-handoff.md`.
 - **Coding sandbox (Phase 7).** Self-hosted Judge0 or Piston on a separate host with no network, cgroup CPU/memory/pid limits and a time limit. Until one exists, the coding round offers editor + LLM review of the code **without running it**.
 - **Recording retention.** Default: no audio/video stored. If wanted later: Supabase private bucket, owner + authorized faculty only, with a retention period.
 

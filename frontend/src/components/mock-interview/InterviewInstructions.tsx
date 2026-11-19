@@ -9,6 +9,7 @@ import {
 	DIFFICULTY_LABELS,
 	LANGUAGE_LABELS,
 	mockInterviewApi,
+	MODE_LABELS,
 	TYPE_LABELS,
 	type InterviewSession,
 } from "./mockInterviewApi"
@@ -54,6 +55,7 @@ export default function InterviewInstructions({
 
 	const facts = [
 		["Type", TYPE_LABELS[session.interview_type] ?? session.interview_type],
+		["Mode", MODE_LABELS[session.mode] ?? session.mode],
 		["Role", session.target_role ?? "-"],
 		["Company", session.company_name ?? "Not specified"],
 		["Difficulty", DIFFICULTY_LABELS[session.difficulty] ?? session.difficulty],
@@ -81,6 +83,20 @@ export default function InterviewInstructions({
 			</dl>
 			<ul className="list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
 				<li>The interviewer asks one question at a time and may ask follow-ups on your answer.</li>
+				{session.mode === "voice" ? (
+					<>
+						<li>
+							Voice mode: the interviewer reads each question aloud. Press <strong>Start speaking</strong> to
+							answer; your browser asks for microphone access the first time. Check the text, fix any
+							mistakes, then submit. You can always type instead.
+						</li>
+						<li>
+							Speech is converted to text by your browser. Some browsers (e.g. Chrome) send audio to
+							their speech service to do this. Campus AI stores only the text you submit, never audio;
+							unsent text stays in this browser tab until you submit it.
+						</li>
+					</>
+				) : null}
 				<li>Answer in your own words, as you would in a real interview. Use examples (STAR) where it helps.</li>
 				<li>It is fine to say &quot;I don&apos;t know&quot; - the interviewer will move on.</li>
 				<li>The timer starts when you press Start. You can end the interview at any time.</li>

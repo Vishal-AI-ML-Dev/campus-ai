@@ -19,6 +19,7 @@ so it disappears (404) whenever the flag is off.
 Flags (app/core/config.py, both default OFF / empty):
   AI_MOCK_INTERVIEW_ENABLED     master switch
   AI_MOCK_INTERVIEW_TENANT_IDS  optional comma-separated pilot allow-list
+  AI_MOCK_INTERVIEW_VOICE_ENABLED  Phase 5 sub-flag: offer voice interviews
 
 Mounted under the `/mock-interview` prefix by `main.py` (at /v1 and the
 deprecated unversioned path, like every feature router).
@@ -92,6 +93,12 @@ def mock_interview_enabled_for(user: User) -> bool:
         return False
     allowed = _allowed_tenant_ids(settings.AI_MOCK_INTERVIEW_TENANT_IDS)
     return allowed is None or user.tenant_id in allowed
+
+
+def mock_interview_voice_enabled() -> bool:
+    """Phase 5 voice sub-flag. Only consulted behind the main gate, so the
+    master switch and tenant allow-list always apply too."""
+    return bool(settings.AI_MOCK_INTERVIEW_VOICE_ENABLED)
 
 
 def require_mock_interview(
@@ -188,6 +195,12 @@ def mock_interview_options(
             MockInterviewChoice(value="hi", label="Hindi"),
             MockInterviewChoice(value="hinglish", label="Hinglish"),
         ],
+        modes=[MockInterviewChoice(value="text", label="Text")]
+        + (
+            [MockInterviewChoice(value="voice", label="Voice")]
+            if mock_interview_voice_enabled()
+            else []
+        ),
         resumes=[
             MockInterviewResumeOption(
                 id=r.id,
@@ -212,6 +225,11 @@ def create_mock_interview_session(
     user: User = Depends(require_mock_interview_student),
 ) -> dict:
     """Create an interview (status ``setup``). Nothing is sent to the AI yet."""
+    if payload.mode == "voice" and not mock_interview_voice_enabled():
+        raise HTTPException(
+            status_code=422,  # literal: the constant name differs across Starlette versions
+            detail="Voice interviews are not available",
+        )
     return svc.to_detail(db, svc.create_session(db, user, payload))
 
 
@@ -274,7 +292,10 @@ def answer_mock_interview_question(
     ``POST /next`` continues. Re-sending the same answer is a no-op.
     """
     s = svc.get_owned_session(db, session_id, user)
-    return svc.to_detail(db, svc.submit_answer(db, user, s, payload.turn_seq, payload.answer))
+    return svc.to_detail(
+        db,
+        svc.submit_answer(db, user, s, payload.turn_seq, payload.answer, source=payload.source),
+    )
 
 
 @router.post("/sessions/{session_id}/next", response_model=MockInterviewSessionOut)

@@ -1,4 +1,4 @@
-# AI Mock Interview — API (Phases 3–4)
+# AI Mock Interview — API (Phases 3–5)
 
 ## Where and who
 
@@ -25,7 +25,7 @@
 | GET | `/sessions/active` | – | `Session` or `null` |
 | GET | `/sessions/{id}` | – | `Session` |
 | POST | `/sessions/{id}/start` | – | `Session` (opening question) |
-| POST | `/sessions/{id}/answer` | `{turn_seq, answer}` | `Session` (next question or ended) |
+| POST | `/sessions/{id}/answer` | `{turn_seq, answer, source?}` | `Session` (next question or ended) |
 | POST | `/sessions/{id}/next` | – | `Session` |
 | POST | `/sessions/{id}/finish` | – | `Session` |
 | POST | `/sessions/{id}/abandon` | – | `Session` |
@@ -113,6 +113,23 @@ Notes on the fields:
 | `finish` | `completed` if ≥1 answer, else `abandoned`; idempotent |
 | `abandon` | `abandoned`; idempotent on ended sessions (status unchanged) |
 
+## Phase 5: voice (additive fields only, no new routes)
+
+Voice uses the browser's Web Speech API (speech-to-text and text-to-speech). **The server never receives audio**, only
+the text the student reviewed and submitted. Sub-flag `AI_MOCK_INTERVIEW_VOICE_ENABLED` (default off; only read
+behind the master flag and tenant allow-list).
+
+| Where | Field | Notes |
+|---|---|---|
+| `GET /options` | `modes: [{value, label}]` | `[text]`, or `[text, voice]` when the voice flag is on |
+| `POST /sessions` | `mode?: "text" \| "voice"` (default `text`) | `voice` while the voice flag is off → **422** "Voice interviews are not available"; no row created |
+| `POST /sessions/{id}/answer` | `source?: "typed" \| "stt"` (default `typed`) | `stt` on a text session → **422**; a session not in progress → **409** first (as in Phase 3). Any other value → 422. A label only: never sent to the worker, never affects scoring |
+| Session `turns[]` | `answer_source: "typed" \| "stt" \| null` | `null` until answered |
+
+- Idempotency is unchanged: re-sending the same `turn_seq` + text is a no-op whatever its `source` (the first one is kept).
+- Turning the voice flag off blocks **new** voice sessions only; voice sessions already created can still be answered and finished.
+- The worker contract is unchanged (the transcript keys stay `{seq, topic, question, is_follow_up, answer}`).
+
 ## AI worker contract (internal, `X-Worker-Token`)
 
 Mounted only when the worker's `MOCK_INTERVIEW_ENABLED=true`.
@@ -161,6 +178,10 @@ Mounted only when the worker's `MOCK_INTERVIEW_ENABLED=true`.
 - `status` is one of `scored`, `no_answer`, `dont_know` or `not_assessed`.
 - `no_answer` and `dont_know` questions score 0 in every category.
 - Every non-zero score has an `evidence` quote taken from the student's own answer.
+- `disclaimer` is a fixed backend string, built at read time and not stored. Since Phase 5 it is modality-independent:
+  "This is AI-generated practice feedback based on the answers you submitted during this practice session, including
+  typed or speech-to-text answers. It can make mistakes, and practice scores do not predict selection in a real
+  interview." The response shape and scoring are unchanged.
 - `category.score` is `null` when nothing could be assessed.
 - The question text and answers come from the turns. The plan, the resume and the JD are never returned.
 
