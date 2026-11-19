@@ -15,11 +15,11 @@ block wins.
 | 2 | Models + additive RLS migration (sessions, turns, reports) | Done, committed | `0fadaa8` (docs `0ac3efc`) |
 | 3 | Text HR + technical interview engine | Implemented, committed; live LLM not run | `926e59c` (docs `f8e3485`) |
 | 4 | Evaluation report + history | Implemented, committed; live LLM not run | `18d8db0` |
-| **5** | **Voice interview (browser speech)** | **Implemented; automated/simulated tests pass; real-device tests pending; UNCOMMITTED** | none yet |
+| **5** | **Voice interview (browser speech)** | **Implemented, committed; automated/simulated tests pass; real-device tests pending** | `34fd3a9` |
 | 6 | AI video interview | **Not started.** Handoff only: `specs/phase-6-video-interview-handoff.md` | — |
 | 7–10 | Coding, company/full simulation, faculty campaigns, final review | Not started | — |
 
-- **Branch:** `feature/ai-mock-interview` in the worktree `D:/Campus_Ai-mock-interview`. HEAD is `18d8db0`. Nothing
+- **Branch:** `feature/ai-mock-interview` in the worktree `D:/Campus_Ai-mock-interview`. Phase 5 is committed as `34fd3a9`; a docs-only commit recording it follows. Nothing
   is pushed, merged or deployed.
 - **Flags:** every flag defaults to OFF: `AI_MOCK_INTERVIEW_ENABLED`, `AI_MOCK_INTERVIEW_TENANT_IDS`,
   `AI_MOCK_INTERVIEW_VOICE_ENABLED` (Phase 5), the worker's `MOCK_INTERVIEW_ENABLED`, and the frontend build flag
@@ -29,7 +29,7 @@ block wins.
 
 ### Phase 5 — current status
 
-**Implemented (uncommitted):**
+**Implemented (committed `34fd3a9`):**
 - **Text-to-speech:** the browser reads questions aloud (`speechSynthesis`).
 - **Speech-to-text:** the browser's `SpeechRecognition` / `webkitSpeechRecognition`. Languages: English `en-IN`,
   Hindi `hi-IN`, Hinglish `en-IN`.
@@ -77,22 +77,12 @@ block wins.
 - A natural or neural TTS voice upgrade.
 - Hosted or server-side STT, e.g. cloud transcription. Changing where audio goes needs separate privacy approval.
 
-**Uncommitted Phase 5 files** (for a future local commit, staged by name):
-- Backend:
-  - `backend/app/core/config.py`
-  - `backend/app/routers/mock_interview.py`
-  - `backend/app/schemas/mock_interview.py`
-  - `backend/app/services/mock_interview.py`
-  - `backend/app/services/mock_interview_report.py`
-  - `backend/tests/test_mock_interview_voice.py`
-- Frontend:
-  - `frontend/package.json`
-  - `frontend/tests/unit/speechDictation.test.mjs`
-  - `frontend/src/components/mock-interview/{InterviewFinished,InterviewHistory,InterviewInstructions,InterviewRoom,InterviewSetupForm,VoiceAnswerBox}.tsx`
-  - `frontend/src/components/mock-interview/{mockInterviewApi,speechDictation,useSpeech}.ts`
-- Docs: `docs/mock-interview/{AI_INTERVIEW_ARCHITECTURE,API,IMPLEMENTATION_PLAN,PROJECT_STATE}.md` and
-  `docs/mock-interview/specs/phase-{5-voice-interview,6-video-interview-handoff}.md`
-- **Your local Docker test setup, also uncommitted.** Whether it belongs in a commit is your decision:
+**Phase 5 commit:** `34fd3a9` "feat(mock-interview): add browser-based voice interview" (23 files, staged by name, 2026-11-19).
+It covers the backend (config, router, schemas, services, report disclaimer, `test_mock_interview_voice.py`), the
+frontend mock-interview components, `speechDictation.ts`, `useSpeech.ts`, `VoiceAnswerBox.tsx`, `package.json`
+(`test:unit`) and `frontend/tests/unit/speechDictation.test.mjs`, and the docs (including both specs).
+
+- **Not committed; your local Docker test setup.** Whether it belongs in a commit is your decision:
   - `frontend/Dockerfile`: passes `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED`;
   - `frontend/next.config.ts`: `Permissions-Policy` `microphone=(self)`;
   - untracked `docker-compose.override.yml`.
@@ -100,8 +90,8 @@ block wins.
 - Never commit: `.claude/` and `frontend/AGENTS.md`.
 
 ### Next recommended action (approved sequence)
-1. **Phase 5 final manual verification:** follow the checklist in `specs/phase-5-voice-interview.md` §8. Then decide
-   whether to commit Phase 5 locally.
+1. **Phase 5 final manual verification:** follow the checklist in `specs/phase-5-voice-interview.md` §8. Phase 5 is
+   already committed locally (`34fd3a9`); any fixes the checks need go in follow-up commits.
 2. **Phase 6 architecture audit.**
 3. **Phase 6 privacy and security design**, with your approval of the consent and recording decisions.
 4. **Phase 6 incremental implementation.**
@@ -119,7 +109,7 @@ here until they are closed.
 | Alembic head | **`b4d8f2a6c9e1`** (Phase 2, single head) → `a7c3e9d2b4f1`. Phases 3–5 added no migration |
 | Original folder | `D:/Campus_Ai`, on `feature/student-approval`; its `backend/.venv` is the interpreter used for worktree tests (the worktree has no venv or `.env`) |
 
-## Phase 5 — detailed record: initial implementation and verification (2026-11-19, uncommitted)
+## Phase 5 — detailed record: initial implementation and verification (2026-11-19; committed in `34fd3a9`)
 
 _Historical record of the first Phase 5 delivery. The current status is under "Status at a glance"; the later quality pass follows below._
 
@@ -241,7 +231,7 @@ No High findings. Security: no flag bypass (the voice flag is read only behind t
 - Real speech-recognition quality (Indian English, Hindi, Hinglish) is unverified.
 - Hindi recognition returns Devanagari, which the engine accepts as-is (not live-tested).
 
-### Phase 5 voice quality pass (2026-11-19, after your real-device testing; uncommitted)
+### Phase 5 voice quality pass (2026-11-19, after your real-device testing; committed in `34fd3a9`)
 Details are in spec §5b; the verification record is in spec §8.
 
 **Files:**
@@ -445,7 +435,7 @@ No High findings. No IDOR or tenant leak: every query is filtered by tenant and 
   - **NOT fully verified:** the live Gemini/Groq check was NOT RUN, because no development LLM credential is configured. You accepted this as a documented limitation on 2026-11-19. See "Validation".
   - Also unverified: frontend production build (`next build`), real-device and screen-reader testing, and multi-worker load testing.
 - **Phase 4:** evaluation, report and history. **Committed locally (`18d8db0`)**; live LLM not run.
-- **Phase 5:** voice (browser speech). **Implemented, uncommitted**; see "Status at a glance".
+- **Phase 5:** voice (browser speech). **Committed locally (`34fd3a9`)**; real-device verification pending; see "Status at a glance".
 
 ## Phase 3 — text interview engine
 
@@ -762,7 +752,7 @@ on the 3 tables (`app_role.template.sql` audit query) → enable flags for a pil
 ## Remaining tasks
 See "Status at a glance" for the full list. In short:
 - **Phase 5:** the manual real-device verification (spec §8), a full regression of the latest code, the live LLM
-  check, then your decision on a local commit.
+  check. (Committed locally as `34fd3a9`; none of these checks has been done yet.)
 - **Phase 6:** not started. Follow the approved sequence (audit → privacy/security design → incremental
   implementation → integration testing) in `specs/phase-6-video-interview-handoff.md`.
 - **Phases 7–10:** not started; each needs your explicit go-ahead.

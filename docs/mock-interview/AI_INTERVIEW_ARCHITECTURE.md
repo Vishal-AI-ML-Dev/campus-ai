@@ -214,7 +214,7 @@ AI worker  POST /interview/report ─▶ interview/report.py (LangGraph)
 
 ## Phase 5: voice (browser speech)
 
-Status: implemented, uncommitted. Automated and simulated tests pass; real-device verification is pending (see
+Status: implemented, committed locally (`34fd3a9`). Automated and simulated tests pass; real-device verification is pending (see
 `PROJECT_STATE.md`). Full behaviour reference: `specs/phase-5-voice-interview.md` §5c.
 
 ```

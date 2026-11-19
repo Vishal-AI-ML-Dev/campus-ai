@@ -1,6 +1,6 @@
 # Phase 5 — Voice Interview (design spec)
 
-Status: **implemented, uncommitted.** Automated and simulated tests pass; **the real-device manual verification is
+Status: **implemented, committed locally (`34fd3a9`).** Automated and simulated tests pass; **the real-device manual verification is
 pending** (§8). The design was approved "as written" on 2026-11-19, before any Phase 5 code. §5a records the
 post-review changes, §5b the quality pass, §5c the current behaviour and §8 the verification record. Overall status:
 `../PROJECT_STATE.md` → "Status at a glance".

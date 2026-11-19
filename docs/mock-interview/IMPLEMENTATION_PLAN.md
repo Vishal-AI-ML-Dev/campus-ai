@@ -77,7 +77,7 @@ practice scores don't predict selection. Structured output with JSON-fallback (s
 | 2 | Models + migration (sessions, turns, reports) | `models/__init__.py` (+import) | Upgrade/downgrade on throwaway SQLite **and** local docker Postgres; RLS cross-tenant test |
 | 3 | Text HR + technical interview end-to-end | — | Ownership/tenant tests; worker graph unit tests with stubbed LLM |
 | 4 | Evaluation, report, history UI | — | Evidence-backed scoring tests |
-| 5 | Voice | — | Provider **decided 2026-11-19: browser Web Speech** (§7 a). Implemented, uncommitted; manual real-device verification pending (see PROJECT_STATE.md) |
+| 5 | Voice | — | Provider **decided 2026-11-19: browser Web Speech** (§7 a). Implemented, committed locally (`34fd3a9`); manual real-device verification pending (see PROJECT_STATE.md) |
 | 6 | Video (camera preview, captions, timer — no face/emotion analysis) | — | Same engine as text/voice. **Not started**; constraints and sequence in `specs/phase-6-video-interview-handoff.md`. Privacy/consent decision needed before implementation |
 | 7 | Coding | — | **Sandbox decision needed**; editor-only until a sandbox exists |
 | 8 | Company-based + full placement simulation (multi-round session) | — | — |

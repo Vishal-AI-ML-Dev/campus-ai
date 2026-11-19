@@ -9,7 +9,7 @@ Overall status: `../PROJECT_STATE.md` → "Status at a glance". Plan row: `../IM
 ## 1. Approved execution sequence
 
 1. **Phase 5 final manual verification.** Real-device speech checks M1–M9 in `phase-5-voice-interview.md` §8, then
-   your decision on the Phase 5 commit.
+   any follow-up fixes (Phase 5 is committed locally as `34fd3a9`).
 2. **Phase 6 architecture audit.** Read-only: inspect the existing code first (§3), then report options.
 3. **Phase 6 privacy and security design.** The consent, recording and permissions decisions need your approval.
 4. **Phase 6 incremental implementation.** Small, flag-gated steps.
