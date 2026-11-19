@@ -92,6 +92,61 @@ export function buildSecurityHeaders(
   return headers;
 }
 
+/**
+ * Phase 6 (AI Mock Interview video): the camera is blocked everywhere
+ * (`camera=()` above) EXCEPT on the mock-interview route, and only in a build
+ * where BOTH NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED and
+ * NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED are "true" (default: off, so the
+ * headers are exactly as before). The backend still decides per institute and
+ * role; this only lets the browser ask for the camera on that page.
+ *
+ * The route rule repeats the global Permissions-Policy with only the camera
+ * directive changed, so the microphone and geolocation policies stay whatever
+ * the global header says. Next applies the LAST matching rule for a header key.
+ *
+ * Caveat (handled in Phase 6.2): Permissions-Policy is fixed when a document
+ * loads. After a client-side navigation (next/link) from another page, the
+ * document still carries that page's `camera=()`, so the video lobby must
+ * detect the block and offer a full reload of /dashboard/mock-interview.
+ */
+export const MOCK_INTERVIEW_CAMERA_ROUTES = [
+  "/dashboard/mock-interview",
+  "/dashboard/mock-interview/:path*",
+];
+
+export function mockInterviewCameraEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (
+    env.NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED === "true" &&
+    env.NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED === "true"
+  );
+}
+
+/** The same policy with `camera=(self)`; every other directive is kept as is. */
+export function allowCameraForSelf(policy: string): string {
+  return policy
+    .split(",")
+    .map((d) => d.trim())
+    .filter(Boolean)
+    .map((d) => (d.split("=", 1)[0].trim() === "camera" ? "camera=(self)" : d))
+    .join(", ");
+}
+
+export function buildHeaderRules(
+  env: NodeJS.ProcessEnv = process.env,
+  dev = isDev,
+): { source: string; headers: { key: string; value: string }[] }[] {
+  const headers = buildSecurityHeaders(env, dev);
+  const rules = [{ source: "/:path*", headers }];
+  const policy = headers.find((h) => h.key === "Permissions-Policy");
+  if (policy && mockInterviewCameraEnabled(env)) {
+    const value = allowCameraForSelf(policy.value);
+    for (const source of MOCK_INTERVIEW_CAMERA_ROUTES) {
+      rules.push({ source, headers: [{ key: "Permissions-Policy", value }] });
+    }
+  }
+  return rules;
+}
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   // Production image only (frontend/Dockerfile sets NEXT_OUTPUT_STANDALONE=1):
@@ -99,7 +154,7 @@ const nextConfig: NextConfig = {
   // `next start` keeps working for local/e2e builds.
   ...(process.env.NEXT_OUTPUT_STANDALONE === "1" ? { output: "standalone" as const } : {}),
   async headers() {
-    return [{ source: "/:path*", headers: buildSecurityHeaders() }];
+    return buildHeaderRules();
   },
 };
 

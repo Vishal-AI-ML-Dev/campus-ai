@@ -69,6 +69,7 @@ class MockInterviewOptionsOut(BaseModel):
     languages: list[MockInterviewChoice]
     resumes: list[MockInterviewResumeOption]
     # Phase 5: [text], or [text, voice] when the voice sub-flag is on.
+    # Phase 6: "video" is appended only when the caller passes the video gate.
     modes: list[MockInterviewChoice] = Field(
         default_factory=lambda: [MockInterviewChoice(value="text", label="Text")]
     )
@@ -88,7 +89,9 @@ class MockInterviewSessionCreate(BaseModel):
     job_description: str | None = Field(default=None, max_length=JD_MAX_CHARS)
     language: Literal["en", "hi", "hinglish"] = "en"
     # Phase 5: voice is accepted only while AI_MOCK_INTERVIEW_VOICE_ENABLED is on.
-    mode: Literal["text", "voice"] = "text"
+    # Phase 6: video only while the video flag + video allow-list admit the
+    # caller (checked in the router; 422 otherwise, as for voice).
+    mode: Literal["text", "voice", "video"] = "text"
 
     @field_validator("target_role")
     @classmethod
@@ -111,8 +114,9 @@ class MockInterviewAnswerIn(BaseModel):
     # The question being answered; doubles as the idempotency key.
     turn_seq: int = Field(ge=1)
     answer: str = Field(min_length=1, max_length=ANSWER_MAX_CHARS)
-    # Phase 5: "stt" = dictated in the browser (voice sessions only). A label
-    # only; the text is validated and scored exactly like a typed answer.
+    # Phase 5: "stt" = dictated in the browser (voice sessions; Phase 6 adds
+    # video sessions). A label only; the text is validated and scored exactly
+    # like a typed answer.
     source: Literal["typed", "stt"] = "typed"
 
     @field_validator("answer")

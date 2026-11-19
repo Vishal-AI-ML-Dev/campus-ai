@@ -1,5 +1,8 @@
 # Phase 6 — AI Video Interview (handoff, NOT a design)
 
+> **Superseded 2026-11-19** by the approved design `phase-6-video-interview.md`. Kept as the historical handoff;
+> §3 "no Phase 6 code/flag exists" is no longer true after Phase 6.1.
+
 Status: **not started.** No Phase 6 code, schema, flag or configuration exists. This document records the constraints
 and the execution sequence you set on 2026-11-19, plus facts about the current code, so the Phase 6 audit can start
 from them. It is **not** an approved design: every item under "Open questions" needs an explicit decision.

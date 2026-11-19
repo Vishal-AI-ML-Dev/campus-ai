@@ -162,6 +162,13 @@ class Settings(BaseSettings):
     # text-to-speech; the server only ever receives text). Needs the master
     # switch too. Off = text only; voice sessions already created can finish.
     AI_MOCK_INTERVIEW_VOICE_ENABLED: bool = False
+    # Phase 6 sub-flag: offer video interviews (camera self-view that stays in
+    # the browser; the server only ever receives text). Needs the master switch
+    # and master allow-list too, AND the institute must be listed in
+    # AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS. Unlike the master list, an EMPTY
+    # video list enables NO institute (fail closed). Students only.
+    AI_MOCK_INTERVIEW_VIDEO_ENABLED: bool = False
+    AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS: str = ""
 
     @property
     def docs_enabled(self) -> bool:

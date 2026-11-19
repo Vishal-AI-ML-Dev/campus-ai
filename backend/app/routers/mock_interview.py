@@ -20,6 +20,8 @@ Flags (app/core/config.py, both default OFF / empty):
   AI_MOCK_INTERVIEW_ENABLED     master switch
   AI_MOCK_INTERVIEW_TENANT_IDS  optional comma-separated pilot allow-list
   AI_MOCK_INTERVIEW_VOICE_ENABLED  Phase 5 sub-flag: offer voice interviews
+  AI_MOCK_INTERVIEW_VIDEO_ENABLED  Phase 6 sub-flag: offer video interviews
+  AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS  Phase 6 video allow-list (empty = nobody)
 
 Mounted under the `/mock-interview` prefix by `main.py` (at /v1 and the
 deprecated unversioned path, like every feature router).
@@ -99,6 +101,24 @@ def mock_interview_voice_enabled() -> bool:
     """Phase 5 voice sub-flag. Only consulted behind the main gate, so the
     master switch and tenant allow-list always apply too."""
     return bool(settings.AI_MOCK_INTERVIEW_VOICE_ENABLED)
+
+
+def mock_interview_video_enabled_for(user: User) -> bool:
+    """Phase 6 video sub-flag, evaluated per user. Fail closed at every step.
+
+    Requires ALL of: the master gate (master switch, master allow-list, an
+    allowed role), the video switch, the institute in the separate video
+    allow-list (an EMPTY video list enables nobody, unlike the master list),
+    and the student role. Enforced here on the server, whatever the UI shows.
+    """
+    if not mock_interview_enabled_for(user):
+        return False
+    if user.role != UserRole.student:
+        return False
+    if not settings.AI_MOCK_INTERVIEW_VIDEO_ENABLED:
+        return False
+    allowed = _allowed_tenant_ids(settings.AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS)
+    return allowed is not None and user.tenant_id in allowed
 
 
 def require_mock_interview(
@@ -200,6 +220,11 @@ def mock_interview_options(
             [MockInterviewChoice(value="voice", label="Voice")]
             if mock_interview_voice_enabled()
             else []
+        )
+        + (
+            [MockInterviewChoice(value="video", label="Video")]
+            if mock_interview_video_enabled_for(user)
+            else []
         ),
         resumes=[
             MockInterviewResumeOption(
@@ -229,6 +254,11 @@ def create_mock_interview_session(
         raise HTTPException(
             status_code=422,  # literal: the constant name differs across Starlette versions
             detail="Voice interviews are not available",
+        )
+    if payload.mode == "video" and not mock_interview_video_enabled_for(user):
+        raise HTTPException(
+            status_code=422,  # same contract as voice: an unavailable mode is invalid input
+            detail="Video interviews are not available",
         )
     return svc.to_detail(db, svc.create_session(db, user, payload))
 

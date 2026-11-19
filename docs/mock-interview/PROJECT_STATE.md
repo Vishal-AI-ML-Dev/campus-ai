@@ -1,6 +1,6 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-19 (documentation finalised after the Phase 5 voice quality pass)._
+_Last updated: 2026-11-19 (Phase 6.1 video foundations implemented; not committed)._
 
 **This file is the single source of truth for status.** The "Status at a glance" block below is current. Everything
 after it is the dated, detailed history of each phase; where a historical section disagrees with this block, this
@@ -16,14 +16,15 @@ block wins.
 | 3 | Text HR + technical interview engine | Implemented, committed; live LLM not run | `926e59c` (docs `f8e3485`) |
 | 4 | Evaluation report + history | Implemented, committed; live LLM not run | `18d8db0` |
 | **5** | **Voice interview (browser speech)** | **Implemented, committed; automated/simulated tests pass; real-device tests pending** | `34fd3a9` |
-| 6 | AI video interview | **Not started.** Handoff only: `specs/phase-6-video-interview-handoff.md` | — |
+| **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations implemented, automated tests pass, NOT committed. 6.2–6.6 not started** | — |
 | 7–10 | Coding, company/full simulation, faculty campaigns, final review | Not started | — |
 
 - **Branch:** `feature/ai-mock-interview` in the worktree `D:/Campus_Ai-mock-interview`. Phase 5 is committed as `34fd3a9`; a docs-only commit recording it follows. Nothing
   is pushed, merged or deployed.
 - **Flags:** every flag defaults to OFF: `AI_MOCK_INTERVIEW_ENABLED`, `AI_MOCK_INTERVIEW_TENANT_IDS`,
-  `AI_MOCK_INTERVIEW_VOICE_ENABLED` (Phase 5), the worker's `MOCK_INTERVIEW_ENABLED`, and the frontend build flag
-  `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED`.
+  `AI_MOCK_INTERVIEW_VOICE_ENABLED` (Phase 5), `AI_MOCK_INTERVIEW_VIDEO_ENABLED` + `AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS`
+  (Phase 6; empty list = no institute), the worker's `MOCK_INTERVIEW_ENABLED`, and the frontend build flags
+  `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED` and `NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED` (Phase 6).
 - **Production readiness: NOT established.** The live LLM, real-device speech, `next build` and multi-worker load
   testing have not been verified, and no production rollout has been done.
 
@@ -89,16 +90,75 @@ frontend mock-interview components, `speechDictation.ts`, `useSpeech.ts`, `Voice
   - Voice in a deployed build needs a `microphone=(self)` policy.
 - Never commit: `.claude/` and `frontend/AGENTS.md`.
 
-### Next recommended action (approved sequence)
-1. **Phase 5 final manual verification:** follow the checklist in `specs/phase-5-voice-interview.md` §8. Phase 5 is
-   already committed locally (`34fd3a9`); any fixes the checks need go in follow-up commits.
-2. **Phase 6 architecture audit.**
-3. **Phase 6 privacy and security design**, with your approval of the consent and recording decisions.
-4. **Phase 6 incremental implementation.**
-5. **Phase 6 integration and regression testing.**
+### Phase 6.1 — video foundations (2026-11-19; implemented, NOT committed)
 
-Phase 6 must not start before step 1 has been done or explicitly waived by you. The Phase 5 open items stay tracked
-here until they are closed.
+Design and approved decisions D1–D12: `specs/phase-6-video-interview.md`. **D1: Phase 5 real-device tests are
+deferred, not waived as passed; Phase 5 stays incomplete.** The architecture audit and the design are done.
+
+**What 6.1 does:** no camera code yet. It adds the server-side gate and the browser configuration that later
+milestones build on.
+- **Backend:**
+  - `AI_MOCK_INTERVIEW_VIDEO_ENABLED` and `AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS` flags.
+  - `mock_interview_video_enabled_for(user)` = master gate + video switch + institute in the video list
+    (**empty/invalid = none**) + student.
+  - `/options` appends `video` only when that passes; `POST /sessions {mode:"video"}` → 422 otherwise.
+  - `answer_source="stt"` is accepted for video sessions (`SPOKEN_MODES`).
+  - Existing video sessions can finish after access is withdrawn (D12).
+- **Frontend:**
+  - Build flag `NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED` (Dockerfile `ARG`, default `false`).
+  - `next.config.ts` `buildHeaderRules()` adds `camera=(self)` only for `/dashboard/mock-interview(/…)` and only
+    when both build flags are on; the microphone/geolocation directives follow the global header.
+  - The setup form never offers `video` yet (`VIDEO_UI_READY = false` until 6.3); `MODE_LABELS` knows "Video".
+- **Database / worker / scoring:** no migration (Phase 2 already allows `mode='video'`; Alembic head unchanged), no AI
+  worker change, no scoring or disclaimer change.
+- **API:** additive only. `mode` accepts `"video"`, and `/options` `modes` may contain it. Response shapes are unchanged.
+
+**Files.**
+- Modified (6.1):
+  - `backend/app/core/config.py`, `backend/app/routers/mock_interview.py`, `backend/app/schemas/mock_interview.py`,
+    `backend/app/services/mock_interview.py`;
+  - `frontend/next.config.ts`, `frontend/Dockerfile`;
+  - `frontend/src/components/mock-interview/{InterviewSetupForm.tsx,mockInterviewApi.ts,mockInterviewFlags.ts}`;
+  - `CLAUDE.md` (flag line), `docs/mock-interview/{API.md,AI_INTERVIEW_ARCHITECTURE.md,IMPLEMENTATION_PLAN.md,PROJECT_STATE.md}`;
+  - `docs/mock-interview/specs/phase-6-video-interview-handoff.md` (marked superseded).
+- New: `backend/tests/test_mock_interview_video.py`, `frontend/src/components/mock-interview/mockInterviewModes.ts`,
+  `frontend/tests/unit/mockInterviewVideoFoundations.test.mjs`, `docs/mock-interview/specs/phase-6-video-interview.md`.
+- `frontend/next.config.ts` and `frontend/Dockerfile` **also still carry your uncommitted Phase 5 local edits**
+  (`microphone=(self)`; the `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED` arg/env). Both were preserved; separate them by hunk
+  when committing. `docker-compose.override.yml` is untouched (it does not set the new video flags).
+
+**Tests (2026-11-19, all automated; no real camera exists in 6.1):**
+
+| Test | Result |
+|---|---|
+| `backend/tests/test_mock_interview_video.py` (new) | 30 passed |
+| All mock-interview backend suites (flags, models, sessions, reports, voice, video), SQLite | **162 passed, 0 failed** (132 existing + 30 new) |
+| Full backend regression, SQLite (`pytest`, whole suite) | **332 passed, 12 skipped, 0 failed** (15 min 19 s). The 12 skips are the opt-in Postgres RLS tests (`test_rls_postgres.py`, `test_mock_interview_rls_postgres.py`), which need a throwaway Postgres |
+| Frontend `npm run test:unit` | **44/44 passed** (26 Phase 5 + 18 new) |
+| `npx tsc --noEmit` | passed |
+| `npm run lint` | 0 errors (2 pre-existing warnings in `e2e/smoke.spec.ts`, untouched) |
+| ruff on the touched Python | clean |
+| Live headers, `next dev` on a scratch port, both build flags on | `/dashboard/mock-interview` (and `/…/x`): `camera=(self), microphone=(self), geolocation=()`; `/dashboard`, `/login`: `camera=(), microphone=(self), geolocation=()`; one header per response |
+| Live headers, video build flag off | `camera=(), microphone=(self), geolocation=()` on every route checked |
+| Postgres `tests_pg_api` / RLS suites | **not run** (no schema, RLS or query change in 6.1) |
+
+**Self-review findings (fixed before handover):** the stt-rejection message for text sessions was briefly reworded;
+restored to the exact Phase 5 text so text behaviour is unchanged. No other issues found.
+
+**Known limitations of 6.1:**
+- A student who passes every server gate can create a video session through the API directly (the UI does not offer
+  it yet). The current room renders such a session like a text interview; that is safe (text in, text out) but not
+  the video experience. 6.3 adds the video lobby and room.
+- Client-side navigation keeps the previous document's `camera=()`; the 6.2 lobby must detect it and offer a reload.
+
+### Next recommended action (approved sequence)
+1. **Review and commit Phase 6.1** (your decision; stage by file and keep your local Phase 5 Docker/policy hunks
+   separate).
+2. **Phase 6.2:** camera permission, acknowledgement, device selection and preview (`cameraMedia.ts`, `useCamera`,
+   reload fallback for the client-side-navigation policy issue, unit tests with fake `mediaDevices`).
+3. Phases 6.3–6.6 as in `specs/phase-6-video-interview.md` §6.
+
+Phase 5's real-device checks (`specs/phase-5-voice-interview.md` §8) remain open and tracked above (D1: deferred).
 
 ## Where the work lives
 | | |
@@ -106,8 +166,8 @@ here until they are closed.
 | Worktree | `D:/Campus_Ai-mock-interview` |
 | Branch | `feature/ai-mock-interview`, based on `7f99e0b` |
 | Base commit `7f99e0b` | "Require admin approval for student self-registration" on `feature/student-approval` (local only; `main` is its parent `2d0d9ac`) |
-| Alembic head | **`b4d8f2a6c9e1`** (Phase 2, single head) → `a7c3e9d2b4f1`. Phases 3–5 added no migration |
-| Original folder | `D:/Campus_Ai`, on `feature/student-approval`; its `backend/.venv` is the interpreter used for worktree tests (the worktree has no venv or `.env`) |
+| Alembic head | **`b4d8f2a6c9e1`** (Phase 2, single head) → `a7c3e9d2b4f1`. Phases 3–5 and 6.1 added no migration |
+| Original folder | `D:/Campus_Ai`, on `feature/student-approval`. Phases ≤5 used its `backend/.venv`; Phase 6.1 tests ran with the worktree's own `backend/.venv` (the worktree has no `.env`) |
 
 ## Phase 5 — detailed record: initial implementation and verification (2026-11-19; committed in `34fd3a9`)
 

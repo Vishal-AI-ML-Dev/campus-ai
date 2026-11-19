@@ -15,6 +15,8 @@ import {
 	type InterviewOptions,
 	type InterviewSession,
 } from "./mockInterviewApi"
+import { MOCK_INTERVIEW_VIDEO_AVAILABLE } from "./mockInterviewFlags"
+import { visibleModes } from "./mockInterviewModes"
 
 const inputClass =
 	"w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30 dark:border-white/10 dark:bg-slate-900"
@@ -102,7 +104,8 @@ export default function InterviewSetupForm({
 		)
 	const opts = options.data
 	const jdMax = opts.job_description_max_chars
-	const modes = opts.modes ?? []
+	// Phase 6.1: "video" is dropped until the build flag is on and the video UI exists.
+	const modes = visibleModes(opts.modes, MOCK_INTERVIEW_VIDEO_AVAILABLE)
 	const voiceOffered = modes.some((m) => m.value === "voice")
 	const voice = voiceOffered && mode === "voice"
 

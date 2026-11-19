@@ -25,5 +25,6 @@ service: LangChain/LangGraph, Groq|Gemini, Qdrant), `frontend/` (Next.js 16 — 
 
 ## AI Mock Interview (in progress)
 State, plan and audits: `docs/mock-interview/` — start with `PROJECT_STATE.md`.
-Flags (all default off): backend `AI_MOCK_INTERVIEW_ENABLED`, `AI_MOCK_INTERVIEW_TENANT_IDS`; worker `MOCK_INTERVIEW_ENABLED`;
-frontend build `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED`.
+Flags (all default off): backend `AI_MOCK_INTERVIEW_ENABLED`, `AI_MOCK_INTERVIEW_TENANT_IDS`, `AI_MOCK_INTERVIEW_VOICE_ENABLED`,
+`AI_MOCK_INTERVIEW_VIDEO_ENABLED` + `AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS` (empty = no institute); worker `MOCK_INTERVIEW_ENABLED`;
+frontend build `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED`, `NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED`.

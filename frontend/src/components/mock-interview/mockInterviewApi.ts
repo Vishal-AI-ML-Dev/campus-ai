@@ -210,7 +210,7 @@ export function labelFor(choices: Choice[] | undefined, value: string): string {
 }
 
 export const TYPE_LABELS: Record<string, string> = { hr: "HR", technical: "Technical" }
-export const MODE_LABELS: Record<string, string> = { text: "Text", voice: "Voice" }
+export const MODE_LABELS: Record<string, string> = { text: "Text", voice: "Voice", video: "Video" }
 export const DIFFICULTY_LABELS: Record<string, string> = {
 	easy: "Beginner",
 	medium: "Intermediate",

@@ -263,3 +263,20 @@ Backend: same validation, sanitising, engine turn and Phase 4 report as typed an
 - **Worker and scoring: unchanged.** The worker never receives `source`, and its prompts already judge "substance, not
   grammar or accent". The report disclaimer is modality-independent ("…including typed or speech-to-text
   answers…"); it is built at read time.
+
+## Phase 6: video (camera self-view; 6.1 foundations)
+
+Design and decisions D1–D12: `specs/phase-6-video-interview.md`.
+
+- **Same engine, no worker change.** A video session is `mode = "video"` (already allowed by the Phase 2 CHECK
+  constraint, so no migration). The worker never receives `mode`; plan, turns, follow-ups, report and scoring are
+  identical to text and voice.
+- **Gate:** `mock_interview_video_enabled_for(user)` = master gate + `AI_MOCK_INTERVIEW_VIDEO_ENABLED` + institute in
+  `AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS` (empty = none) + student. Checked by `/options` and `POST /sessions`; not
+  re-checked for an existing session (D12).
+- **Answers:** `source = "stt"` is allowed for `SPOKEN_MODES = ("voice", "video")`.
+- **Media:** the camera stream (`audio: false`) is shown only in a local `<video>` element; nothing is recorded,
+  uploaded or analysed. Browser speech recognition owns the microphone, as in Phase 5.
+- **Browser policy:** `next.config.ts` `buildHeaderRules()` adds `camera=(self)` only on `/dashboard/mock-interview`
+  and only when both frontend build flags are on; other directives follow the global header. Client-side navigation
+  keeps the previous document's policy, so the 6.2 lobby needs a reload fallback.

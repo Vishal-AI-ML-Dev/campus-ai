@@ -49,6 +49,8 @@ from app.services import mock_interview_ai as engine
 logger = logging.getLogger("campus_ai.mock_interview")
 
 ACTIVE_STATUSES = ("setup", "in_progress")
+# Modes whose answers may be dictated in the browser (answer_source "stt").
+SPOKEN_MODES = ("voice", "video")
 TERMINAL_STATUSES = ("completed", "abandoned", "failed", "evaluating")
 MAX_SESSIONS_PER_DAY = 10
 HARD_MAX_TURNS = 30
@@ -510,9 +512,10 @@ def submit_answer(
             status_code=status.HTTP_409_CONFLICT,
             detail="This interview is not in progress",
         )
-    if source not in ("typed", "stt") or (source == "stt" and s.mode != "voice"):
+    if source not in ("typed", "stt") or (source == "stt" and s.mode not in SPOKEN_MODES):
         raise HTTPException(
             status_code=422,  # literal: the constant name differs across Starlette versions
+            # Unchanged Phase 5 wording: only text sessions reach this branch.
             detail="Spoken answers are only accepted in a voice interview",
         )
     turns = _turns(db, s)

@@ -10,9 +10,25 @@
 
 import type { NavItem, Role } from "@/lib/auth"
 import { useApiResource } from "@/lib/useApiResource"
+import { VIDEO_UI_READY, videoBuildEnabled } from "./mockInterviewModes"
 
 export const MOCK_INTERVIEW_BUILD_ENABLED =
 	process.env.NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED === "true"
+
+/**
+ * Phase 6 video build flag (default OFF). Needs the master build flag too.
+ * Literal process.env reads so Next inlines them at build time. The backend
+ * still decides per institute/role (AI_MOCK_INTERVIEW_VIDEO_* flags), and
+ * next.config.ts allows the camera only on the mock-interview route when
+ * this is on.
+ */
+export const MOCK_INTERVIEW_VIDEO_BUILD_ENABLED = videoBuildEnabled({
+	NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED: process.env.NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED,
+	NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED: process.env.NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED,
+})
+
+/** Video may be offered in the setup form (build flag AND the 6.3 UI exists). */
+export const MOCK_INTERVIEW_VIDEO_AVAILABLE = MOCK_INTERVIEW_VIDEO_BUILD_ENABLED && VIDEO_UI_READY
 
 export type MockInterviewStatus = { enabled: boolean }
 

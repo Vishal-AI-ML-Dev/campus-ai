@@ -1,4 +1,4 @@
-# AI Mock Interview — API (Phases 3–5)
+# AI Mock Interview — API (Phases 3–6.1)
 
 ## Where and who
 
@@ -129,6 +129,26 @@ behind the master flag and tenant allow-list).
 - Idempotency is unchanged: re-sending the same `turn_seq` + text is a no-op whatever its `source` (the first one is kept).
 - Turning the voice flag off blocks **new** voice sessions only; voice sessions already created can still be answered and finished.
 - The worker contract is unchanged (the transcript keys stay `{seq, topic, question, is_follow_up, answer}`).
+
+## Phase 6.1: video (additive value only, no new routes)
+
+Video = a camera self-view that never leaves the browser, plus the Phase 5 speech path. **The server never receives
+video or audio**, only reviewed answer text. Design: `specs/phase-6-video-interview.md`.
+
+Gate (all required; `mock_interview_video_enabled_for`): master switch, master tenant allow-list,
+`AI_MOCK_INTERVIEW_VIDEO_ENABLED`, the institute in `AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS` (**empty or invalid = no
+institute**), and the student role. Independent of the voice flag.
+
+| Where | Change | Notes |
+|---|---|---|
+| `GET /options` | `modes` may also contain `{value:"video", label:"Video"}`, after `text`/`voice` | Only when the gate passes for the caller |
+| `POST /sessions` | `mode?: "text" \| "voice" \| "video"` | `video` while the gate fails → **422** "Video interviews are not available"; no row created. Staff 403 / master-off 404 as before |
+| `POST /sessions/{id}/answer` | `source: "stt"` accepted for `voice` **and** `video` sessions | `stt` on a text session → 422 with the unchanged Phase 5 message |
+
+- No media route or field exists: extra keys such as `video`, `frame`, `audio` or `camera` are rejected (422, `extra="forbid"`).
+- Turning video off (switch or allow-list) blocks **new** video sessions only; existing ones can be answered, finished and reported (D12).
+- Session, history and report responses are unchanged (`mode` already carried the value). The report `disclaimer` is unchanged.
+- The worker contract is unchanged; `mode` is never sent to the worker.
 
 ## AI worker contract (internal, `X-Worker-Token`)
 
