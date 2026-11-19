@@ -1,6 +1,6 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-19 (Phase 6.1 video foundations implemented; not committed)._
+_Last updated: 2026-11-19 (Phase 6.2 camera infrastructure implemented; Phase 6.3 not started)._
 
 **This file is the single source of truth for status.** The "Status at a glance" block below is current. Everything
 after it is the dated, detailed history of each phase; where a historical section disagrees with this block, this
@@ -16,11 +16,11 @@ block wins.
 | 3 | Text HR + technical interview engine | Implemented, committed; live LLM not run | `926e59c` (docs `f8e3485`) |
 | 4 | Evaluation report + history | Implemented, committed; live LLM not run | `18d8db0` |
 | **5** | **Voice interview (browser speech)** | **Implemented, committed; automated/simulated tests pass; real-device tests pending** | `34fd3a9` |
-| **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations implemented, automated tests pass, NOT committed. 6.2–6.6 not started** | — |
+| **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented, automated + simulated-browser tests pass, not rendered by any page. 6.3–6.6 not started** | 6.1: `1ad5628` |
 | 7–10 | Coding, company/full simulation, faculty campaigns, final review | Not started | — |
 
-- **Branch:** `feature/ai-mock-interview` in the worktree `D:/Campus_Ai-mock-interview`. Phase 5 is committed as `34fd3a9`; a docs-only commit recording it follows. Nothing
-  is pushed, merged or deployed.
+- **Branch:** `feature/ai-mock-interview` in the worktree `D:/Campus_Ai-mock-interview`. Phase 5 is committed as `34fd3a9`; a docs-only commit recording it follows. Phase 6.1
+  is committed as `1ad5628`. Nothing is pushed, merged or deployed.
 - **Flags:** every flag defaults to OFF: `AI_MOCK_INTERVIEW_ENABLED`, `AI_MOCK_INTERVIEW_TENANT_IDS`,
   `AI_MOCK_INTERVIEW_VOICE_ENABLED` (Phase 5), `AI_MOCK_INTERVIEW_VIDEO_ENABLED` + `AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS`
   (Phase 6; empty list = no institute), the worker's `MOCK_INTERVIEW_ENABLED`, and the frontend build flags
@@ -90,7 +90,7 @@ frontend mock-interview components, `speechDictation.ts`, `useSpeech.ts`, `Voice
   - Voice in a deployed build needs a `microphone=(self)` policy.
 - Never commit: `.claude/` and `frontend/AGENTS.md`.
 
-### Phase 6.1 — video foundations (2026-11-19; implemented, NOT committed)
+### Phase 6.1 — video foundations (2026-11-19; committed `1ad5628`)
 
 Design and approved decisions D1–D12: `specs/phase-6-video-interview.md`. **D1: Phase 5 real-device tests are
 deferred, not waived as passed; Phase 5 stays incomplete.** The architecture audit and the design are done.
@@ -123,9 +123,25 @@ milestones build on.
   - `docs/mock-interview/specs/phase-6-video-interview-handoff.md` (marked superseded).
 - New: `backend/tests/test_mock_interview_video.py`, `frontend/src/components/mock-interview/mockInterviewModes.ts`,
   `frontend/tests/unit/mockInterviewVideoFoundations.test.mjs`, `docs/mock-interview/specs/phase-6-video-interview.md`.
-- `frontend/next.config.ts` and `frontend/Dockerfile` **also still carry your uncommitted Phase 5 local edits**
-  (`microphone=(self)`; the `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED` arg/env). Both were preserved; separate them by hunk
-  when committing. `docker-compose.override.yml` is untouched (it does not set the new video flags).
+- `frontend/next.config.ts` and `frontend/Dockerfile` **also carry your uncommitted Phase 5 local edits**
+  (`microphone=(self)`; the `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED` arg/env). Only the 6.1 hunks were committed; those
+  Phase 5 edits remain uncommitted in the working tree. `docker-compose.override.yml` is untouched (it does not set
+  the new video flags).
+
+**Commit `1ad5628`** "feat(mock-interview): add video interview foundations (phase 6.1)" (19 files, 901 insertions,
+26 deletions; nothing pushed).
+- Files were staged by name. For `frontend/next.config.ts` and `frontend/Dockerfile` the index was built from the
+  working file with the Phase 5 lines removed, so the commit holds only the 6.1 hunks. The three Phase 5 lines
+  (Dockerfile `ARG NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED=false`, the runner-stage `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED`
+  env line, and `microphone=(self)`) remain unstaged.
+- **Change made while preparing the commit:** one unit test in `mockInterviewVideoFoundations.test.mjs` asserted the
+  global `microphone=(self)`, which exists only in the uncommitted Phase 5 edit. It was rewritten to assert that the
+  video flags never change the global microphone directive, whatever it is. Re-run after the change: `npm run
+  test:unit` 44/44 on the working tree, and 44/44 on an export of the staged snapshot (global `microphone=()`);
+  ESLint clean on that file.
+- With only the committed files, the Docker video build arg cannot take effect: the video build flag also needs
+  `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED`, whose Dockerfile arg is part of the uncommitted Phase 5 edit. Video then
+  stays off (fail-safe).
 
 **Tests (2026-11-19, all automated; no real camera exists in 6.1):**
 
@@ -140,6 +156,7 @@ milestones build on.
 | ruff on the touched Python | clean |
 | Live headers, `next dev` on a scratch port, both build flags on | `/dashboard/mock-interview` (and `/…/x`): `camera=(self), microphone=(self), geolocation=()`; `/dashboard`, `/login`: `camera=(), microphone=(self), geolocation=()`; one header per response |
 | Live headers, video build flag off | `camera=(), microphone=(self), geolocation=()` on every route checked |
+| Note on the two live-header rows | Run against the **working tree**, which includes the uncommitted Phase 5 `microphone=(self)` edit. The committed tree's global header has `microphone=()`; no live-header check was run on the committed tree alone |
 | Postgres `tests_pg_api` / RLS suites | **not run** (no schema, RLS or query change in 6.1) |
 
 **Self-review findings (fixed before handover):** the stt-rejection message for text sessions was briefly reworded;
@@ -151,12 +168,67 @@ restored to the exact Phase 5 text so text behaviour is unchanged. No other issu
   the video experience. 6.3 adds the video lobby and room.
 - Client-side navigation keeps the previous document's `camera=()`; the 6.2 lobby must detect it and offer a reload.
 
+### Phase 6.2 — camera infrastructure (2026-11-19; implemented)
+
+Details: `specs/phase-6-video-interview.md` §5 (behaviour) and §8 (verification).
+
+**What 6.2 does:** reusable camera building blocks for the video lobby and room. **No page renders them yet**
+(`VIDEO_UI_READY` is still `false`), so students see no change. No backend, API, schema, worker or configuration
+change; `API.md` is unchanged.
+- `cameraMedia.ts`:
+  - React-free `CameraController`: start only on request, one request at a time, stale-request guard, old stream
+    stopped before a new one, `pagehide`/unmount/off stop every track;
+  - track `ended`/`mute` and `devicechange` handling, saved-camera fallback;
+  - error mapping, secure-context and Permissions-Policy detection; video only (`audio: false`).
+- `useCamera.ts`: React binding; the mount effect only attaches listeners.
+- `CameraPreview.tsx`, `CameraDeviceSelect.tsx`, `VideoPrivacyNotice.tsx`, `VideoLobby.tsx`: preview with
+  "Camera on" indicator, camera picker, privacy notice with per-session acknowledgement, and lobby. Continue needs
+  a live camera AND the acknowledgement.
+- Reload fallback: "Reload to enable camera" (student-initiated full reload, at most once per tab).
+
+**Privacy:**
+- The stream stays in browser memory and is shown only in a local `<video>` element.
+- Nothing records, captures, encodes, uploads or analyses it. No `MediaRecorder`, canvas, `captureStream` or
+  `toDataURL`; the 6.1 static guard covers the new files.
+- No face, emotion, gaze or identity features, and no imports from the face features.
+- Only the chosen camera id is stored, in `localStorage` on the device.
+
+**Files (6.2):**
+- New:
+  - `frontend/src/components/mock-interview/{cameraMedia.ts,useCamera.ts,CameraPreview.tsx,CameraDeviceSelect.tsx,VideoPrivacyNotice.tsx,VideoLobby.tsx}`;
+  - `frontend/tests/unit/cameraMedia.test.mjs`.
+- Docs updated: `specs/phase-6-video-interview.md`, `AI_INTERVIEW_ARCHITECTURE.md`, `IMPLEMENTATION_PLAN.md`, this
+  file.
+- Phase 6.1 commit `1ad5628` is recorded in the project documentation (this file, the Phase 6 spec and the plan).
+
+**Tests (2026-11-19):**
+
+| Test | Result |
+|---|---|
+| `frontend/tests/unit/cameraMedia.test.mjs` (new, fake media APIs) | **46/46 passed** |
+| All frontend unit tests (`npm run test:unit`) | **90/90 passed** (44 before + 46 new) |
+| Mutation check on a scratch copy (3 deliberate bugs) | each caught (2 / 2 / 3 failing tests) |
+| `npx tsc --noEmit` | passed |
+| ESLint, touched files / full `npm run lint` | 0 problems / 0 errors, 2 pre-existing warnings (`e2e/smoke.spec.ts`) |
+| Scratch browser check, real Chromium with its **fake** camera device | **15/15 passed** (spec §8) |
+| Backend suites | not run: no backend change in 6.2 (6.1 results stand: 162 mock-interview, 332 full) |
+| **Real camera / real devices** | **not done; pending** |
+
+**Known limitations / open points:**
+- The components have been type-checked, linted and their logic unit-tested, but not rendered in a browser (no page
+  uses them until 6.3).
+- On browsers without a Permissions-Policy API (Firefox, Safari), a policy block looks like a normal denial
+  (`not-allowed`) unless the browser throws `SecurityError`; the reload button is then not offered.
+- The camera button does not wait for the privacy acknowledgement (Continue does). If you want the camera to be
+  usable only after the acknowledgement, that is a small 6.3 change.
+- The 6.1 limitations still apply (a video session created through the API directly renders like a text session).
+
 ### Next recommended action (approved sequence)
-1. **Review and commit Phase 6.1** (your decision; stage by file and keep your local Phase 5 Docker/policy hunks
-   separate).
-2. **Phase 6.2:** camera permission, acknowledgement, device selection and preview (`cameraMedia.ts`, `useCamera`,
-   reload fallback for the client-side-navigation policy issue, unit tests with fake `mediaDevices`).
-3. Phases 6.3–6.6 as in `specs/phase-6-video-interview.md` §6.
+1. Phase 6.1 is committed (`1ad5628`) and recorded in the project documentation. Phase 6.2 is implemented.
+2. **Phase 6.3 — NOT started; needs your go-ahead:** `VideoInterviewRoom`, rendering `VideoLobby` for video
+   sessions, one `useCamera()` owner in the workspace, continuing without camera after start (D7), stopping tracks
+   on finish/abandon/terminal status, then `VIDEO_UI_READY = true`.
+3. Phases 6.4–6.6 as in `specs/phase-6-video-interview.md` §6.
 
 Phase 5's real-device checks (`specs/phase-5-voice-interview.md` §8) remain open and tracked above (D1: deferred).
 

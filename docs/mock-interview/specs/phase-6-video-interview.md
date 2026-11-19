@@ -1,6 +1,7 @@
 # Phase 6 — AI Video Interview (design specification)
 
-Status: **design approved 2026-11-19; Phase 6.1 (foundations) implemented, not committed.** Phases 6.2–6.6 not started.
+Status: **design approved 2026-11-19; Phase 6.1 (foundations) implemented and committed as `1ad5628`; Phase 6.2
+(camera infrastructure) implemented and not yet used by any page.** Phases 6.3–6.6 not started.
 Supersedes the handoff `phase-6-video-interview-handoff.md` (kept for history). Overall status:
 `../PROJECT_STATE.md`.
 
@@ -85,28 +86,79 @@ A student may create a video session only when **all** hold (`mock_interview_vid
   `MOCK_INTERVIEW_VIDEO_AVAILABLE` (= build flag AND `VIDEO_UI_READY`). `VIDEO_UI_READY` is `false` in 6.1, so video
   is **never offered in the UI yet**; 6.3 flips it once the lobby and room exist. `MODE_LABELS` knows "Video".
 
-## 5. Camera behaviour (6.2–6.3, not implemented yet)
+## 5. Camera behaviour (implemented in 6.2; rendered by a page from 6.3)
 
-- Starts only from an explicit click ("Turn on camera") in the lobby, after the acknowledgement (D8). Never on load,
-  never automatically after a refresh.
-- `getUserMedia({ video: { deviceId?, width: {ideal: 640}, height: {ideal: 360} }, audio: false })`.
-- Camera off = `track.stop()` (light goes off); on = new request.
-- Stop all tracks on finish, abandon, terminal status, unmount, `pagehide`, device switch (old stream first).
-- One stream owner at the workspace level so lobby → room does not re-open the camera.
-- "Camera on" indicator whenever a live track exists; camera and mic status in the room toolbar.
-- `deviceId` remembered in `localStorage` (try/catch), never sent to the server.
-- Errors mapped: `NotAllowedError`, `NotFoundError`, `NotReadableError`, `OverconstrainedError` (fall back to the
-  default camera), insecure context (`mediaDevices` missing on plain-http LAN), policy-blocked (reload fallback),
-  `devicechange`, track `ended` / `mute`.
-- Browser notes: device labels are empty until permission is granted; iOS Safari needs
-  `playsInline muted autoPlay`; Firefox/Brave have a camera but no usable speech recognition (typing fallback).
+All files are in `frontend/src/components/mock-interview/`.
+
+**`cameraMedia.ts`** (no React; browser globals injected through `CameraEnv`, so it is unit-tested with fakes):
+- `cameraSupport()`: `insecure-context` (checked first; `mediaDevices` is missing on plain-http LAN addresses),
+  `unsupported`, or `ok`.
+- `cameraPolicyAllowed()`: `document.permissionsPolicy` / `featurePolicy` `.allowsFeature("camera")` where the
+  browser exposes it (Chromium), else `null` (unknown).
+- `cameraConstraints(deviceId?)` = `{ video: { width: {ideal: 640}, height: {ideal: 360}, deviceId?: {exact} },
+  audio: false }`. **Audio is never requested.**
+- `classifyCameraError()` / `describeCameraError()`: `NotAllowedError` → `not-allowed` (or `policy-blocked` when the
+  policy API says the camera is blocked), `SecurityError` → `security` (or `policy-blocked`), `NotFoundError` →
+  `not-found`, `NotReadableError`/`AbortError` → `in-use`, `OverconstrainedError` → `overconstrained`, `TypeError` →
+  `unsupported`, else `unknown`; plus `insecure-context`, `device-lost` and `policy-still-blocked`.
+- `stopStream()` stops every track, each in its own try. `listCameras()` returns `videoinput` devices only, with
+  numbered names until permission reveals labels.
+- `lobbyReady(state, acknowledged)` = acknowledged AND status `on` AND a live video track.
+- **`CameraController`** owns at most one stream:
+  - the camera is requested only by `start()`; the constructor and `attach()` never request it;
+  - concurrent `start()` calls share one request;
+  - stale guard: a request that finishes after `stop()`, a newer request or `detach()` is stopped at once;
+  - the old stream is stopped **before** a new one is requested (switching camera, restarting);
+  - a saved camera that no longer exists (`OverconstrainedError`/`NotFoundError` with an exact id) is forgotten and
+    the default camera is tried once, with a notice;
+  - track `ended` (or `devicechange` with no live track) → `device-lost` error, tracks stopped; track
+    `mute`/`unmute` → a notice only;
+  - `devicechange` refreshes the list; a selected camera that disappears while off is forgotten, with a notice;
+  - `stop()`, `detach()` (unmount) and `pagehide` stop every track;
+  - if the policy API says the camera is blocked, it fails with `policy-blocked` **without** calling `getUserMedia`.
+- The chosen camera's `deviceId` is kept in `localStorage` (`mock-interview:camera-device`, try/catch) on this device
+  only; it is never sent to the server.
+
+**Reload fallback** (the client-side-navigation caveat in §4): on `policy-blocked` or `security` the lobby offers
+**"Reload to enable camera"**, which stops the camera, sets a `sessionStorage` marker and calls
+`window.location.reload()` (a full load of the same mock-interview URL, so the route's `camera=(self)` applies).
+It is never automatic. If the camera is still policy-blocked after that reload, the error becomes
+`policy-still-blocked` and no reload button is offered again (no loop). A working camera clears the marker. The
+global camera, microphone and geolocation policies are unchanged.
+
+**`useCamera.ts`**: `useSyncExternalStore` over one `CameraController`; the mount effect only calls `attach()` and
+the cleanup calls `detach()`. Returns the state plus `start`, `stop`, `switchDevice`, `refreshDevices` and
+`reloadToEnableCamera`. Meant to be called once in the interview workspace (6.3) and passed down, so the lobby
+and the room share one stream.
+
+**Components** (props only; no API calls):
+- `CameraPreview`: `<video autoPlay muted playsInline>` with `srcObject`, mirrored self-view, "Camera on · preview
+  only" indicator, off / starting / error placeholders; on unmount it detaches `srcObject` (the owner stops tracks).
+- `CameraDeviceSelect`: "Default camera" plus the listed cameras; hints when names are hidden before permission or
+  no camera is detected.
+- `VideoPrivacyNotice`: preview only; not recorded, not uploaded, not analysed (no face, emotion, eye or identity
+  analysis); only reviewed answer text is saved; the browser's speech service may process microphone audio; plus
+  the per-session acknowledgement checkbox (component state; nothing sent to the server).
+- `VideoLobby`: preview, Turn on / Turn off camera, camera picker, readiness checklist, privacy notice, reload
+  fallback and notices. **Continue** is enabled only when `lobbyReady()` (live camera AND acknowledgement). The
+  camera button does not wait for the acknowledgement; the camera starts only when it is clicked. On mount the
+  lobby only lists cameras (no permission prompt, no stream).
+
+**Not yet (6.3+):** no page renders these components; `VIDEO_UI_READY` stays `false`. Continuing without camera after
+an interview has started (D7) belongs to the room (6.3). Status of the camera and microphone in the room toolbar,
+stopping tracks on finish/abandon/terminal status: 6.3–6.4.
+
+**Browser notes:** device labels are empty until permission is granted (Chrome also hides device ids); iOS Safari
+needs `playsInline muted autoPlay`; Firefox/Brave have a camera but no usable speech recognition (typing fallback);
+a camera can be held by another app (`NotReadableError`); mobile browsers may pause (`mute`) or end the camera
+track in the background.
 
 ## 6. Milestones
 
 | Milestone | Scope | Status |
 |---|---|---|
-| 6.1 | Spec, backend flags + gate, `video` in schema/options, `stt` for video, frontend build flag, Dockerfile arg, route-scoped camera policy, tests, docs | **Implemented, not committed** |
-| 6.2 | `cameraMedia.ts` + `useCamera`, acknowledgement, device selection, preview, error mapping, reload fallback; unit tests with fake `mediaDevices` | Not started |
+| 6.1 | Spec, backend flags + gate, `video` in schema/options, `stt` for video, frontend build flag, Dockerfile arg, route-scoped camera policy, tests, docs | **Implemented, committed `1ad5628`** |
+| 6.2 | `cameraMedia.ts` + `useCamera`, acknowledgement, device selection, preview, error mapping, reload fallback; unit tests with fake `mediaDevices` | **Implemented**; not rendered by any page; real-device tests pending |
 | 6.3 | `VideoLobby`, `VideoInterviewRoom` (interviewer tile, toolbar, timer, status, end/abandon), refresh recovery, `VIDEO_UI_READY = true` | Not started |
 | 6.4 | Wire to existing TTS / dictation / answer / retry-next / finish | Not started |
 | 6.5 | Report + history: "Video" label, frontend-only camera note (D9) | Not started |
@@ -125,3 +177,33 @@ A student may create a video session only when **all** hold (`mock_interview_vid
 | ESLint (touched files) | 0 problems |
 | ruff (touched Python) | clean |
 | Real camera / browser | **not applicable in 6.1** (no camera code) |
+
+The live-header rows above were run on the working tree, which also had the uncommitted Phase 5
+`microphone=(self)` edit; the committed global header has `microphone=()`. Before commit `1ad5628`, one unit test
+that asserted the global `microphone=(self)` was made independent of it; afterwards `npm run test:unit` passed 44/44
+on both the working tree and an export of the staged snapshot. Details: `../PROJECT_STATE.md` → Phase 6.1.
+
+## 8. Phase 6.2 verification record (2026-11-19)
+
+| Check | Result |
+|---|---|
+| New `frontend/tests/unit/cameraMedia.test.mjs` (fake `mediaDevices`, tracks, streams, storage, window) | 46/46 passed |
+| All frontend unit tests (`npm run test:unit`) | 90/90 passed (44 before + 46 new) |
+| Mutation check (scratch copy): no stop-before-request / no stale guard / `attach()` starting the camera | caught by 2 / 2 / 3 failing tests |
+| `npx tsc --noEmit` | passed |
+| ESLint, touched files | 0 problems; full `npm run lint`: 0 errors, 2 pre-existing warnings (`e2e/smoke.spec.ts`) |
+| Scratch browser check: real Chromium (Playwright, installed build 1248) with Chromium's **fake** camera device, `cameraMedia.ts` transpiled, local server sending the route policies | 15/15 passed (below) |
+| Backend | not run: no backend change in 6.2 |
+| Real camera, real devices | **not done** (pending; see 6.6 checklist) |
+
+Scratch browser check (simulated camera, not a real device):
+- with `camera=(self)`: policy API reports allowed; `start()` goes live; one video track, no audio track; the fake
+  device honours 640×360; labelled cameras listed after permission; chosen camera saved; `stop()` and `pagehide`
+  end every track;
+- page loaded with `camera=()`, then `history.pushState` to `/dashboard/mock-interview` (like `next/link`): the
+  policy stays blocked, the controller reports `policy-blocked` without requesting, and a raw `getUserMedia` call is
+  refused by Chromium (`NotAllowedError`);
+- after a full reload of that URL the route policy applies and the camera starts; the reload marker is cleared;
+- still blocked after a reload: `policy-still-blocked`, no reload button offered.
+
+The React components were type-checked and linted but not rendered in a browser: no page uses them until 6.3.

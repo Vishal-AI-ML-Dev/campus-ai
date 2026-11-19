@@ -280,3 +280,16 @@ Design and decisions D1–D12: `specs/phase-6-video-interview.md`.
 - **Browser policy:** `next.config.ts` `buildHeaderRules()` adds `camera=(self)` only on `/dashboard/mock-interview`
   and only when both frontend build flags are on; other directives follow the global header. Client-side navigation
   keeps the previous document's policy, so the 6.2 lobby needs a reload fallback.
+
+### Phase 6.2: camera infrastructure (not yet rendered)
+
+- `cameraMedia.ts` holds all camera logic without React (`CameraController`, error mapping, constraints, device
+  list, policy detection, `lobbyReady`); `useCamera.ts` binds one controller to React with `useSyncExternalStore`.
+  One owner per interview workspace, so the lobby and the future room share a single stream.
+- The camera is requested only from a click (`start()`), video only (`audio: false`); the old stream is stopped
+  before a new one is requested; unmount, `pagehide` and "Turn off" stop every track; late requests are stopped.
+- UI: `CameraPreview`, `CameraDeviceSelect`, `VideoPrivacyNotice`, `VideoLobby`. No API calls; the acknowledgement
+  and camera choice never leave the browser (the choice is in `localStorage`).
+- Client-side navigation keeps the previous document's `camera=()`; the lobby offers a one-time, student-initiated
+  "Reload to enable camera" (sessionStorage marker prevents loops).
+- Not wired into `page.tsx`; `VIDEO_UI_READY` is still `false`. No backend, API, worker or schema change.
