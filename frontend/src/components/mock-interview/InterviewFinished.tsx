@@ -42,6 +42,14 @@ export default function InterviewFinished({
 				</p>
 			</div>
 
+			{session.mode === "video" ? (
+				<p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-white/10 dark:bg-slate-800/50 dark:text-slate-300">
+					Video interview: your camera was only a preview on your screen. It was not recorded, uploaded or
+					analysed, and it played no part in this feedback. The feedback is based only on the answer text you
+					submitted.
+				</p>
+			) : null}
+
 			{hasReport ? <InterviewReportPanel sessionId={session.id} exists={reportExists} /> : null}
 
 			{session.turns.length > 0 ? (

@@ -1,6 +1,6 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-19 (Phase 6.2 camera infrastructure implemented; Phase 6.3 not started)._
+_Last updated: 2026-11-19 (Phase 6.3 video lobby, room and lifecycle implemented; Phase 6.4 not started)._
 
 **This file is the single source of truth for status.** The "Status at a glance" block below is current. Everything
 after it is the dated, detailed history of each phase; where a historical section disagrees with this block, this
@@ -16,7 +16,7 @@ block wins.
 | 3 | Text HR + technical interview engine | Implemented, committed; live LLM not run | `926e59c` (docs `f8e3485`) |
 | 4 | Evaluation report + history | Implemented, committed; live LLM not run | `18d8db0` |
 | **5** | **Voice interview (browser speech)** | **Implemented, committed; automated/simulated tests pass; real-device tests pending** | `34fd3a9` |
-| **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented, automated + simulated-browser tests pass, not rendered by any page. 6.3–6.6 not started** | 6.1: `1ad5628` |
+| **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented. 6.3 video lobby, room and lifecycle implemented, `VIDEO_UI_READY = true`, automated + simulated-browser tests pass. Real-device tests pending; 6.4–6.6 not started** | 6.1: `1ad5628` |
 | 7–10 | Coding, company/full simulation, faculty campaigns, final review | Not started | — |
 
 - **Branch:** `feature/ai-mock-interview` in the worktree `D:/Campus_Ai-mock-interview`. Phase 5 is committed as `34fd3a9`; a docs-only commit recording it follows. Phase 6.1
@@ -223,12 +223,74 @@ change; `API.md` is unchanged.
   usable only after the acknowledgement, that is a small 6.3 change.
 - The 6.1 limitations still apply (a video session created through the API directly renders like a text session).
 
+### Phase 6.3 — video lobby, room and session lifecycle (2026-11-19; implemented)
+
+Details: `specs/phase-6-video-interview.md` §5a (design) and §9 (verification, remaining scope).
+
+**What 6.3 does:** the student-facing video interview, end to end, behind the existing gates.
+- `VideoInterviewWorkspace` is the single camera owner. It shows the lobby, then the room, then the finished view,
+  with the same stream across lobby and room, and stops the camera on any terminal status.
+- `VideoInterviewRoom` contains:
+  - the interviewer tile, with a speaking animation from the existing TTS state;
+  - the candidate camera;
+  - the toolbar: Mute mic, Stop/Start camera, Mute voice, timer, End, and camera/mic/offline status;
+  - the Phase 5 `VoiceAnswerBox` and the retry path.
+- Session API, idempotency, lease, timer and recovery are reused unchanged.
+- The setup form can create video sessions. `VIDEO_UI_READY = true`, so video appears only when the build flag,
+  server flags, video allow-list and student role all allow it. Defaults stay off.
+- D9 note on finished video interviews; history label "· Video".
+- **No backend, API, schema, migration, worker, scoring, Docker or configuration change.**
+
+**Camera / microphone:**
+- The camera is requested only from clicks, video-only; after a refresh it stays off until a click.
+- A camera failure after the start leaves the interview running (D7).
+- Finish, Cancel, any terminal status and unmount stop every track.
+- "Mute mic" stops dictation through new optional `VoiceAnswerBox` props (unused by the voice room).
+- No second microphone stream.
+
+**Privacy:** unchanged from 6.2. Nothing records, captures, uploads or analyses video; only reviewed answer text is
+sent. The static guards cover the new files.
+
+**Files (6.3):**
+- New:
+  - `frontend/src/components/mock-interview/{VideoInterviewWorkspace.tsx,VideoInterviewRoom.tsx,videoInterviewFlow.ts}`;
+  - `frontend/tests/unit/videoInterviewFlow.test.mjs` and `frontend/tests/unit/helpers/fakeMedia.mjs`.
+- Modified:
+  - `frontend/src/app/dashboard/mock-interview/page.tsx` (video routing);
+  - `InterviewSetupForm.tsx` (video choice), `VoiceAnswerBox.tsx` (optional `micMuted`/`onMicStateChange`),
+    `InterviewRoom.tsx` (`export` on `Countdown` only), `mockInterviewApi.ts` (create `mode` type),
+    `mockInterviewModes.ts` (`VIDEO_UI_READY = true`), `InterviewFinished.tsx` (D9 note) and
+    `InterviewHistory.tsx` (label), all in `frontend/src/components/mock-interview/`;
+  - `frontend/tests/unit/{cameraMedia,mockInterviewVideoFoundations}.test.mjs`: the readiness assertions were
+    updated to the 6.3 state.
+- Docs: the Phase 6 spec, the architecture, the plan and this file.
+
+**Tests (2026-11-19):**
+
+| Test | Result |
+|---|---|
+| `frontend/tests/unit/videoInterviewFlow.test.mjs` (new) | **24/24 passed** |
+| All frontend unit tests (`npm run test:unit`) | **114/114 passed** (90 before + 24 new) |
+| `npx tsc --noEmit` | passed |
+| ESLint, touched files | 0 problems |
+| Browser smoke test, final code: Chromium with a **fake** camera and fake permission UI, fake speech APIs, scripted engine (spec §9) | **34/34 passed** |
+| Backend suites | not run: no backend change in 6.3 |
+| **Real camera / microphone / devices** | **not done; pending** |
+
+**Known limitations:**
+- Real devices are untested; the browser check used Chromium's fake camera and injected speech fakes.
+- Pre-existing, outside Mock Interview: at 390 px the dashboard shell already scrolls horizontally (about 489 px,
+  text room too). The video room adds nothing beyond that.
+- Firefox/Safari have no Permissions-Policy API, so a policy block there looks like a denial and the reload button
+  is not offered.
+- `VideoInterviewRoom` duplicates the room actions of `InterviewRoom` (kept separate so text/voice are untouched).
+
 ### Next recommended action (approved sequence)
-1. Phase 6.1 is committed (`1ad5628`) and recorded in the project documentation. Phase 6.2 is implemented.
-2. **Phase 6.3 — NOT started; needs your go-ahead:** `VideoInterviewRoom`, rendering `VideoLobby` for video
-   sessions, one `useCamera()` owner in the workspace, continuing without camera after start (D7), stopping tracks
-   on finish/abandon/terminal status, then `VIDEO_UI_READY = true`.
-3. Phases 6.4–6.6 as in `specs/phase-6-video-interview.md` §6.
+1. Phase 6.1 is committed (`1ad5628`) and recorded in the project documentation. Phases 6.2 and 6.3 are
+   implemented.
+2. **Phase 6.4 — NOT started; needs your go-ahead:** real-device verification of camera + browser speech together
+   and the remaining items in `specs/phase-6-video-interview.md` §9 "Phase 6.4 remaining scope".
+3. Phase 6.6 as in `specs/phase-6-video-interview.md` §6.
 
 Phase 5's real-device checks (`specs/phase-5-voice-interview.md` §8) remain open and tracked above (D1: deferred).
 

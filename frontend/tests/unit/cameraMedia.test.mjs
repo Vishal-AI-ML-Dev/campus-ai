@@ -648,14 +648,20 @@ describe("Phase 6.2 guards and regressions", () => {
 		assert.match(src["VideoLobby.tsx"], /onClick=\{camera\.reloadToEnableCamera\}/)
 	})
 
-	it("camera UI is not wired into any page yet (Phase 6.3)", () => {
-		assert.equal(VIDEO_UI_READY, false)
+	it("camera UI is used only by the video workspace and room (Phase 6.3)", () => {
+		assert.equal(VIDEO_UI_READY, true)
 		const page = read(ROOT, "src", "app", "dashboard", "mock-interview", "page.tsx")
-		const others = Object.entries(src).filter(
-			([f]) => !["VideoLobby.tsx", "CameraPreview.tsx", "CameraDeviceSelect.tsx", "VideoPrivacyNotice.tsx", "useCamera.ts", "cameraMedia.ts"].includes(f),
-		)
-		for (const text of [page, ...others.map(([, t]) => t)]) {
-			assert.doesNotMatch(text, /VideoLobby|CameraPreview|CameraDeviceSelect|VideoPrivacyNotice|useCamera|cameraMedia/)
+		// The page only knows the workspace; the camera pieces stay inside the video files.
+		assert.match(page, /VideoInterviewWorkspace/)
+		assert.doesNotMatch(page, /VideoLobby|CameraPreview|CameraDeviceSelect|VideoPrivacyNotice|useCamera|cameraMedia/)
+		const videoFiles = [
+			"VideoLobby.tsx", "CameraPreview.tsx", "CameraDeviceSelect.tsx", "VideoPrivacyNotice.tsx", "useCamera.ts",
+			"cameraMedia.ts", "VideoInterviewWorkspace.tsx", "VideoInterviewRoom.tsx", "videoInterviewFlow.ts",
+		]
+		const others = Object.entries(src).filter(([f]) => !videoFiles.includes(f))
+		assert.ok(others.length >= 10)
+		for (const [f, text] of others) {
+			assert.doesNotMatch(text, /VideoLobby|CameraPreview|CameraDeviceSelect|VideoPrivacyNotice|useCamera|cameraMedia/, f)
 		}
 	})
 
@@ -667,11 +673,13 @@ describe("Phase 6.2 guards and regressions", () => {
 		assert.doesNotMatch(n, /fetch\(|api\.|mockInterviewApi/)
 	})
 
-	it("text and voice modes are unchanged; video still hidden", () => {
+	it("text and voice modes are unchanged; video hidden whenever the build flag is off", () => {
 		const text = { value: "text", label: "Text" }
 		const voice = { value: "voice", label: "Voice" }
-		assert.deepEqual(visibleModes([text, voice, { value: "video", label: "Video" }], VIDEO_UI_READY), [text, voice])
-		assert.deepEqual(visibleModes([text], VIDEO_UI_READY), [text])
+		const buildFlagOff = false // MOCK_INTERVIEW_VIDEO_AVAILABLE with the default build
+		assert.deepEqual(visibleModes([text, voice, { value: "video", label: "Video" }], buildFlagOff), [text, voice])
+		assert.deepEqual(visibleModes([text], buildFlagOff), [text])
+		assert.deepEqual(visibleModes([text, voice], VIDEO_UI_READY), [text, voice])
 	})
 
 	it("camera policy stays route-scoped and the microphone policy is untouched", () => {

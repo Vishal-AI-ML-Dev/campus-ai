@@ -35,8 +35,8 @@ function formatClock(totalSeconds: number): string {
 	return `${m}:${String(s % 60).padStart(2, "0")}`
 }
 
-/** Counts down locally from the server's remaining_seconds (re-keyed on every update). */
-function Countdown({ seconds }: { seconds: number }) {
+/** Counts down locally from the server's remaining_seconds (re-keyed on every update). Reused by the video room. */
+export function Countdown({ seconds }: { seconds: number }) {
 	const [startedAt] = useState(() => Date.now())
 	const [now, setNow] = useState(startedAt)
 	useEffect(() => {

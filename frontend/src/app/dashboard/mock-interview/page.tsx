@@ -25,6 +25,7 @@ import InterviewHistory from "@/components/mock-interview/InterviewHistory"
 import InterviewInstructions from "@/components/mock-interview/InterviewInstructions"
 import InterviewRoom from "@/components/mock-interview/InterviewRoom"
 import InterviewSetupForm from "@/components/mock-interview/InterviewSetupForm"
+import VideoInterviewWorkspace from "@/components/mock-interview/VideoInterviewWorkspace"
 import type { HistoryItem, InterviewSession } from "@/components/mock-interview/mockInterviewApi"
 import MockInterviewUnavailableNotice from "@/components/mock-interview/MockInterviewUnavailableNotice"
 import {
@@ -105,6 +106,10 @@ function InterviewWorkspace() {
 				<InterviewHistory onOpen={setViewing} />
 			</div>
 		)
+	// Phase 6.3: a video session (lobby -> room -> finished) has its own
+	// workspace, the single owner of the camera. Text and voice are unchanged.
+	if (session.mode === "video")
+		return <VideoInterviewWorkspace session={session} onChange={setLocal} onNew={() => setLocal(null)} />
 	if (session.status === "setup" || session.awaiting === "start")
 		return <InterviewInstructions session={session} onChange={setLocal} />
 	if (session.status === "in_progress")

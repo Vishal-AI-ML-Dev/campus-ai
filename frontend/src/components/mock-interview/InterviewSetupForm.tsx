@@ -108,6 +108,10 @@ export default function InterviewSetupForm({
 	const modes = visibleModes(opts.modes, MOCK_INTERVIEW_VIDEO_AVAILABLE)
 	const voiceOffered = modes.some((m) => m.value === "voice")
 	const voice = voiceOffered && mode === "voice"
+	// Phase 6.3: video is in `modes` only when the server offers it AND this build has the video UI.
+	const videoOffered = modes.some((m) => m.value === "video")
+	const video = videoOffered && mode === "video"
+	const modeChoice = voiceOffered || videoOffered
 
 	async function onSubmit(e: React.FormEvent) {
 		e.preventDefault()
@@ -128,7 +132,7 @@ export default function InterviewSetupForm({
 				resume_id: resumeId ? Number(resumeId) : undefined,
 				job_description: jd.trim() || undefined,
 				language,
-				...(voice ? { mode: "voice" as const } : {}),
+				...(voice ? { mode: "voice" as const } : video ? { mode: "video" as const } : {}),
 			})
 			onCreated(created)
 		} catch (err) {
@@ -158,7 +162,7 @@ export default function InterviewSetupForm({
 			</div>
 
 			<ChoiceGroup legend="Interview type" name="type" options={opts.interview_types} value={type} onChange={setType} />
-			{voiceOffered ? (
+			{modeChoice ? (
 				<div>
 					<ChoiceGroup legend="Answer by" name="mode" options={modes} value={mode} onChange={setMode} />
 					{voice ? (
@@ -167,6 +171,14 @@ export default function InterviewSetupForm({
 							recommended; you can always type). Speech is converted to text by your browser, and some
 							browsers send audio to their speech service to do this. Campus AI stores only the text you
 							submit, never audio; unsent text stays in this browser tab until you submit it.
+						</p>
+					) : null}
+					{video ? (
+						<p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+							A video practice interview: you see yourself on camera while the interviewer reads each
+							question aloud, and you answer by speaking or typing. Your camera is only a preview on this
+							screen. It is never recorded, uploaded or analysed. Campus AI stores only the answer text you
+							submit.
 						</p>
 					) : null}
 				</div>

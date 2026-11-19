@@ -34,6 +34,8 @@ export default function VoiceAnswerBox({
 	onBeforeListen,
 	onHearQuestion,
 	speaking = false,
+	micMuted = false,
+	onMicStateChange,
 }: {
 	session: InterviewSession
 	busy: boolean
@@ -44,6 +46,14 @@ export default function VoiceAnswerBox({
 	/** Re-read the question aloud; undefined when speech output is unavailable. */
 	onHearQuestion?: () => void
 	speaking?: boolean
+	/**
+	 * Phase 6.3 (video room only): the student muted the microphone in the room
+	 * toolbar. Stops dictation and disables Start speaking; typing still works.
+	 * Voice interviews never pass it, so their behaviour is unchanged.
+	 */
+	micMuted?: boolean
+	/** Phase 6.3 (video room only): reports the dictation state for the toolbar. */
+	onMicStateChange?: (state: { supported: boolean; listening: boolean; blocked: boolean }) => void
 }) {
 	const seq = session.current_turn_seq ?? 0
 	const key = draftKey(session.id, seq)
@@ -80,10 +90,15 @@ export default function VoiceAnswerBox({
 	const { listening, stop } = rec
 
 	// Never keep the mic open while an answer is sending or the interview is
-	// ending, or once the answer is full (further speech would be cut off).
+	// ending, or once the answer is full (further speech would be cut off),
+	// or when the student muted the microphone (video room).
 	useEffect(() => {
-		if (listening && (busy || limitHit)) stop()
-	}, [busy, limitHit, listening, stop])
+		if (listening && (busy || limitHit || micMuted)) stop()
+	}, [busy, limitHit, micMuted, listening, stop])
+
+	useEffect(() => {
+		onMicStateChange?.({ supported: rec.supported, listening, blocked: rec.blocked })
+	}, [onMicStateChange, rec.supported, listening, rec.blocked])
 
 	function clear() {
 		update("")
@@ -100,6 +115,7 @@ export default function VoiceAnswerBox({
 			stop()
 			return
 		}
+		if (micMuted) return
 		setLimitHit(false)
 		onBeforeListen()
 		rec.listen()
@@ -127,7 +143,8 @@ export default function VoiceAnswerBox({
 					<button
 						type="button"
 						onClick={toggleMic}
-						disabled={!listening && (busy || full || rec.blocked)}
+						disabled={!listening && (busy || full || rec.blocked || micMuted)}
+						title={!listening && micMuted ? "Microphone is muted. Unmute it in the toolbar." : undefined}
 						className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white disabled:opacity-50 ${
 							listening ? "bg-red-600 hover:bg-red-700" : "bg-indigo-600 hover:bg-indigo-700"
 						}`}

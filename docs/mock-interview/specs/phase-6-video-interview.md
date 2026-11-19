@@ -1,7 +1,9 @@
 # Phase 6 — AI Video Interview (design specification)
 
 Status: **design approved 2026-11-19; Phase 6.1 (foundations) implemented and committed as `1ad5628`; Phase 6.2
-(camera infrastructure) implemented and not yet used by any page.** Phases 6.3–6.6 not started.
+(camera infrastructure) implemented; Phase 6.3 (video lobby, room and session lifecycle) implemented, with
+`VIDEO_UI_READY = true`.** Video is still OFF unless the build flag and the server gates allow it. Real-device
+testing is pending. Remaining work: §6.
 Supersedes the handoff `phase-6-video-interview-handoff.md` (kept for history). Overall status:
 `../PROJECT_STATE.md`.
 
@@ -144,14 +146,69 @@ and the room share one stream.
   camera button does not wait for the acknowledgement; the camera starts only when it is clicked. On mount the
   lobby only lists cameras (no permission prompt, no stream).
 
-**Not yet (6.3+):** no page renders these components; `VIDEO_UI_READY` stays `false`. Continuing without camera after
-an interview has started (D7) belongs to the room (6.3). Status of the camera and microphone in the room toolbar,
-stopping tracks on finish/abandon/terminal status: 6.3–6.4.
+**From 6.3:** these components are rendered by `VideoInterviewWorkspace` / `VideoInterviewRoom` (§5a).
 
 **Browser notes:** device labels are empty until permission is granted (Chrome also hides device ids); iOS Safari
 needs `playsInline muted autoPlay`; Firefox/Brave have a camera but no usable speech recognition (typing fallback);
 a camera can be held by another app (`NotReadableError`); mobile browsers may pause (`mute`) or end the camera
 track in the background.
+
+## 5a. Video lobby, room and session lifecycle (implemented in 6.3)
+
+All files are in `frontend/src/components/mock-interview/`.
+
+**Routing.** `page.tsx` sends a session with `mode === "video"` to `VideoInterviewWorkspace`; text and voice keep
+`InterviewInstructions` / `InterviewRoom` unchanged. The setup form offers "Video" only when the server lists it
+AND `MOCK_INTERVIEW_VIDEO_AVAILABLE` (build flag AND `VIDEO_UI_READY`), and then sends `mode: "video"`.
+
+**`VideoInterviewWorkspace.tsx`** is the single camera owner (`useCamera()` is called only here; a test enforces
+it). It picks the screen with `videoStage()` (`videoInterviewFlow.ts`), using the same rules as the text/voice page:
+- `setup` (or awaiting start) → lobby step: a session summary and `VideoLobby`. **Start interview** needs a live
+  camera AND the acknowledgement (D7, D8) and calls the existing `POST /start`. **Cancel interview** calls the existing
+  `POST /abandon` and stops the camera. On failure it re-reads the session, as `InterviewInstructions` does.
+- `in_progress` → `VideoInterviewRoom` with the SAME camera handle: the lobby's stream continues, no second request.
+- ended → the existing `InterviewFinished` (report). "Start another interview" unmounts the workspace, which stops
+  the camera.
+- An effect calls `releaseCameraIfEnded()` on every status change: any terminal status (`completed`, `abandoned`,
+  `failed`, `evaluating`) stops every track, whoever ended the session (student, time-out, the engine).
+
+**`VideoInterviewRoom.tsx`** uses the same session API and behaviour as the text/voice room: `POST /answer` with the
+idempotent `turn_seq` (source `stt` or `typed`), the `next_question` retry (`POST /next`), `POST /finish`, a resync
+after failures, the exported `Countdown`, and the same "read each question once" rule and storage key as the voice
+room. Layout:
+- **Toolbar:** title and progress; **Mute mic**, **Stop/Start camera** and **Mute voice** (interviewer TTS) buttons
+  with `aria-pressed`; timer; End interview with confirmation; a status line with the camera status, the microphone
+  status and, when the browser is offline, an offline notice. There is no live connection (plain requests), so
+  connectivity is the browser's online state plus request errors.
+- **Interviewer tile:** a static "AI" avatar, a speaking animation driven by the existing `useSpeechSynthesis`
+  `speaking` state, and the current question with its topic and follow-up label. No avatar provider.
+- **Candidate tile:** `CameraPreview` (camera-on indicator, off/starting/error placeholders), Start/Try camera
+  again, the reload fallback, and a camera picker when more than one camera is listed.
+- **Answer:** the Phase 5 `VoiceAnswerBox` (dictation or typing; the student reviews the text before submitting),
+  the retry block, a "thinking" state, and a collapsible "Conversation so far".
+- Responsive: two columns from `lg`, stacked below; the title wraps on phones (a no-wrap title widened the shell).
+
+**Camera and microphone (D10).** The camera stream is video-only. The microphone belongs to browser speech
+recognition inside `VoiceAnswerBox`, which gained two optional props used only by the video room: `micMuted`
+(stops dictation and disables Start speaking; typing still works) and `onMicStateChange` (feeds the toolbar). The
+voice room passes neither, so voice behaviour is unchanged. Muting the mic never touches the camera; stopping the
+camera never touches dictation. No second microphone stream, no server-side audio.
+
+**Lifecycle rules.**
+- The camera is requested only from clicks (lobby, room); never on load, never after a refresh. After a refresh the
+  room resumes from the server with the camera off; the unsent answer draft survives, as before.
+- Camera failure after the start (track ended, unplugged, denied) shows a status and the interview continues (D7);
+  the student may try again.
+- Finish and Cancel stop the camera at once; the workspace effect also stops it on any terminal status; unmount and
+  `pagehide` stop it (6.2).
+- Double clicks: every lobby and room action goes through `createActionGuard()` (one action at a time, even within
+  the same tick), on top of the disabled buttons and the server's idempotency.
+- No pause/resume (D6, deferred).
+
+**Report and history (approved D9).** `InterviewFinished` shows a video-only note: the camera was only a preview on
+screen, was not recorded, uploaded or analysed, played no part in the feedback, and the feedback is based only on the
+submitted answer text. The history list labels video interviews "· Video" (voice keeps "· Voice"). The backend
+disclaimer and scoring are unchanged.
 
 ## 6. Milestones
 
@@ -159,9 +216,9 @@ track in the background.
 |---|---|---|
 | 6.1 | Spec, backend flags + gate, `video` in schema/options, `stt` for video, frontend build flag, Dockerfile arg, route-scoped camera policy, tests, docs | **Implemented, committed `1ad5628`** |
 | 6.2 | `cameraMedia.ts` + `useCamera`, acknowledgement, device selection, preview, error mapping, reload fallback; unit tests with fake `mediaDevices` | **Implemented**; not rendered by any page; real-device tests pending |
-| 6.3 | `VideoLobby`, `VideoInterviewRoom` (interviewer tile, toolbar, timer, status, end/abandon), refresh recovery, `VIDEO_UI_READY = true` | Not started |
-| 6.4 | Wire to existing TTS / dictation / answer / retry-next / finish | Not started |
-| 6.5 | Report + history: "Video" label, frontend-only camera note (D9) | Not started |
+| 6.3 | `VideoLobby`, `VideoInterviewRoom` (interviewer tile, toolbar, timer, status, end/abandon), refresh recovery, `VIDEO_UI_READY = true` | **Implemented** (§5a, §9); real-device tests pending |
+| 6.4 | Wire to existing TTS / dictation / answer / retry-next / finish | **Wiring done in 6.3** (needed before the UI could be enabled). Remaining: see §9 "Phase 6.4 remaining scope" |
+| 6.5 | Report + history: "Video" label, frontend-only camera note (D9) | **Done in 6.3** (D9 note, history label); no backend report change by design |
 | 6.6 | Responsive/mobile, accessibility, privacy guards, full regression, real-device checklist | Not started |
 
 ## 7. Phase 6.1 verification record (2026-11-19)
@@ -207,3 +264,68 @@ Scratch browser check (simulated camera, not a real device):
 - still blocked after a reload: `policy-still-blocked`, no reload button offered.
 
 The React components were type-checked and linted but not rendered in a browser: no page uses them until 6.3.
+
+## 9. Phase 6.3 verification record (2026-11-19)
+
+| Check | Result |
+|---|---|
+| New `frontend/tests/unit/videoInterviewFlow.test.mjs` (fake media APIs + source checks) | 24/24 passed |
+| All frontend unit tests (`npm run test:unit`) | 114/114 passed (90 before + 24 new) |
+| `npx tsc --noEmit` | passed |
+| ESLint, touched files | 0 problems |
+| Browser smoke test, final code (scratch, not in the repo) | **34/34 passed** (below) |
+| Backend | not run: no backend change in 6.3 |
+| **Real camera / real microphone / real devices** | **not done; pending** |
+
+Two existing unit tests encoded the 6.1/6.2 state (`VIDEO_UI_READY === false`, "camera UI not wired into any page")
+and were updated to the 6.3 state: the UI exists, video stays hidden while the build flag is off, and the camera
+components are used only by the video files.
+
+**Browser smoke test** (simulated devices; it proves the wiring, not real-device behaviour):
+- Setup:
+  - the real backend on a throwaway SQLite file with the scripted test engine and reporter
+    (`FakeEngine`/`FakeReporter`) and fresh random secrets; flags were set in the process environment only;
+  - `next dev` with both build flags on;
+  - Playwright Chromium (installed build 1248) with `--use-fake-device-for-media-stream` and
+    `--use-fake-ui-for-media-stream`, plus injected fake `SpeechRecognition`/`speechSynthesis`;
+  - login through the API, as in the repo's e2e suite.
+- Gates: an institute outside the video allow-list sees Text and Voice only (A1); the pilot institute sees all three
+  (B1).
+- Lobby: renders without a camera request (B2); Start disabled until the camera is on AND the acknowledgement is
+  ticked (B3, B6, B7); one request after the click, `{video: {width: {ideal: 640}, height: {ideal: 360}}, audio: false}`
+  (B4); the preview plays with the indicator (B5).
+- Room:
+  - same stream as the lobby, no second request (B8);
+  - the question is shown and read aloud (B9);
+  - dictation through `VoiceAnswerBox` (B10); Mute mic stops dictation while the camera stays on (B11); the
+    dictated text is kept for review and saved (B12, B13);
+  - Stop camera ends every track and the interview continues (B14); Start camera requests video only (B15);
+  - a camera track ended by the system shows the status, and answering still works (B16);
+  - at 390 px the room adds no horizontal overflow beyond the dashboard shell's own (B17, below);
+  - a double click on "Yes, end" sends one `/finish` (B18); End stops every track (B19);
+  - the finished view shows the D9 note and the report (B20); history lists "HR · Video" (B21).
+- Abandon in the lobby stops every track (C1).
+- Refresh during the interview: the room resumes with the camera off and no request; the unsent draft survives; the
+  camera returns only on a click; End stops it (D1–D4).
+- Client-side navigation from `/dashboard` via the sidebar: camera blocked, "Reload to enable camera" offered, no
+  request; after the reload the camera starts on click (E1, E2).
+- Regressions: a text interview uses the existing room (no camera UI, no request) and its report works (F1, F2); a
+  voice interview uses the existing room (no camera, no mic toolbar), saves a spoken answer and its report works
+  (G1–G3).
+
+Harness notes (not app defects):
+- Git Bash rewrote a `NEXT_PUBLIC_API_PREFIX=/v1` environment value into a Windows path. The harness now relies on
+  the default prefix.
+- The login form was not driven through the UI; the API login is the same approach as the repo's e2e suite.
+
+**Pre-existing, outside Mock Interview:** at a 390 px viewport the dashboard shell (always-visible sidebar, page
+header) already scrolls horizontally: about 489 px of content on the text room and setup form too. Not changed here.
+
+### Phase 6.4 remaining scope
+- Real-device checks (not done): camera and browser speech recognition together on Chrome/Edge desktop, Android
+  Chrome (camera + dictation concurrency, background/screen lock) and iOS Safari; camera unplug and permission
+  revocation on real hardware; the reload fallback on Firefox/Safari, which have no Permissions-Policy API.
+- Optional clean-up: `VideoInterviewRoom` repeats the answer/next/finish/resync logic of `InterviewRoom` (kept
+  separate so the text/voice room is unchanged); a shared hook could remove the duplication after real-device
+  results.
+- 6.6 as planned: responsive and accessibility review, full regression, real-device checklist.

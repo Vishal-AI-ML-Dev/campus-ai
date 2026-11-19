@@ -293,3 +293,18 @@ Design and decisions D1–D12: `specs/phase-6-video-interview.md`.
 - Client-side navigation keeps the previous document's `camera=()`; the lobby offers a one-time, student-initiated
   "Reload to enable camera" (sessionStorage marker prevents loops).
 - Not wired into `page.tsx`; `VIDEO_UI_READY` is still `false`. No backend, API, worker or schema change.
+
+### Phase 6.3: video lobby, room and session lifecycle
+
+- `page.tsx` routes `mode === "video"` sessions to `VideoInterviewWorkspace`, the only `useCamera()` caller. It shows
+  `VideoLobby` (setup), `VideoInterviewRoom` (in progress) or `InterviewFinished` (ended) and passes one camera
+  handle down, so the lobby's stream continues into the room. Any terminal status stops the camera.
+- The room uses the existing session API (start/answer/next/finish/abandon), idempotent `turn_seq` answers, the
+  `next_question` retry, `Countdown`, browser TTS and the Phase 5 `VoiceAnswerBox`. No backend, worker, schema or
+  scoring change.
+- Microphone and camera stay separate: video-only camera stream; "Mute mic" stops dictation through new optional
+  `VoiceAnswerBox` props (unused by the voice room).
+- The camera starts only from clicks; after a refresh it is off. A camera failure after the start does not stop the
+  interview (D7). A shared action guard blocks duplicate requests.
+- `VIDEO_UI_READY` is `true`: video is offered when the build flag, the server flags, the video tenant allow-list and
+  the student role all allow it. Defaults remain off.

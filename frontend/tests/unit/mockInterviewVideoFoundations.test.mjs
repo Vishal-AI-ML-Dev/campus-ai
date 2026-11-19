@@ -63,8 +63,11 @@ describe("video build flag", () => {
 		assert.notEqual(process.env.NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED, "true")
 	})
 
-	it("Phase 6.1 ships without the video UI", () => {
-		assert.equal(VIDEO_UI_READY, false)
+	it("Phase 6.3: the video UI exists, but video stays hidden unless the build flag is on", () => {
+		assert.equal(VIDEO_UI_READY, true)
+		// MOCK_INTERVIEW_VIDEO_AVAILABLE = videoBuildEnabled(env) && VIDEO_UI_READY: the build flag still decides.
+		assert.equal(videoBuildEnabled({}) && VIDEO_UI_READY, false)
+		assert.equal(videoBuildEnabled(ON) && VIDEO_UI_READY, true)
 	})
 })
 

@@ -171,8 +171,8 @@ export type CreateInterviewInput = {
 	resume_id?: number
 	job_description?: string
 	language: string
-	/** Phase 5; omitted for text so the request is unchanged. */
-	mode?: "voice"
+	/** Phase 5 voice, Phase 6 video; omitted for text so the request is unchanged. */
+	mode?: "voice" | "video"
 }
 
 const base = "/mock-interview/sessions"
