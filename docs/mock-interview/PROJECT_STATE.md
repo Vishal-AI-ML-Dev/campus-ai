@@ -12,14 +12,14 @@ _Last updated: 2026-11-19 (Phase 3 committed locally; **live LLM NOT RUN**, acce
 | Original folder | `D:/Campus_Ai`, on `feature/student-approval`; its `backend/.venv` is the interpreter used for worktree tests (the worktree has no venv or `.env`) |
 
 Phase 1 is committed locally (`f17d2bd`, docs `3bce105`). Phase 2 is committed locally as `0fadaa8` (8 files, staged by name).
-**Phase 3 is committed locally** as "feat(mock-interview): add text-based AI interview engine" (files staged by name; the hash is recorded in the follow-up docs commit). Nothing is pushed, merged or deployed, and all feature flags stay OFF.
+**Phase 3 is committed locally** as `926e59c` "feat(mock-interview): add text-based AI interview engine" (26 files, staged by name; `.claude/` and the `next dev`-generated `frontend/AGENTS.md` deliberately excluded). Nothing is pushed, merged or deployed, and all feature flags stay OFF.
 
 ## Completed phases
 - **Phase 0:** audit docs and baseline (see BASELINE_TEST_RESULTS.md).
 - **Isolation:** student-approval work on its own branch; worktree created.
 - **Phase 1:** feature isolation and flags (`/mock-interview/status`, `/catalog`, worker ping, frontend notice). Details in git `f17d2bd`.
 - **Phase 2:** models + additive RLS migration for sessions, turns, reports. Done; acceptance criteria below verified.
-- **Phase 3:** text HR + technical interview engine. **Implemented and committed locally; not production-ready.**
+- **Phase 3:** text HR + technical interview engine. **Implemented and committed locally (`926e59c`); not production-ready.**
   - Verified:
     - SQLite with a stubbed LLM;
     - real Postgres as the NOBYPASSRLS `app_user`, including real-thread concurrency;
