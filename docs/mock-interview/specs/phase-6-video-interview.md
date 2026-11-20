@@ -219,7 +219,7 @@ disclaimer and scoring are unchanged.
 | 6.2 | `cameraMedia.ts` + `useCamera`, acknowledgement, device selection, preview, error mapping, reload fallback; unit tests with fake `mediaDevices` | **Implemented**; not rendered by any page; real-device tests pending |
 | 6.3 | `VideoLobby`, `VideoInterviewRoom` (interviewer tile, toolbar, timer, status, end/abandon), refresh recovery, `VIDEO_UI_READY = true` | **Implemented** (§5a, §9); real-device tests pending |
 | 6.4 | Wire to existing TTS / dictation / answer / retry-next / finish | **Wiring done in 6.3; audited and completed in 6.4** (§10): one mic-status fix, 12 more simulated-browser checks, real-device matrix written. **Real-device tests pending** |
-| 6.5 | Report + history: "Video" label, frontend-only camera note (D9) | **Done in 6.3** (D9 note, history label); no backend report change by design |
+| 6.5 | Report + history: "Video" label, frontend-only camera note (D9) | **Done in 6.3; audited in 6.5** (§11): report parity across text/voice/video proven by tests; no code change needed |
 | 6.6 | Responsive/mobile, accessibility, privacy guards, full regression, real-device checklist | Not started. The real-device checklist itself now exists (§10.4); 6.6 runs it |
 
 ## 7. Phase 6.1 verification record (2026-11-19)
@@ -438,3 +438,80 @@ passed only after it ran on that physical device. Phase 5's own real-device chec
 - 6.6 (not started): accessibility and responsive review, full regression, running the §10.4 checklist.
 - Optional: the shared room-actions hook (§9), after real-device results.
 - Pre-existing, outside Mock Interview: the dashboard shell's horizontal scroll at 390 px.
+
+## 11. Phase 6.5 record: report integration audit (2026-11-20)
+
+Canonical scope (§6): the "Video" history label and the frontend-only camera note (D9). Both shipped in 6.3. Phase
+6.5 audited them and traced the report path end to end, to prove that video adds nothing to evaluation. **No
+application code changed**; two test files were added.
+
+### 11.1 Requirements
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| History labels video interviews | Complete | `InterviewHistory.tsx` (" · Video"; voice keeps " · Voice"; text unlabelled); new unit test; backend `/history` returns `mode` for every mode (new parity test); smoke B21 |
+| Video report shows the camera privacy note | Complete | `InterviewFinished.tsx`, only when `session.mode === "video"`; unit tests (6.3 and 6.5); smoke B20, L1; text has no note (smoke F2) |
+| Text, voice and video send the same report payload to the worker | Complete, now proven | new `backend/tests/test_mock_interview_report_parity.py` (below) |
+
+### 11.2 Code path (identical for every mode)
+
+1. **Answers:**
+   - frontend: text uses `InterviewRoom`; voice uses `InterviewRoom` with `VoiceAnswerBox`; video uses
+     `VideoInterviewRoom` with `VoiceAnswerBox`;
+   - all call `mockInterviewApi.answer` → `POST /sessions/{id}/answer` `{turn_seq, answer, source?}`;
+   - backend: `services/mock_interview.py` `submit_answer`. It stores `answer_text` and `answer_source`; `source` only
+     gates `stt` to voice/video and is never read again by the report path. No media field exists (`extra="forbid"`).
+2. **Report:**
+   - frontend: `InterviewFinished` → `InterviewReport` → `POST` then `GET /sessions/{id}/report` (the same helpers for
+     every mode);
+   - backend: `services/mock_interview_report.py` `generate_report` builds the payload `{config: svc._config(s),
+     plan: _slim_plan(...), transcript: [{seq, topic, question, is_follow_up, answer}]}`;
+   - `_config` holds interview_type, difficulty, duration_minutes, target_role, company_name and language: **no mode**;
+   - the transcript has **no answer_source**.
+3. **Worker:**
+   - `ai-worker/interview/schemas.py` `ReportRequest`: `InterviewConfig` has no mode field and uses
+     `extra="ignore"`; `ReportTurn` has no source or media field;
+   - the rubric is `rubric_for(config.interview_type)` (`interview/report.py`). There is one scoring algorithm for
+     all modes.
+4. **Validation and storage:**
+   - backend `_validated()` checks the rubric version against `interview_type` only;
+   - `to_report()` builds the response from the stored row; it has no mode field;
+   - `DISCLAIMER` is modality-independent (Phase 5).
+
+**Intentional differences, all frontend-only:** the D9 note on video reports and the history label. The camera never
+enters any request.
+
+### 11.3 New tests and results (2026-11-20)
+
+- `backend/tests/test_mock_interview_report_parity.py` (4 tests):
+  - for HR and technical, it runs the same interview as text, voice and video, with each mode's own answer sources
+    (typed / speech-to-text / mixed);
+  - the worker payload JSON is byte-for-byte identical across the three modes;
+  - its keys are exactly the documented contract at every level, with no key mentioning mode, source, camera, video,
+    frame, image, media, audio or device;
+  - the stored report rows are identical; the POST and GET responses are identical apart from session id and
+    timestamps; the rubric matches the interview type;
+  - a video interview answered by dictation vs by typing gives the same payload;
+  - history returns each session's mode, and the same answer scores the same in every mode.
+- **Mutation check (scratch-only pytest plugin):** making the backend add `mode` to the worker config fails both
+  parity tests.
+- `frontend/tests/unit/videoReportIntegration.test.mjs` (4 tests):
+  - history label mapping;
+  - the D9 note only for video;
+  - no mode-specific code in `InterviewReport`;
+  - the same report API helpers for every mode.
+
+| Check | Result |
+|---|---|
+| New backend parity tests | 4/4 passed |
+| All mock-interview backend suites (flags, models, sessions, reports, voice, video, parity), SQLite | 166 passed, 0 failed (162 before + 4 new) |
+| Frontend unit tests (`npm run test:unit`) | 121/121 passed (117 + 4 new) |
+| `npx tsc --noEmit` / ESLint on the new test / ruff on the new test | passed / 0 problems / clean |
+| AI worker suite | **not run**: the worktree has no worker environment, and the original repository's must not be used. The worker report code is unchanged since Phase 4; the parity evidence above is the backend payload plus the worker schema |
+
+### 11.4 Remaining limitations
+
+- The parity tests use the scripted reporter. A live LLM's scores can vary between calls for the same payload; with
+  an identical payload, mode cannot be a cause.
+- The real-device matrix (§10.4) is still pending.
+- 6.6 (not started): accessibility and responsive review, full regression, executing §10.4.

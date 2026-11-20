@@ -316,3 +316,11 @@ Design and decisions D1–D12: `specs/phase-6-video-interview.md`.
   speech recognition, past video interview from history) and wrote the real-device matrix (spec §10.4).
 - One fix: the toolbar microphone status is "idle until the next question" while no answer box is on screen
   (`micStatusText({ answering })`), instead of a stale dictation state.
+
+### Phase 6.5: report parity
+
+- Report generation is mode-independent. The worker payload is `{config, plan, transcript}`: the config has no
+  mode, the transcript has no answer source, and the worker ignores unknown config keys and picks the rubric by
+  `interview_type` only. `backend/tests/test_mock_interview_report_parity.py` proves byte-identical payloads and
+  identical reports for text, voice and video.
+- The only video-specific report UI is the frontend D9 note and the history label.
