@@ -220,7 +220,7 @@ disclaimer and scoring are unchanged.
 | 6.3 | `VideoLobby`, `VideoInterviewRoom` (interviewer tile, toolbar, timer, status, end/abandon), refresh recovery, `VIDEO_UI_READY = true` | **Implemented** (§5a, §9); real-device tests pending |
 | 6.4 | Wire to existing TTS / dictation / answer / retry-next / finish | **Wiring done in 6.3; audited and completed in 6.4** (§10): one mic-status fix, 12 more simulated-browser checks, real-device matrix written. **Real-device tests pending** |
 | 6.5 | Report + history: "Video" label, frontend-only camera note (D9) | **Done in 6.3; audited in 6.5** (§11): report parity across text/voice/video proven by tests; no code change needed |
-| 6.6 | Responsive/mobile, accessibility, privacy guards, full regression, real-device checklist | Not started. The real-device checklist itself now exists (§10.4); 6.6 runs it |
+| 6.6 | Responsive/mobile, accessibility, privacy guards, full regression, real-device checklist | **Automated hardening done** (§12): accessibility fixes, responsive sweep, wider privacy guards, full regression. **Real-device checklist (§10.4) not executed: Phase 6 is NOT complete** |
 
 ## 7. Phase 6.1 verification record (2026-11-19)
 
@@ -426,6 +426,8 @@ Devices:
 | RD-20 | D1–D5 | Navigate away or close the tab with the camera on | Camera light off (pagehide/unmount) |
 | RD-21 | D1–D4 | Hindi and Hinglish answers by dictation in a video interview | Same recognition behaviour as Phase 5 voice (§8 there); no audio reaches Campus AI |
 | RD-22 | D3 | Rotate the phone during the room | Layout usable in portrait and landscape; controls reachable |
+| RD-23 | D1 + NVDA (Windows), D4 + VoiceOver, D3 + TalkBack | Full video interview with a screen reader (added in 6.6) | Lobby and finished headings are announced on entry; each new question is read when it receives focus; Mute mic / Mute voice announce pressed state; the End confirmation is announced as a group and Escape cancels; timer milestones (5 min, 1 min, time up) are announced once each |
+| RD-24 | D1, D2 | Full text, voice and video interview with the keyboard only (added in 6.6) | Every control reachable with Tab and visibly focused; Enter/Space operate it; Escape closes the End confirmation; focus never lands on a removed element |
 
 Record each run with: date, device and OS version, browser version, result (pass/fail), and notes. Mark a row
 passed only after it ran on that physical device. Phase 5's own real-device checks (`phase-5-voice-interview.md`
@@ -515,3 +517,113 @@ enters any request.
   an identical payload, mode cannot be a cause.
 - The real-device matrix (§10.4) is still pending.
 - 6.6 (not started): accessibility and responsive review, full regression, executing §10.4.
+
+## 12. Phase 6.6 record: hardening and regression (2026-11-20)
+
+Canonical scope (§6): responsive and mobile, accessibility, privacy guards, full regression, and the real-device
+checklist. Everything that can be verified in the repository is done here. **The real-device checklist (§10.4) has
+not been executed, so Phase 6 is not complete.**
+
+### 12.1 Accessibility audit and fixes (text, voice and video)
+
+| Finding | Fix | Files |
+|---|---|---|
+| The video room never announced a new question to screen readers (the text room uses a live transcript); its "Speaking… / Listening…" line was a chatty live region | Each new question's region receives focus (`tabIndex=-1`, `preventScroll`), so it is read once; the speaking line is visual only | `VideoInterviewRoom.tsx` |
+| Toolbar toggles combined `aria-pressed` with a name that changed on toggle (contradictory state for screen readers) | Mic and interviewer-voice toggles keep one visible name ("Mute mic", "Mute voice") with `aria-pressed`; camera is a plain action button ("Stop camera"/"Start camera") | `VideoInterviewRoom.tsx` |
+| End-interview confirmation (all rooms): clicking End replaced the focused button, so focus was lost; Escape did nothing | Shared `EndInterviewControl`: focus moves to "Keep going", Escape/Keep going close it and return focus to "End interview", the pair is a named group. Same look and texts | new `EndInterviewControl.tsx`; `InterviewRoom.tsx`, `VideoInterviewRoom.tsx` |
+| Stage changes (lobby → room → finished) left focus on a removed element | Lobby heading and finished heading receive focus on entry; the video room focuses the question | `VideoLobby.tsx`, `InterviewFinished.tsx`, `VideoInterviewRoom.tsx` |
+| Voice room: after each answer the answer box is re-created and focus was lost | Optional `focusOnMount` on `VoiceAnswerBox` (off by default; the voice room passes it): focuses Start speaking, else the text box | `VoiceAnswerBox.tsx`, `InterviewRoom.tsx` |
+| Timer: `aria-label` on a plain `span` (not reliably announced); no low-time warning | `role="timer"` keeps the name valid; a separate polite live region announces only "Five minutes remaining", "One minute remaining" and "Time is up" (never every second; a re-keyed timer does not repeat a passed milestone) | `InterviewRoom.tsx` (shared `Countdown`) |
+
+Checked and left as they were:
+- focus rings: browser default on buttons, rings on inputs and the setup choices; no global outline removal;
+- accessible names: every control has visible text or a label;
+- camera errors use `role="alert"` and camera-on uses `role="status"`, each announced once;
+- the lobby checklist is a polite live region;
+- the setup choices are native radios.
+
+### 12.2 Responsive and mobile
+
+- Sweep at 320, 390, 768 and 1366 px over: setup form and history, the video lobby with the camera on, the video room,
+  and the finished view with the report. For each, the Mock Interview root has no internal horizontal overflow, and
+  the document is no wider than with the Mock Interview content hidden (shell only). **No Mock Interview overflow at
+  any size.**
+- **Pre-existing, outside Mock Interview (not changed):**
+  - `AppShell.tsx` has a fixed `w-60` sidebar that never collapses, and its content column has no `min-w-0`. Below
+    about 490 px every dashboard page scrolls sideways (489 px at 320 and 390 px).
+  - At 320 px the Mock Interview column is about 249 px wide; all controls wrap and stay usable (screenshot checked).
+  - A fix belongs to a dashboard-wide change.
+- **Picture-in-picture:** the camera self-view sets `disablePictureInPicture`, so browsers that offer PiP on video
+  elements do not float the camera outside the page. No PiP feature is offered. Whether a browser exposes PiP at all
+  is browser-specific and was not tested on real devices.
+
+### 12.3 Privacy and forbidden-media checks
+
+- New `frontend/tests/unit/videoPrivacyGuards.test.mjs` (7 tests). It scans every source file under
+  `src/components/mock-interview/` **and** `src/app/dashboard/mock-interview/` (24 files), with comments stripped:
+  - banned APIs: `MediaRecorder`, `captureStream`, `toDataURL`, `toBlob`, `drawImage`, `getImageData`,
+    `ImageCapture`, `getDisplayMedia`, `<canvas>` / `createElement("canvas")` / `OffscreenCanvas` / `getContext(`,
+    `createObjectURL`, `FormData`, `new Blob`, `sendBeacon`, `WebSocket`, `RTCPeerConnection`, `MediaSource`,
+    `requestVideoFrameCallback`;
+  - only `cameraMedia.ts` touches `getUserMedia`/`enumerateDevices`; no `audio: true` anywhere;
+  - the camera modules make no network calls; the API client carries no camera data;
+  - no face-recognition imports; picture-in-picture disabled.
+  - Before 6.6, the guard covered only `components/mock-interview` and fewer APIs.
+- New `backend/tests/test_mock_interview_privacy.py` (2 tests):
+  - every mock-interview operation's request body (`$ref` resolved) is `application/json` only, with no
+    media-like field (video, camera, frame, image, photo, media, audio, blob, file, upload, stream, snapshot,
+    device);
+  - the answer body is exactly `turn_seq, answer, source`, and the create body has exactly the documented fields.
+  - This complements the existing path check (`test_openapi_has_no_media_route`).
+- Report parity (6.5) already proves no mode or camera data reaches the worker. The face features were not touched.
+
+### 12.4 Dependency security review (no change made)
+
+- Installed `next` **16.4.4** (pinned in `frontend/package.json`); `npm audit` (read-only) reports 8 moderate
+  findings, 0 high or critical.
+- **Next.js:** 7 moderate advisories for `>=16.0.0 <=16.4.4`, fixed in **16.4.6** (not a major version):
+
+| Advisory | Applies here? |
+|---|---|
+| GHSA-mfr8-8qww-v76h, GHSA-vc7v-qv4w-wrv8, GHSA-rhh4-g77r-r9qj, GHSA-vvgp-ww4w-46vf (`use cache`, `unstable_cache`, Cache Components) | No: not used |
+| GHSA-7qx7-33qx-rqx2 (SVG in the image optimizer) | Low exposure: `next/image` is not used and no image config exists, but the default `/_next/image` endpoint is present |
+| GHSA-f3mh-rxg3-f5g2 (cookie header on Edge-runtime routes) | Probably not: no Edge routes are declared; `src/proxy.ts` is the only interceptor (unverified) |
+| GHSA-pc58-hwjq-p385 (self-hosted apps forwarding fetched responses) | **Possibly relevant to the staging proxy**: `src/proxy.ts` rewrites `/v1/*` to the API, but only when `STAGING_API_ORIGIN` and `STAGING_GATE_TOKEN` are set |
+
+- **Dev tooling only:** `minimatch` (GHSA-g3hv-75wg-m249) through the ESLint / typescript-eslint chain; not shipped.
+- **Recommendation (needs your approval):** bump `next` and `eslint-config-next` to 16.4.6 together, then run the
+  lockfile update, `tsc`, lint, the unit tests and `next build` in a separate change. None of this is specific to
+  Mock Interview.
+
+### 12.5 Full regression (2026-11-20)
+
+| Suite | Result |
+|---|---|
+| Full backend SQLite suite (`pytest`) | **338 passed, 12 skipped, 0 failed** (18 min 12 s; skips = opt-in Postgres RLS tests) |
+| Mock-interview backend tests within that run | **168 passed, 0 failed** (166 + 2 new privacy tests; 8 skipped = the opt-in Postgres RLS file) |
+| Postgres RLS suites (`tests_pg_api/`, `test_rls_postgres.py`, `test_mock_interview_rls_postgres.py`) | **not run**: no throwaway Postgres configured (`RLS_TEST_DATABASE_URL` unset; nothing on port 5432); they skip |
+| AI worker suite | **not run**: no worker environment in the worktree (the original repository is off limits); worker code unchanged in Phase 6 |
+| Frontend unit tests (`npm run test:unit`) | **136/136 passed** (121 + 7 privacy + 8 accessibility) |
+| `npx tsc --noEmit` | passed |
+| `npm run lint` | 0 errors (2 pre-existing warnings in `e2e/smoke.spec.ts`) |
+| ruff (backend `app/` and the new tests) | clean |
+| Simulated-browser run: fresh throwaway SQLite DB; Chromium with a **fake** camera and fake permission UI; fake speech APIs; scripted engine; text, voice and video | **60/60 passed**: the 46 earlier checks (A–L) with selectors updated for the new toggle names; M1–M10 (accessibility: focus on entry, aria-pressed, timer, question focus, End confirmation focus and Escape, keyboard-only End, voice-room focus); N (4 responsive sweeps) |
+
+One check (M2) failed on the first run because of a test bug (it looked for the question text in a 40-character
+excerpt of the focused element). The focused element was correct. The assertion was fixed and the whole run
+repeated: 60/60.
+
+### 12.6 Real-device status
+
+- §10.4 now has **24 rows**: the 22 from 6.4 unchanged, plus RD-23 (screen readers) and RD-24 (keyboard only) for
+  the 6.6 fixes.
+- **All 24 are pending.** None ran on a physical device. Fake media, injected speech and headless Chromium are not
+  real-device tests.
+- Phase 5's real-device checks (`phase-5-voice-interview.md` §8) also remain pending.
+
+### 12.7 Remaining blockers before Phase 6 can be called complete
+
+1. Execute §10.4 (RD-01 to RD-24) on physical devices and record the results.
+2. Decide on the Next.js 16.4.6 patch upgrade (§12.4).
+3. Optional, outside this feature: the dashboard shell's mobile layout (§12.2).
+4. Optional (§9): the shared room-actions hook, after real-device results.

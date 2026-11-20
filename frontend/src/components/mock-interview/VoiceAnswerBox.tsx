@@ -36,6 +36,7 @@ export default function VoiceAnswerBox({
 	speaking = false,
 	micMuted = false,
 	onMicStateChange,
+	focusOnMount = false,
 }: {
 	session: InterviewSession
 	busy: boolean
@@ -54,6 +55,12 @@ export default function VoiceAnswerBox({
 	micMuted?: boolean
 	/** Phase 6.3 (video room only): reports the dictation state for the toolbar. */
 	onMicStateChange?: (state: { supported: boolean; listening: boolean; blocked: boolean }) => void
+	/**
+	 * Phase 6.6 (accessibility, voice room): move focus here when a new question's
+	 * answer box appears, so keyboard and screen-reader users are not left on the
+	 * removed box. Focuses Start speaking (no on-screen keyboard), else the text box.
+	 */
+	focusOnMount?: boolean
 }) {
 	const seq = session.current_turn_seq ?? 0
 	const key = draftKey(session.id, seq)
@@ -65,6 +72,14 @@ export default function VoiceAnswerBox({
 	// update() only: syncing it from state in an effect could overwrite a
 	// phrase that arrived between a render and its effect (lost speech).
 	const textRef = useRef(text)
+	const micRef = useRef<HTMLButtonElement>(null)
+	const areaRef = useRef<HTMLTextAreaElement>(null)
+
+	useEffect(() => {
+		if (focusOnMount) (micRef.current ?? areaRef.current)?.focus()
+		// Mount only: the box is re-keyed for every question.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [])
 
 	function markDictated(on: boolean) {
 		setDictated(on)
@@ -141,6 +156,7 @@ export default function VoiceAnswerBox({
 			{rec.supported ? (
 				<div className="flex flex-wrap items-center gap-3">
 					<button
+						ref={micRef}
 						type="button"
 						onClick={toggleMic}
 						disabled={!listening && (busy || full || rec.blocked || micMuted)}
@@ -209,6 +225,7 @@ export default function VoiceAnswerBox({
 			</label>
 			<textarea
 				id="mi-answer"
+				ref={areaRef}
 				rows={4}
 				maxLength={maxChars}
 				value={text}

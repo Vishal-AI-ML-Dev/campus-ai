@@ -27,6 +27,7 @@ import {
 	type InterviewSession,
 } from "./mockInterviewApi"
 import { pageHasUserActivation, speechLang, useSpeechSynthesis } from "./useSpeech"
+import EndInterviewControl from "./EndInterviewControl"
 import VoiceAnswerBox, { type AnswerSource } from "./VoiceAnswerBox"
 
 function formatClock(totalSeconds: number): string {
@@ -45,13 +46,24 @@ export function Countdown({ seconds }: { seconds: number }) {
 	}, [])
 	const left = seconds - Math.floor((now - startedAt) / 1000)
 	const low = left <= 60
+	// Phase 6.6: screen readers hear only these milestones (never every second).
+	// A live region announces changes, not its content at mount, so a re-keyed
+	// Countdown does not repeat a milestone that was already passed.
+	const milestone =
+		left <= 0 ? "Time is up. Submit your last answer." : left <= 60 ? "One minute remaining." : left <= 300 ? "Five minutes remaining." : ""
 	return (
-		<span
-			className={`font-mono text-sm tabular-nums ${low ? "text-red-600 dark:text-red-400" : ""}`}
-			aria-label={left > 0 ? `${Math.ceil(left / 60)} minutes remaining` : "Time is up"}
-		>
-			{left > 0 ? formatClock(left) : "Time's up - submit your last answer"}
-		</span>
+		<>
+			<span
+				role="timer"
+				className={`font-mono text-sm tabular-nums ${low ? "text-red-600 dark:text-red-400" : ""}`}
+				aria-label={left > 0 ? `${Math.ceil(left / 60)} minutes remaining` : "Time is up"}
+			>
+				{left > 0 ? formatClock(left) : "Time's up - submit your last answer"}
+			</span>
+			<span className="sr-only" aria-live="polite">
+				{milestone}
+			</span>
+		</>
 	)
 }
 
@@ -144,7 +156,6 @@ export default function InterviewRoom({
 }) {
 	const [busy, setBusy] = useState<"answer" | "next" | "finish" | null>(null)
 	const [error, setError] = useState<string | null>(null)
-	const [confirmEnd, setConfirmEnd] = useState(false)
 	const endRef = useRef<HTMLDivElement>(null)
 	const isVoice = session.mode === "voice"
 	const tts = useSpeechSynthesis()
@@ -236,7 +247,6 @@ export default function InterviewRoom({
 			setError(describeError(err, "Could not end the interview."))
 		} finally {
 			setBusy(null)
-			setConfirmEnd(false)
 		}
 	}
 
@@ -288,35 +298,7 @@ export default function InterviewRoom({
 							seconds={session.remaining_seconds}
 						/>
 					) : null}
-					{confirmEnd ? (
-						<span className="flex items-center gap-2">
-							<span className="text-xs text-slate-500">End now?</span>
-							<button
-								type="button"
-								onClick={finish}
-								disabled={busy !== null}
-								className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-							>
-								{busy === "finish" ? "Ending…" : "Yes, end"}
-							</button>
-							<button
-								type="button"
-								onClick={() => setConfirmEnd(false)}
-								className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs dark:border-white/10"
-							>
-								Keep going
-							</button>
-						</span>
-					) : (
-						<button
-							type="button"
-							onClick={() => setConfirmEnd(true)}
-							disabled={busy !== null}
-							className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:border-red-300 hover:text-red-600 disabled:opacity-50 dark:border-white/10 dark:text-slate-300"
-						>
-							End interview
-						</button>
-					)}
+					<EndInterviewControl busy={busy !== null} ending={busy === "finish"} onConfirm={finish} />
 				</div>
 			</header>
 
@@ -372,6 +354,7 @@ export default function InterviewRoom({
 					onBeforeListen={cancelSpeech}
 					onHearQuestion={tts.supported && currentQuestion ? () => speak(currentQuestion, lang) : undefined}
 					speaking={tts.speaking}
+					focusOnMount
 				/>
 			) : session.awaiting === "answer" ? (
 				<AnswerBox

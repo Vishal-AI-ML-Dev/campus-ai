@@ -56,6 +56,9 @@ export default function CameraPreview({
 				autoPlay
 				muted
 				playsInline
+				// Phase 6.6: the self-view stays inside this page (no floating
+				// picture-in-picture window outliving the interview screen).
+				disablePictureInPicture
 				aria-label="Your camera preview (only visible to you)"
 				className={`h-full w-full -scale-x-100 object-cover ${live ? "" : "hidden"}`}
 			/>

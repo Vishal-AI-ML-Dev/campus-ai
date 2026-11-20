@@ -324,3 +324,17 @@ Design and decisions D1–D12: `specs/phase-6-video-interview.md`.
   `interview_type` only. `backend/tests/test_mock_interview_report_parity.py` proves byte-identical payloads and
   identical reports for text, voice and video.
 - The only video-specific report UI is the frontend D9 note and the history label.
+
+### Phase 6.6: hardening
+
+- Accessibility:
+  - one shared `EndInterviewControl` (focus to "Keep going", Escape, focus return) for every room;
+  - focus moves to the lobby heading, each new video question and the finished heading;
+  - the voice room focuses the new answer box (`VoiceAnswerBox.focusOnMount`, off by default);
+  - video toggles keep one name with `aria-pressed`;
+  - the timer is `role="timer"` with milestone-only announcements.
+- The camera preview sets `disablePictureInPicture`.
+- Privacy guards now cover the route file and more capture/upload/streaming APIs. A backend OpenAPI check ensures
+  every mock-interview request body is JSON without media-like fields.
+- Responsive: Mock Interview adds no horizontal overflow from 320 to 1366 px. The dashboard shell's own mobile
+  overflow (fixed sidebar) is outside this feature.

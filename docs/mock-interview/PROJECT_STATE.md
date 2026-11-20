@@ -1,6 +1,6 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-20 (Phase 6.5 report-integration audit done; real-device tests pending; Phase 6.6 not started)._
+_Last updated: 2026-11-20 (Phase 6.6 automated hardening done; Phase 6 NOT complete: real-device checklist pending)._
 
 **This file is the single source of truth for status.** The "Status at a glance" block below is current. Everything
 after it is the dated, detailed history of each phase; where a historical section disagrees with this block, this
@@ -16,7 +16,7 @@ block wins.
 | 3 | Text HR + technical interview engine | Implemented, committed; live LLM not run | `926e59c` (docs `f8e3485`) |
 | 4 | Evaluation report + history | Implemented, committed; live LLM not run | `18d8db0` |
 | **5** | **Voice interview (browser speech)** | **Implemented, committed; automated/simulated tests pass; real-device tests pending** | `34fd3a9` |
-| **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented. 6.3 video lobby, room and lifecycle implemented, `VIDEO_UI_READY = true`. 6.4 wiring (done in 6.3) audited, one fix, automated gaps closed, real-device matrix written. 6.5 done in 6.3, audited in 6.5 (report parity proven by tests). **Real-device tests pending; 6.6 not started** | 6.1 `1ad5628`, 6.2 `17247e2`, 6.3 `aef2999`, 6.4 `0262f97` |
+| **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented. 6.3 video lobby, room and lifecycle implemented, `VIDEO_UI_READY = true`. 6.4 wiring (done in 6.3) audited, one fix, automated gaps closed, real-device matrix written. 6.5 done in 6.3, audited in 6.5 (report parity proven by tests). 6.6 automated hardening done (accessibility, responsive, privacy guards, full regression). **Phase 6 NOT complete: real-device checklist (24 rows) pending** | 6.1 `1ad5628`, 6.2 `17247e2`, 6.3 `aef2999`, 6.4 `0262f97` |
 | 7–10 | Coding, company/full simulation, faculty campaigns, final review | Not started | — |
 
 - **Branch:** `feature/ai-mock-interview` in the worktree `D:/Campus_Ai-mock-interview`. Phase 5 is committed as `34fd3a9`; a docs-only commit recording it follows. Phase 6.1
@@ -325,13 +325,47 @@ Details: `specs/phase-6-video-interview.md` §11.
   - frontend unit tests 121/121; `tsc` and ESLint clean; ruff clean;
   - AI worker suite not run (no worker environment in the worktree; the original repository is off limits).
 
+### Phase 6.6 — hardening and regression (2026-11-20)
+
+Details: `specs/phase-6-video-interview.md` §12.
+
+- **Accessibility fixes** (text, voice and video):
+  - shared `EndInterviewControl`: focus to "Keep going", Escape closes, focus returns, a named group;
+  - focus on entry: the lobby heading, each new video question, the finished heading;
+  - the voice room focuses the new answer box (`focusOnMount`, off by default);
+  - video toggles keep one name with `aria-pressed`;
+  - the timer is `role="timer"` with milestone-only announcements (5 min, 1 min, time up).
+- **Responsive:** no Mock Interview overflow at 320/390/768/1366 px. The camera preview disables picture-in-picture.
+  **Pre-existing and outside this feature:** the dashboard shell's fixed sidebar makes every page scroll sideways
+  below about 490 px.
+- **Privacy guards:**
+  - frontend: 7 tests, now including the route file and more capture/upload/stream APIs;
+  - backend: 2 tests; every mock-interview request body is JSON with no media-like field.
+- **Dependency review (no change):** `next` 16.4.4 has 7 moderate advisories, fixed in 16.4.6. Most need features
+  this app does not use; GHSA-pc58-hwjq-p385 is possibly relevant to the staging proxy. The upgrade needs your
+  approval.
+- **Files:**
+  - new: `frontend/src/components/mock-interview/EndInterviewControl.tsx`,
+    `frontend/tests/unit/{videoPrivacyGuards,mockInterviewA11y}.test.mjs`,
+    `backend/tests/test_mock_interview_privacy.py`;
+  - modified in `frontend/src/components/mock-interview/`: `InterviewRoom.tsx`, `VideoInterviewRoom.tsx`,
+    `VoiceAnswerBox.tsx`, `VideoLobby.tsx`, `InterviewFinished.tsx`, `CameraPreview.tsx`;
+  - the four Phase 6 docs.
+  - No backend application, API, schema, worker, Docker or configuration change.
+- **Tests (2026-11-20):**
+  - full SQLite backend suite **338 passed, 12 skipped, 0 failed** (18 min 12 s; skips = opt-in Postgres RLS tests); mock-interview tests within it **168 passed, 0 failed** (166 + 2 new privacy tests; 8 skipped = the opt-in Postgres RLS file);
+  - frontend unit tests 136/136; `tsc` passed; lint 0 errors; ruff clean;
+  - simulated-browser run 60/60 (fake camera and speech).
+  - Not run: the Postgres RLS suites (no throwaway Postgres) and the AI worker suite (no worker environment).
+- **Real-device checklist:** spec §10.4, 24 rows (22 plus screen-reader and keyboard-only rows), **all pending**.
+  Phase 5's real-device checks also remain pending.
+
 ### Next recommended action (approved sequence)
-1. Phases 6.1 (`1ad5628`), 6.2 (`17247e2`), 6.3 (`aef2999`) and 6.4 (`0262f97`) are committed. Phase 6.4 code audit and
-   mic-status fix are complete. Phase 6.5's report-parity audit is complete. The real-device test matrix is
-   documented; physical-device execution remains pending.
-2. **Run the real-device matrix** (`specs/phase-6-video-interview.md` §10.4) on physical devices; record the results.
-3. **Phase 6.6 — NOT started; needs your go-ahead:** accessibility and responsive review, full regression, then the
-   §10.4 checklist results. Phase 6.5 was done in 6.3.
+1. Phases 6.1 (`1ad5628`), 6.2 (`17247e2`), 6.3 (`aef2999`), 6.4 (`0262f97`) and 6.5 (`75ed83c`) are committed. Phase
+   6.6's automated hardening is complete.
+2. **Run the real-device checklist** (`specs/phase-6-video-interview.md` §10.4, RD-01 to RD-24) on physical devices
+   and record the results. **Phase 6 is not complete until then.**
+3. Decide on the Next.js 16.4.6 patch upgrade (spec §12.4).
 
 Phase 5's real-device checks (`specs/phase-5-voice-interview.md` §8) remain open and tracked above (D1: deferred).
 

@@ -12,7 +12,7 @@
  * VIDEO_UI_READY and the existing build/server gates.
  */
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Spinner } from "@/components/ui/states"
 import CameraDeviceSelect from "./CameraDeviceSelect"
 import CameraPreview from "./CameraPreview"
@@ -53,6 +53,7 @@ export default function VideoLobby({
 	continueLabel?: string
 }) {
 	const [acknowledged, setAcknowledged] = useState(false)
+	const headingRef = useRef<HTMLHeadingElement>(null)
 	const { refreshDevices } = camera
 	const ready = lobbyReady(camera, acknowledged)
 	const starting = camera.status === "starting"
@@ -63,13 +64,18 @@ export default function VideoLobby({
 		void refreshDevices()
 	}, [refreshDevices])
 
+	// Phase 6.6: announce the new screen and start keyboard navigation here.
+	useEffect(() => {
+		headingRef.current?.focus()
+	}, [])
+
 	return (
 		<section
 			aria-labelledby="mi-video-lobby-title"
 			className="space-y-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 dark:border-white/10 dark:bg-slate-900"
 		>
 			<div>
-				<h2 id="mi-video-lobby-title" className="text-lg font-semibold">
+				<h2 id="mi-video-lobby-title" ref={headingRef} tabIndex={-1} className="text-lg font-semibold focus:outline-none">
 					Camera check
 				</h2>
 				<p className="text-sm text-slate-500 dark:text-slate-400">

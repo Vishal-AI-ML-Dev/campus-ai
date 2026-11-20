@@ -23,6 +23,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { Spinner } from "@/components/ui/states"
 import CameraDeviceSelect from "./CameraDeviceSelect"
 import CameraPreview from "./CameraPreview"
+import EndInterviewControl from "./EndInterviewControl"
 import { Countdown } from "./InterviewRoom"
 import {
 	describeError,
@@ -58,12 +59,15 @@ function InterviewerTile({
 	followUp,
 	speaking,
 	thinking,
+	questionRef,
 }: {
 	question: string
 	topic: string | null
 	followUp: boolean
 	speaking: boolean
 	thinking: boolean
+	/** Phase 6.6: focus target for each new question (read by screen readers on focus). */
+	questionRef: React.RefObject<HTMLDivElement | null>
 }) {
 	return (
 		<section
@@ -81,7 +85,8 @@ function InterviewerTile({
 				</div>
 				<div className="min-w-0">
 					<p className="text-sm font-semibold">AI Interviewer</p>
-					<p className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400" role="status">
+					{/* Visual only: the question itself is announced via focus (no chatty live region). */}
+					<p className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
 						{speaking ? (
 							<>
 								<span className="flex h-3 items-end gap-0.5" aria-hidden="true">
@@ -101,7 +106,11 @@ function InterviewerTile({
 					</p>
 				</div>
 			</div>
-			<div className="mt-4 flex-1">
+			<div
+				ref={questionRef}
+				tabIndex={-1}
+				className="mt-4 flex-1 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+			>
 				{question ? (
 					<>
 						<p className="mb-1 text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -133,7 +142,8 @@ function ToolbarButton({
 	onClick: () => void
 	disabled?: boolean
 	children: React.ReactNode
-	label: string
+	/** Optional extra name; by default the visible text is the accessible name. */
+	label?: string
 }) {
 	return (
 		<button
@@ -166,7 +176,7 @@ export default function VideoInterviewRoom({
 }) {
 	const [busy, setBusy] = useState<"answer" | "next" | "finish" | null>(null)
 	const [error, setError] = useState<string | null>(null)
-	const [confirmEnd, setConfirmEnd] = useState(false)
+	const questionRef = useRef<HTMLDivElement>(null)
 	const [micMuted, setMicMuted] = useState(false)
 	const [mic, setMic] = useState<Omit<MicState, "muted">>({ supported: true, listening: false, blocked: false })
 	const [voiceMuted, setVoiceMuted] = useState(false)
@@ -193,6 +203,12 @@ export default function VideoInterviewRoom({
 		speak(currentQuestion, lang, () => writeDraft(spokenKey, String(currentSeq)))
 		return () => cancelSpeech()
 	}, [session.id, currentSeq, currentQuestion, lang, speak, cancelSpeech])
+
+	// Phase 6.6: move focus to each new question so keyboard and screen-reader
+	// users are not left on the answer box that was just replaced.
+	useEffect(() => {
+		if (currentSeq !== null) questionRef.current?.focus({ preventScroll: true })
+	}, [currentSeq])
 
 	const onMicStateChange = useCallback((s: { supported: boolean; listening: boolean; blocked: boolean }) => {
 		setMic(s)
@@ -251,7 +267,7 @@ export default function VideoInterviewRoom({
 	}
 
 	function finish() {
-		void guard.run("finish", async () => {
+		return guard.run("finish", async () => {
 			cancelSpeech()
 			setBusy("finish")
 			setError(null)
@@ -264,7 +280,6 @@ export default function VideoInterviewRoom({
 				setError(describeError(err, "Could not end the interview."))
 			} finally {
 				setBusy(null)
-				setConfirmEnd(false)
 			}
 		})
 	}
@@ -302,29 +317,24 @@ export default function VideoInterviewRoom({
 					</div>
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
+					{/* Toggles keep one name; aria-pressed carries the state (a changing name
+					    plus aria-pressed would contradict itself for screen readers). */}
 					<ToolbarButton
 						pressed={micMuted}
 						onClick={() => setMicMuted((m) => !m)}
 						disabled={!mic.supported || mic.blocked}
-						label={micMuted ? "Unmute microphone" : "Mute microphone"}
 					>
-						{micMuted ? "Unmute mic" : "Mute mic"}
+						Mute mic
 					</ToolbarButton>
 					<ToolbarButton
-						pressed={!camOn}
 						onClick={() => (camOn ? camera.stop() : void camera.start())}
 						disabled={camera.status === "starting"}
-						label={camOn ? "Turn camera off" : "Turn camera on"}
 					>
 						{camera.status === "starting" ? "Starting…" : camOn ? "Stop camera" : "Start camera"}
 					</ToolbarButton>
 					{tts.supported ? (
-						<ToolbarButton
-							pressed={voiceMuted}
-							onClick={toggleVoice}
-							label={voiceMuted ? "Unmute interviewer voice" : "Mute interviewer voice"}
-						>
-							{voiceMuted ? "Unmute voice" : "Mute voice"}
+						<ToolbarButton pressed={voiceMuted} onClick={toggleVoice}>
+							Mute voice
 						</ToolbarButton>
 					) : null}
 					{session.remaining_seconds !== null ? (
@@ -333,35 +343,7 @@ export default function VideoInterviewRoom({
 							seconds={session.remaining_seconds}
 						/>
 					) : null}
-					{confirmEnd ? (
-						<span className="flex items-center gap-2">
-							<span className="text-xs text-slate-500">End now?</span>
-							<button
-								type="button"
-								onClick={finish}
-								disabled={busy !== null}
-								className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-							>
-								{busy === "finish" ? "Ending…" : "Yes, end"}
-							</button>
-							<button
-								type="button"
-								onClick={() => setConfirmEnd(false)}
-								className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs dark:border-white/10"
-							>
-								Keep going
-							</button>
-						</span>
-					) : (
-						<button
-							type="button"
-							onClick={() => setConfirmEnd(true)}
-							disabled={busy !== null}
-							className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:border-red-300 hover:text-red-600 disabled:opacity-50 dark:border-white/10 dark:text-slate-300"
-						>
-							End interview
-						</button>
-					)}
+					<EndInterviewControl busy={busy !== null} ending={busy === "finish"} onConfirm={finish} />
 				</div>
 				<div className="flex w-full flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
 					<span data-testid="camera-status">{cameraStatusText(camera)}</span>
@@ -382,6 +364,7 @@ export default function VideoInterviewRoom({
 					followUp={currentTurn?.is_follow_up ?? false}
 					speaking={tts.speaking}
 					thinking={thinking}
+					questionRef={questionRef}
 				/>
 				<section aria-label="Your camera" className="space-y-2">
 					<CameraPreview stream={camera.stream} status={camera.status} error={camera.error} />

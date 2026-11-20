@@ -5,6 +5,7 @@
  * interviews; generated on first view) and the transcript.
  */
 
+import { useEffect, useRef } from "react"
 import InterviewReportPanel from "./InterviewReport"
 import type { InterviewSession } from "./mockInterviewApi"
 
@@ -20,6 +21,12 @@ export default function InterviewFinished({
 	reportExists?: boolean
 }) {
 	const abandoned = session.status === "abandoned"
+	const headingRef = useRef<HTMLHeadingElement>(null)
+	// Phase 6.6: when the interview ends (or a past one opens) focus the result
+	// heading, so screen readers announce it and keyboard focus is not lost.
+	useEffect(() => {
+		headingRef.current?.focus()
+	}, [])
 	const answered = session.turns.filter((t) => t.answer_text !== null).length
 	const hasReport = session.status === "completed" && answered > 0
 	return (
@@ -28,7 +35,7 @@ export default function InterviewFinished({
 			className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 dark:border-white/10 dark:bg-slate-900"
 		>
 			<div>
-				<h2 id="mi-finished-title" className="text-lg font-semibold">
+				<h2 id="mi-finished-title" ref={headingRef} tabIndex={-1} className="text-lg font-semibold focus:outline-none">
 					{abandoned ? "Interview cancelled" : "Interview complete"}
 				</h2>
 				{session.closing_message ? (
