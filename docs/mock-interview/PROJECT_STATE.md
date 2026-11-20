@@ -1,6 +1,6 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-19 (Phase 6.3 video lobby, room and lifecycle implemented; Phase 6.4 not started)._
+_Last updated: 2026-11-20 (Phase 6.4 audit and automated-gap closure done; real-device tests pending; Phase 6.6 not started)._
 
 **This file is the single source of truth for status.** The "Status at a glance" block below is current. Everything
 after it is the dated, detailed history of each phase; where a historical section disagrees with this block, this
@@ -16,7 +16,7 @@ block wins.
 | 3 | Text HR + technical interview engine | Implemented, committed; live LLM not run | `926e59c` (docs `f8e3485`) |
 | 4 | Evaluation report + history | Implemented, committed; live LLM not run | `18d8db0` |
 | **5** | **Voice interview (browser speech)** | **Implemented, committed; automated/simulated tests pass; real-device tests pending** | `34fd3a9` |
-| **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented. 6.3 video lobby, room and lifecycle implemented, `VIDEO_UI_READY = true`, automated + simulated-browser tests pass. Real-device tests pending; 6.4–6.6 not started** | 6.1: `1ad5628` |
+| **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented. 6.3 video lobby, room and lifecycle implemented, `VIDEO_UI_READY = true`. 6.4 wiring (done in 6.3) audited, one fix, automated gaps closed, real-device matrix written. 6.5 done in 6.3. **Real-device tests pending; 6.6 not started** | 6.1 `1ad5628`, 6.2 `17247e2`, 6.3 `aef2999` |
 | 7–10 | Coding, company/full simulation, faculty campaigns, final review | Not started | — |
 
 - **Branch:** `feature/ai-mock-interview` in the worktree `D:/Campus_Ai-mock-interview`. Phase 5 is committed as `34fd3a9`; a docs-only commit recording it follows. Phase 6.1
@@ -285,12 +285,33 @@ sent. The static guards cover the new files.
   is not offered.
 - `VideoInterviewRoom` duplicates the room actions of `InterviewRoom` (kept separate so text/voice are untouched).
 
+### Phase 6.4 — wiring audit and automated-gap closure (2026-11-20)
+
+Details: `specs/phase-6-video-interview.md` §10.
+
+- **Scope (canonical spec §6):** wire the room to the existing TTS, dictation, answer, retry-next and finish. That
+  wiring shipped in 6.3 (`aef2999`). 6.4 audited each area (§10.1), fixed the one gap found, added tests and wrote
+  the real-device matrix.
+- **Fix:** the room toolbar showed a stale microphone status ("Microphone ready…") while no answer box was on screen
+  (the retry wait). Now it says "Microphone idle until the next question." Files: `videoInterviewFlow.ts`,
+  `VideoInterviewRoom.tsx`, `frontend/tests/unit/videoInterviewFlow.test.mjs` (+3 tests).
+- **Unchanged:** no backend, API, schema, worker, scoring, Docker or configuration change; text and voice code
+  untouched.
+- **Tests (2026-11-20):**
+  - frontend unit tests 117/117 (114 + 3);
+  - `tsc` passed; ESLint 0 problems;
+  - simulated-browser run 46/46: 34 regression checks plus 12 new checks for retry after an AI failure, interviewer
+    voice mute, ending before any answer, no speech recognition and a past video interview. It used a fake camera,
+    fake speech and a scripted engine with a harness-only failure switch.
+- **Real-device matrix:** spec §10.4, 22 rows, **all pending**.
+- **Deferred by the spec:** the optional shared room-actions hook (§9), until real-device results exist.
+
 ### Next recommended action (approved sequence)
-1. Phase 6.1 is committed (`1ad5628`) and recorded in the project documentation. Phases 6.2 and 6.3 are
-   implemented.
-2. **Phase 6.4 — NOT started; needs your go-ahead:** real-device verification of camera + browser speech together
-   and the remaining items in `specs/phase-6-video-interview.md` §9 "Phase 6.4 remaining scope".
-3. Phase 6.6 as in `specs/phase-6-video-interview.md` §6.
+1. Phases 6.1 (`1ad5628`), 6.2 (`17247e2`) and 6.3 (`aef2999`) are committed. Phase 6.4 code audit and mic-status fix
+   are complete. The real-device test matrix is documented; physical-device execution remains pending.
+2. **Run the real-device matrix** (`specs/phase-6-video-interview.md` §10.4) on physical devices; record the results.
+3. **Phase 6.6 — NOT started; needs your go-ahead:** accessibility and responsive review, full regression, then the
+   §10.4 checklist results. Phase 6.5 was done in 6.3.
 
 Phase 5's real-device checks (`specs/phase-5-voice-interview.md` §8) remain open and tracked above (D1: deferred).
 

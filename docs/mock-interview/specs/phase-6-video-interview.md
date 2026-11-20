@@ -2,8 +2,9 @@
 
 Status: **design approved 2026-11-19; Phase 6.1 (foundations) implemented and committed as `1ad5628`; Phase 6.2
 (camera infrastructure) implemented; Phase 6.3 (video lobby, room and session lifecycle) implemented, with
-`VIDEO_UI_READY = true`.** Video is still OFF unless the build flag and the server gates allow it. Real-device
-testing is pending. Remaining work: §6.
+`VIDEO_UI_READY = true`; Phase 6.4 (wiring audit, automated-gap closure, real-device test matrix) done in the
+repository.** Video is still OFF unless the build flag and the server gates allow it. **Real-device testing is
+pending** (§10.4). Remaining work: §6.
 Supersedes the handoff `phase-6-video-interview-handoff.md` (kept for history). Overall status:
 `../PROJECT_STATE.md`.
 
@@ -217,9 +218,9 @@ disclaimer and scoring are unchanged.
 | 6.1 | Spec, backend flags + gate, `video` in schema/options, `stt` for video, frontend build flag, Dockerfile arg, route-scoped camera policy, tests, docs | **Implemented, committed `1ad5628`** |
 | 6.2 | `cameraMedia.ts` + `useCamera`, acknowledgement, device selection, preview, error mapping, reload fallback; unit tests with fake `mediaDevices` | **Implemented**; not rendered by any page; real-device tests pending |
 | 6.3 | `VideoLobby`, `VideoInterviewRoom` (interviewer tile, toolbar, timer, status, end/abandon), refresh recovery, `VIDEO_UI_READY = true` | **Implemented** (§5a, §9); real-device tests pending |
-| 6.4 | Wire to existing TTS / dictation / answer / retry-next / finish | **Wiring done in 6.3** (needed before the UI could be enabled). Remaining: see §9 "Phase 6.4 remaining scope" |
+| 6.4 | Wire to existing TTS / dictation / answer / retry-next / finish | **Wiring done in 6.3; audited and completed in 6.4** (§10): one mic-status fix, 12 more simulated-browser checks, real-device matrix written. **Real-device tests pending** |
 | 6.5 | Report + history: "Video" label, frontend-only camera note (D9) | **Done in 6.3** (D9 note, history label); no backend report change by design |
-| 6.6 | Responsive/mobile, accessibility, privacy guards, full regression, real-device checklist | Not started |
+| 6.6 | Responsive/mobile, accessibility, privacy guards, full regression, real-device checklist | Not started. The real-device checklist itself now exists (§10.4); 6.6 runs it |
 
 ## 7. Phase 6.1 verification record (2026-11-19)
 
@@ -322,6 +323,9 @@ Harness notes (not app defects):
 header) already scrolls horizontally: about 489 px of content on the text room and setup form too. Not changed here.
 
 ### Phase 6.4 remaining scope
+
+_(Written at the end of 6.3; superseded by §10, the Phase 6.4 record.)_
+
 - Real-device checks (not done): camera and browser speech recognition together on Chrome/Edge desktop, Android
   Chrome (camera + dictation concurrency, background/screen lock) and iOS Safari; camera unplug and permission
   revocation on real hardware; the reload fallback on Firefox/Safari, which have no Permissions-Policy API.
@@ -329,3 +333,108 @@ header) already scrolls horizontally: about 489 px of content on the text room a
   separate so the text/voice room is unchanged); a shared hook could remove the duplication after real-device
   results.
 - 6.6 as planned: responsive and accessibility review, full regression, real-device checklist.
+
+## 10. Phase 6.4 record (2026-11-20)
+
+Canonical scope (§6): wire the video room to the existing TTS, dictation, answer, retry-next and finish. That
+wiring shipped in 6.3 (`aef2999`) because the UI could not be enabled without it. Phase 6.4 therefore did three
+things:
+- audited every 6.4 area against the code;
+- fixed the one gap found;
+- closed the automated-test gaps with simulated-browser checks and wrote the real-device test matrix.
+
+The optional shared-hook clean-up (§9) stays deferred, as §9 says, until real-device results exist.
+
+### 10.1 Audit
+
+Legend: **Complete** = implemented with automated evidence. **Real device** = still needs a physical-device check
+(§10.4).
+
+| Area | Status | Evidence |
+|---|---|---|
+| Question read aloud once (TTS) | Complete; real device | `VideoInterviewRoom` effect with the voice room's key `mock-interview:spoken:<id>`; smoke B9 |
+| Interviewer voice mute / Hear question | Complete (tests added in 6.4); real device | smoke I1 (muted: next question not read), I2 (Hear question reads it), I3 |
+| Speaking animation | Complete | driven by `useSpeechSynthesis().speaking`; smoke B9 |
+| Dictation into an editable answer | Complete; real device | Phase 5 `VoiceAnswerBox`; smoke B10, B12, B13 |
+| Typing fallback without speech recognition | Complete (test added in 6.4); real device (Firefox/Brave) | smoke K1, K2 |
+| Mic mute stops dictation, camera untouched | Complete; real device | `micMuted` prop; unit tests; smoke B11 |
+| Mic status while no answer box is shown | **Fixed in 6.4** | it showed the stale last state ("Microphone ready…") during the retry wait; `micStatusText({answering})`; 3 unit tests; smoke H2, H4 |
+| Answer submit, idempotent `turn_seq` | Complete | backend tests (6.1); smoke B13 |
+| Duplicate prevention | Complete | `createActionGuard` unit tests; smoke B18 (one `/finish`) |
+| Answer saved but AI fails → retry next question | Complete (tests added in 6.4) | smoke H1 (error, "answer is saved", retry), H3 (camera unaffected), H4 (retry recovers, one saved answer) |
+| Finish with answers | Complete | smoke B19, B20 (D9 note + report) |
+| Finish before any answer (abandoned) | Complete (test added in 6.4) | smoke J1 (cancelled, tracks stopped, no report) |
+| Cancel in the lobby | Complete | smoke C1 |
+| Camera lifecycle (click-only, same stream, terminal stop, refresh off, failure continues) | Complete; real device | unit tests; smoke B2–B8, B14–B16, B19, C1, D1–D4 |
+| Policy fallback after sidebar navigation | Complete in Chromium; real device for Firefox/Safari | smoke E1, E2 |
+| Video report integration (D9 note, history label, past interview) | Complete (L1 added in 6.4) | smoke B20, B21, L1 |
+| Text and voice regression | Complete | smoke F1, F2, G1–G3; unit tests |
+
+### 10.2 Changes in 6.4
+
+- `videoInterviewFlow.ts`: `MicState.answering` (optional). When `false`, the status is "Microphone idle until the
+  next question." (or "Microphone muted"), never the stale dictation state.
+- `VideoInterviewRoom.tsx`: passes `answering: session.awaiting === "answer"`.
+- `frontend/tests/unit/videoInterviewFlow.test.mjs`: 3 tests for the above.
+
+No backend, API, schema, worker, scoring, Docker or configuration change. Text and voice code untouched.
+
+### 10.3 Automated results (2026-11-20)
+
+| Check | Result |
+|---|---|
+| All frontend unit tests (`npm run test:unit`) | 117/117 passed (114 before + 3 new) |
+| `npx tsc --noEmit` | passed |
+| ESLint, touched folders | 0 problems |
+| Simulated-browser run: the 6.3 harness plus 6.4 scenarios on a fresh throwaway SQLite DB; Chromium with a **fake** camera and fake permission UI; fake speech APIs; scripted engine with a harness-only failure switch | **46/46 passed** (34 regression + 12 new: H1–H4, I1–I3, J1, K1–K3, L1) |
+| Backend suites | not run: no backend change |
+
+### 10.4 Real-device test matrix (manual; ALL PENDING)
+
+None of these has been done. Fake devices, injected speech fakes and headless Chromium are not real-device tests.
+Run each on a real device over HTTPS, or on localhost from the same machine. Use a pilot institute with both build
+flags and the backend video flags on, in a non-production environment.
+
+Devices:
+- **D1:** Chrome desktop (Windows or macOS), built-in or USB webcam and microphone.
+- **D2:** Edge desktop.
+- **D3:** Android Chrome (phone).
+- **D4:** iOS Safari (iPhone).
+- **D5:** Firefox desktop.
+
+| ID | Devices | Steps | Expected |
+|---|---|---|---|
+| RD-01 | D1–D5 | Open Mock Interview by full page load; create a Video interview; wait on the lobby | No permission prompt and no camera light until "Turn on camera" |
+| RD-02 | D1–D5 | Turn on camera, allow | Preview mirrored, "Camera on · preview only", camera light on |
+| RD-03 | D1–D5 | Fresh profile; Turn on camera, **deny** | "Camera access was blocked…" message; Start stays disabled |
+| RD-04 | D1, D2, D3 | Allow, then revoke camera permission in site settings mid-interview | Camera status shows the camera stopped; interview continues; "Try camera again" re-prompts |
+| RD-05 | D1, D2 | Unplug the USB camera during the interview | "Camera unavailable…"; answering still works; re-plug + Try again works |
+| RD-06 | D1, D2 | Two cameras: switch in the lobby and in the room | Old camera light goes off before the new one turns on; the choice is remembered after reload |
+| RD-07 | D1–D4 | Camera on + Start speaking; speak 2–3 sentences | Dictation works while the camera stays on; text appears in the box; nothing else asks for the microphone |
+| RD-08 | D1–D4 | While dictating, press Mute mic | Dictation stops at once; camera stays on; Start speaking disabled until Unmute |
+| RD-09 | D1–D4 | Stop camera / Start camera in the room | Camera light off/on; dictation and the interview unaffected |
+| RD-10 | D1–D4 | Questions read aloud; Mute voice; Hear question | New question read once; muted → not read; Hear question reads on request; reading stops when Start speaking is pressed |
+| RD-11 | D3 | Background the app (home button) for 30 s during dictation and camera, then return | No crash; camera may show paused/stopped and can be restarted; the draft text is kept; the interview continues |
+| RD-12 | D3 | Lock the screen for 30 s, unlock | As RD-11; no auto-restart of the camera without a click |
+| RD-13 | D4 | Full interview on iOS Safari | Preview plays inline (not fullscreen); TTS needs a tap; if dictation is unavailable or unreliable, typing works |
+| RD-14 | D5 | Full interview on Firefox | Camera works; no speech recognition → "Speech input not available…", typing works |
+| RD-15 | D1–D5 | Refresh during the room | Room resumes; camera OFF and no prompt until clicked; unsent text kept |
+| RD-16 | D1, D2 | Open Mock Interview from another dashboard page via the sidebar; Turn on camera | "Reload to enable camera" offered; after it, the camera works; no reload loop |
+| RD-17 | D4, D5 | Same as RD-16 | Record the actual behaviour: these browsers expose no policy API, so a denial-style message without the reload button is expected; document whether a manual reload fixes it |
+| RD-18 | D1–D5 | End interview (after answering) | Camera light goes off immediately; report shows the D9 note |
+| RD-19 | D1–D5 | Cancel in the lobby with the camera on; and End before answering | Camera light off immediately; "Interview cancelled" |
+| RD-20 | D1–D5 | Navigate away or close the tab with the camera on | Camera light off (pagehide/unmount) |
+| RD-21 | D1–D4 | Hindi and Hinglish answers by dictation in a video interview | Same recognition behaviour as Phase 5 voice (§8 there); no audio reaches Campus AI |
+| RD-22 | D3 | Rotate the phone during the room | Layout usable in portrait and landscape; controls reachable |
+
+Record each run with: date, device and OS version, browser version, result (pass/fail), and notes. Mark a row
+passed only after it ran on that physical device. Phase 5's own real-device checks (`phase-5-voice-interview.md`
+§8) remain separately pending.
+
+### 10.5 Remaining after 6.4
+
+- Execute §10.4 on real devices (not done).
+- 6.5: done in 6.3 (D9 note, history label). Nothing left unless the real-device runs show a need.
+- 6.6 (not started): accessibility and responsive review, full regression, running the §10.4 checklist.
+- Optional: the shared room-actions hook (§9), after real-device results.
+- Pre-existing, outside Mock Interview: the dashboard shell's horizontal scroll at 390 px.

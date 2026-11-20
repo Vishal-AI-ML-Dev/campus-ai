@@ -87,9 +87,16 @@ export type MicState = {
 	blocked: boolean
 	/** The student muted the microphone in the room toolbar. */
 	muted: boolean
+	/**
+	 * Phase 6.4: an answer box is on screen. While the room waits for the next
+	 * question (or its retry) there is nothing to dictate into, and the last
+	 * reported dictation state would be stale. Omitted = true.
+	 */
+	answering?: boolean
 }
 
 export function micStatusText(mic: MicState): string {
+	if (mic.answering === false) return mic.muted ? "Microphone muted" : "Microphone idle until the next question."
 	if (!mic.supported) return "Speech input not available in this browser. Type your answers."
 	if (mic.blocked) return "Microphone blocked. Type your answers."
 	if (mic.muted) return "Microphone muted"

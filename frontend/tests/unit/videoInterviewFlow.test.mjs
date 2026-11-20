@@ -251,3 +251,24 @@ describe("wiring", () => {
 		assert.deepEqual([...new Set(calls)].sort(), ["answer", "finish", "get", "next"])
 	})
 })
+
+// --- Phase 6.4 ---------------------------------------------------------------------------
+describe("Phase 6.4: microphone status between questions", () => {
+	const base = { supported: true, listening: false, blocked: false, muted: false }
+
+	it("is not stale while no answer box is on screen", () => {
+		// e.g. awaiting next_question: the last reported state said "ready" / "Listening…".
+		assert.equal(micStatusText({ ...base, answering: false }), "Microphone idle until the next question.")
+		assert.equal(micStatusText({ ...base, listening: true, answering: false }), "Microphone idle until the next question.")
+		assert.equal(micStatusText({ ...base, muted: true, answering: false }), "Microphone muted")
+	})
+
+	it("is unchanged while answering (default)", () => {
+		assert.equal(micStatusText({ ...base, answering: true }), micStatusText(base))
+		assert.equal(micStatusText({ ...base, listening: true, answering: true }), "Listening…")
+	})
+
+	it("the room passes whether an answer box is shown", () => {
+		assert.match(src["VideoInterviewRoom.tsx"], /answering: session\.awaiting === "answer"/)
+	})
+})

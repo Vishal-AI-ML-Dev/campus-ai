@@ -308,3 +308,11 @@ Design and decisions D1–D12: `specs/phase-6-video-interview.md`.
   interview (D7). A shared action guard blocks duplicate requests.
 - `VIDEO_UI_READY` is `true`: video is offered when the build flag, the server flags, the video tenant allow-list and
   the student role all allow it. Defaults remain off.
+
+### Phase 6.4: wiring audit
+
+- The 6.3 room already used the existing TTS, dictation, answer, retry-next and finish paths. 6.4 audited them,
+  closed the automated-test gaps (retry after an AI failure, interviewer-voice mute, ending before any answer, no
+  speech recognition, past video interview from history) and wrote the real-device matrix (spec §10.4).
+- One fix: the toolbar microphone status is "idle until the next question" while no answer box is on screen
+  (`micStatusText({ answering })`), instead of a stale dictation state.

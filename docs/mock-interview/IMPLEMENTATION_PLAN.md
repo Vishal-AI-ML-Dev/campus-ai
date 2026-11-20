@@ -78,7 +78,7 @@ practice scores don't predict selection. Structured output with JSON-fallback (s
 | 3 | Text HR + technical interview end-to-end | — | Ownership/tenant tests; worker graph unit tests with stubbed LLM |
 | 4 | Evaluation, report, history UI | — | Evidence-backed scoring tests |
 | 5 | Voice | — | Provider **decided 2026-11-19: browser Web Speech** (§7 a). Implemented, committed locally (`34fd3a9`); manual real-device verification pending (see PROJECT_STATE.md) |
-| 6 | Video (camera preview, captions, timer — no face/emotion analysis) | — | Same engine as text/voice. Design **approved 2026-11-19** (`specs/phase-6-video-interview.md`, D1–D12). **6.1 foundations committed (`1ad5628`)**; **6.2 camera infrastructure implemented**; **6.3 lobby, room and lifecycle implemented** (also the 6.4 wiring and the 6.5 D9 note/history label); real-device tests and 6.6 pending |
+| 6 | Video (camera preview, captions, timer — no face/emotion analysis) | — | Same engine as text/voice. Design **approved 2026-11-19** (`specs/phase-6-video-interview.md`, D1–D12). **6.1 foundations committed (`1ad5628`)**; **6.2 camera infrastructure implemented**; **6.3 lobby, room and lifecycle implemented** (also the 6.4 wiring and the 6.5 D9 note/history label); **6.4 audit and automated-gap closure done** (spec §10); real-device tests (spec §10.4) and 6.6 pending |
 | 7 | Coding | — | **Sandbox decision needed**; editor-only until a sandbox exists |
 | 8 | Company-based + full placement simulation (multi-round session) | — | — |
 | 9 | Faculty campaigns + analytics + export | — | RBAC tests: students/recruiters denied, cross-tenant denied |

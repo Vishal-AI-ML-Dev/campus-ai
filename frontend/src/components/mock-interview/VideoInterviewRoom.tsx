@@ -273,7 +273,7 @@ export default function VideoInterviewRoom({
 	const budget = progress.question_budget ?? Math.max(progress.answered, 1)
 	const pct = Math.min(100, Math.round((progress.answered / budget) * 100))
 	const camOn = camera.status === "on"
-	const micText = micStatusText({ ...mic, muted: micMuted })
+	const micText = micStatusText({ ...mic, muted: micMuted, answering: session.awaiting === "answer" })
 
 	return (
 		<div className="flex flex-col gap-3">
