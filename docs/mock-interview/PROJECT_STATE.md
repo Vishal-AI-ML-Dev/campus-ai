@@ -1,6 +1,7 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-20 (Phase 6.6 automated hardening done; Phase 6 NOT complete: real-device checklist pending)._
+_Last updated: 2026-11-20 (Phase 7.0 done: decisions, roadmap re-numbering, worker baseline. Phase 6.6 automated
+hardening done; Phase 6 NOT complete: real-device checklist pending, now part of the Phase 10 final acceptance)._
 
 **This file is the single source of truth for status.** The "Status at a glance" block below is current. Everything
 after it is the dated, detailed history of each phase; where a historical section disagrees with this block, this
@@ -17,7 +18,12 @@ block wins.
 | 4 | Evaluation report + history | Implemented, committed; live LLM not run | `18d8db0` |
 | **5** | **Voice interview (browser speech)** | **Implemented, committed; automated/simulated tests pass; real-device tests pending** | `34fd3a9` |
 | **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented. 6.3 video lobby, room and lifecycle implemented, `VIDEO_UI_READY = true`. 6.4 wiring (done in 6.3) audited, one fix, automated gaps closed, real-device matrix written. 6.5 done in 6.3, audited in 6.5 (report parity proven by tests). 6.6 automated hardening done (accessibility, responsive, privacy guards, full regression). **Phase 6 NOT complete: real-device checklist (24 rows) pending** | 6.1 `1ad5628`, 6.2 `17247e2`, 6.3 `aef2999`, 6.4 `0262f97` |
-| 7–10 | Coding, company/full simulation, faculty campaigns, final review | Not started | — |
+| **7** | **Production operations and monitoring** (`specs/phase-7-production-operations.md`) | **Design approved (P7-D1–D9, R1–R8). 7.0 done (decisions, roadmap, isolated worker venv, worker baseline, Sentry defaults verified). 7.1–7.10 not started** | 7.0: docs-only commit |
+| 8 | Advanced AI interview intelligence, incl. coding round (old 7) and company/full simulation (old 8) | Not started | — |
+| 9 | Institute and placement management, incl. faculty campaigns (old 9) | Not started | — |
+| 10 | Enterprise integrations, platform-level security, final acceptance (full regression + all real-device tests) | Not started | — |
+
+Roadmap re-numbered 2026-11-20 (P7-D1); old-to-new mapping: `IMPLEMENTATION_PLAN.md` §6a.
 
 - **Branch:** `feature/ai-mock-interview` in the worktree `D:/Campus_Ai-mock-interview`. Phase 5 is committed as `34fd3a9`; a docs-only commit recording it follows. Phase 6.1
   is committed as `1ad5628`. Nothing is pushed, merged or deployed.
@@ -360,6 +366,33 @@ Details: `specs/phase-6-video-interview.md` §12.
 - **Real-device checklist:** spec §10.4, 24 rows (22 plus screen-reader and keyboard-only rows), **all pending**.
   Phase 5's real-device checks also remain pending.
 
+### Phase 7.0 — decisions, roadmap and baseline (2026-11-20; docs only)
+
+Full record: `specs/phase-7-production-operations.md` §11 (decisions), §12 (requirements), §13 (7.0 record).
+
+- **Approved decisions:** P7-D1 new roadmap (7 ops; 8 AI intelligence incl. coding + company/full simulation; 9
+  institute/placement incl. faculty campaigns; 10 enterprise, platform security, final acceptance); D2 no
+  cross-institute dashboard before the Phase 10 platform-operator role; D3 admin edits controls, admin + TPO view own
+  institute only; D4 circuit breaker on by default (documented exception to default-OFF); D5 400-day retention,
+  manual auditable purge; D6 backup provider deferred; D7 `/metrics` behind a dedicated `METRICS_TOKEN`; D8 small
+  additive edits to `ai_client.py` and both `observability.py` copies; D9 no invented prices, cost unknown until a
+  price table is approved.
+- **Mandatory requirements R1–R8:** no interview content to Langfuse (R1) or Sentry (R2); usage recording never
+  blocks/fails an interview (R3), is durable and idempotent (R4) and content-free (R5); env flags are the ceiling
+  (R6); institute controls only tighten (R7); a running interview is never interrupted by a quota (R8).
+- **Worker environment:** `ai-worker/.venv` created in this worktree with `uv sync --frozen` (Python 3.13.13, git-ignored);
+  `pytest==9.1.1` added to that venv only (the worker declares no test deps). `pyproject.toml`/`uv.lock` unchanged.
+- **Worker baseline:** interview subset **48/48** (matches Phases 3–5); `test_face_tenant_filter.py` 6/6; whole
+  `tests/` 54 passed, 5 failed — the 5 are `test_face_qdrant_server.py`, a script-style real-Qdrant suite that is not
+  pytest-safe (pre-existing since `f6de3d5`; as a script it prints `SKIP`). The run created untracked
+  `ai-worker/qdrant_data/` (synthetic test vectors), left in place pending your decision.
+- **Sentry (verified, sentry-sdk 2.63.0):** local variables and request bodies (≤ ~10 KB) are captured by default,
+  independent of `send_default_pii`. No exposure today (DSN optional, feature off), but 7.1 must close it before any
+  pilot runs with `SENTRY_DSN` or `LANGFUSE_*` set.
+- **Phase 7 implementation sequence:** 7.1 correlation + Sentry/Langfuse privacy → 7.2 worker LLM telemetry → 7.3 usage
+  ledger (migration) → 7.4 cost → 7.5 circuit breaker + alerts → 7.6 controls + quotas (migration) → 7.7 admin ops API →
+  7.8 admin ops UI → 7.9 metrics token → 7.10 runbooks, retention script, acceptance. Each stops for review.
+
 ### Next recommended action (approved sequence)
 1. Phases 6.1 (`1ad5628`), 6.2 (`17247e2`), 6.3 (`aef2999`), 6.4 (`0262f97`) and 6.5 (`75ed83c`) are committed. Phase
    6.6's automated hardening is complete.
@@ -368,6 +401,12 @@ Details: `specs/phase-6-video-interview.md` §12.
 3. Decide on the Next.js 16.4.6 patch upgrade (spec §12.4).
 
 Phase 5's real-device checks (`specs/phase-5-voice-interview.md` §8) remain open and tracked above (D1: deferred).
+
+**Update 2026-11-20 (Phase 7.0):** the sequence above is superseded. Item 2 (and Phase 5 §8) moved to the **Phase 10
+final acceptance milestone**; Phases 5 and 6 stay marked "not complete" until then. Item 3 is still open.
+**Next action:** review Phase 7.0, then (on approval) start **Phase 7.1** — correlation + Sentry/Langfuse privacy.
+Also open: decide whether to delete the untracked `ai-worker/qdrant_data/` test artefact and whether to add a pytest
+skip marker to `ai-worker/tests/test_face_qdrant_server.py`.
 
 ## Where the work lives
 | | |
