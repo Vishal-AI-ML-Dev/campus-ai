@@ -33,6 +33,7 @@ from observability import (
     setup_logging,
 )
 from tracing import init_tracing
+from correlation import invocation_id_middleware
 from face import router as face_router
 from mentor import router as mentor_router
 from resume import router as resume_router
@@ -79,6 +80,9 @@ app = FastAPI(
 
 # Log every request (method, path, status, duration_ms, request_id).
 app.middleware("http")(request_logging_middleware)
+# Phase 7.1: X-AI-Invocation-ID -> invocation_id on every log line. Registered
+# after (= outside) the logging middleware so the access log carries it too.
+app.middleware("http")(invocation_id_middleware)
 
 # Aggregate Prometheus metrics at GET /metrics (no-op if prometheus_client
 # isn't installed). /metrics is an open path (see _OPEN_PATHS) so a scraper

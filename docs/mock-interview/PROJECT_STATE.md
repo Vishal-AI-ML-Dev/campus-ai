@@ -1,6 +1,8 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-20 (Phase 7.0 done: decisions, roadmap re-numbering, worker baseline. Phase 6.6 automated
+_Last updated: 2026-11-20 (Phase 7.1 AI privacy and request tracing: implementation complete; Git history tracks
+commit status.
+Phase 7.0 done: decisions, roadmap re-numbering, worker baseline. Phase 6.6 automated
 hardening done; Phase 6 NOT complete: real-device checklist pending, now part of the Phase 10 final acceptance)._
 
 **This file is the single source of truth for status.** The "Status at a glance" block below is current. Everything
@@ -18,7 +20,7 @@ block wins.
 | 4 | Evaluation report + history | Implemented, committed; live LLM not run | `18d8db0` |
 | **5** | **Voice interview (browser speech)** | **Implemented, committed; automated/simulated tests pass; real-device tests pending** | `34fd3a9` |
 | **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented. 6.3 video lobby, room and lifecycle implemented, `VIDEO_UI_READY = true`. 6.4 wiring (done in 6.3) audited, one fix, automated gaps closed, real-device matrix written. 6.5 done in 6.3, audited in 6.5 (report parity proven by tests). 6.6 automated hardening done (accessibility, responsive, privacy guards, full regression). **Phase 6 NOT complete: real-device checklist (24 rows) pending** | 6.1 `1ad5628`, 6.2 `17247e2`, 6.3 `aef2999`, 6.4 `0262f97` |
-| **7** | **Production operations and monitoring** (`specs/phase-7-production-operations.md`) | **Design approved (P7-D1–D9, R1–R8). 7.0 done (decisions, roadmap, isolated worker venv, worker baseline, Sentry defaults verified). 7.1–7.10 not started** | 7.0: docs-only commit |
+| **7** | **Production operations and monitoring** (`specs/phase-7-production-operations.md`) | **Design approved (P7-D1–D9, R1–R8). 7.0 done (decisions, roadmap, isolated worker venv, worker baseline, Sentry defaults verified). 7.1 AI privacy and request tracing: implementation complete and tested. 7.2–7.10 not started** | 7.0 `ee48610` (docs); 7.1: see Git history |
 | 8 | Advanced AI interview intelligence, incl. coding round (old 7) and company/full simulation (old 8) | Not started | — |
 | 9 | Institute and placement management, incl. faculty campaigns (old 9) | Not started | — |
 | 10 | Enterprise integrations, platform-level security, final acceptance (full regression + all real-device tests) | Not started | — |
@@ -393,6 +395,34 @@ Full record: `specs/phase-7-production-operations.md` §11 (decisions), §12 (re
   ledger (migration) → 7.4 cost → 7.5 circuit breaker + alerts → 7.6 controls + quotas (migration) → 7.7 admin ops API →
   7.8 admin ops UI → 7.9 metrics token → 7.10 runbooks, retention script, acceptance. Each stops for review.
 
+### Phase 7.1 — AI privacy and request tracing (2026-11-20; implementation complete)
+
+Phase 7.1 implementation is complete. This document records implementation status and evidence; Git history tracks
+commit status.
+
+Full record: `specs/phase-7-production-operations.md` §14.
+
+- **Correlation:** the backend creates an invocation id before every interview worker call (kept across the
+  connect-error retry) and sends `X-AI-Invocation-ID` + `X-Request-ID`; both services log them on every JSON line
+  (worker also in the report scorer threads). Malformed or content-bearing ids are replaced or ignored. No API,
+  payload, scoring or UI change.
+- **Langfuse (R1):** interview LLM calls and graph runs never reach Langfuse or LangSmith: no callbacks, detached
+  from any parent runnable, LangSmith forced off; `trace_config` refuses interview names. No flag re-enables it.
+  Mentor/resume/scoring tracing unchanged.
+- **Sentry (R2):** both services: no PII, no frame locals, no request bodies, allow-list scrubbing of events,
+  transactions and breadcrumbs (exception types/stack kept, messages redacted), request/invocation ids as tags.
+  After the pre-staging audit, Sentry's auto-enabled AI integrations are switched off with the SDK's
+  `disabled_integrations` option (worker: langchain, langgraph, huggingface_hub, and google_genai can't take their
+  place; backend: no change). New end-to-end test `ai-worker/tests/test_sentry_ai_integrations.py` (8/8) runs real
+  interview calls with Sentry on: no AI integration, no Sentry handler on interview calls, no `gen_ai` spans, no
+  sentinel in any envelope, and error reporting still works. A control run without the fix shows 15 `gen_ai` spans.
+  Re-run: worker 83 passed; backend Sentry/correlation/error/health 39 passed; sync and ruff clean.
+- **Tests:** backend new 31/31; backend mock-interview + observability regression 210 passed, 8 skipped (opt-in
+  Postgres), 0 failed; worker gate 75/75; whole worker folder 76 passed, 4 failed (pre-existing
+  `test_face_qdrant_server.py`). Mutation checks prove the new tests fail without the fixes. ruff clean; observability
+  copies in sync. Not run: full backend suite (scheduled for 7.3), Postgres suites, frontend (unchanged).
+- **No** migration, dependency, lock-file, frontend or flag change.
+
 ### Next recommended action (approved sequence)
 1. Phases 6.1 (`1ad5628`), 6.2 (`17247e2`), 6.3 (`aef2999`), 6.4 (`0262f97`) and 6.5 (`75ed83c`) are committed. Phase
    6.6's automated hardening is complete.
@@ -404,7 +434,8 @@ Phase 5's real-device checks (`specs/phase-5-voice-interview.md` §8) remain ope
 
 **Update 2026-11-20 (Phase 7.0):** the sequence above is superseded. Item 2 (and Phase 5 §8) moved to the **Phase 10
 final acceptance milestone**; Phases 5 and 6 stay marked "not complete" until then. Item 3 is still open.
-**Next action:** review Phase 7.0, then (on approval) start **Phase 7.1** — correlation + Sentry/Langfuse privacy.
+**Next action (updated after 7.1):** after Phase 7.1 is in Git history, start **Phase 7.2** — worker LLM
+telemetry (on approval).
 Also open: decide whether to delete the untracked `ai-worker/qdrant_data/` test artefact and whether to add a pytest
 skip marker to `ai-worker/tests/test_face_qdrant_server.py`.
 

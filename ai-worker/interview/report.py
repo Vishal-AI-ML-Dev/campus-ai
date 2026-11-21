@@ -10,6 +10,7 @@ deterministic aggregation).
 
 from __future__ import annotations
 
+import contextvars
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import TypedDict
@@ -117,8 +118,13 @@ def answer_scorer(state: ReportState) -> dict:
     chunks = [to_score[i : i + SCORE_CHUNK] for i in range(0, len(to_score), SCORE_CHUNK)]
     raw: dict[int, LLMAnswerScore] = {}
     if chunks:
+        # Phase 7.1: run each chunk in a copy of this context so log lines from
+        # the scorer threads keep request_id / invocation_id.
+        parent = contextvars.copy_context()
         with ThreadPoolExecutor(max_workers=min(SCORE_PARALLEL, len(chunks))) as pool:
-            for part in pool.map(lambda c: _score_chunk(config, rubric, c), chunks):
+            for part in pool.map(
+                lambda c: parent.copy().run(_score_chunk, config, rubric, c), chunks
+            ):
                 raw.update(part)
 
     questions: list[QuestionReport] = []

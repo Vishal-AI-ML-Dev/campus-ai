@@ -91,6 +91,11 @@ def trace_config(name: str, **metadata: Any) -> dict[str, Any]:
     """
     if not _enabled or _handler is None:
         return {}
+    if name.lower().startswith("interview"):
+        # Phase 7.1 (R1): the mock interview engine is never traced, whatever
+        # the configuration. Interview code doesn't call this; this guard
+        # catches a future caller that does.
+        return {}
     config: dict[str, Any] = {"callbacks": [_handler], "run_name": name}
     if metadata:
         config["metadata"] = metadata

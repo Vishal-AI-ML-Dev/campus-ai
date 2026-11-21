@@ -7,6 +7,10 @@
    whether it has a deterministic fallback or must fail the request.
 
 Errors are logged by class only (never prompt text, resumes or answers).
+
+Tracing (Phase 7.1, R1): interview calls are NEVER traced. They do not use
+``tracing.trace_config`` and run with no callbacks inside
+``no_tracing.tracing_disabled()`` - see ``interview/no_tracing.py``.
 """
 
 from __future__ import annotations
@@ -17,9 +21,8 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from config import settings
+from interview.no_tracing import tracing_disabled, untraced_config
 from llm import get_chat_model, get_structured_model
-from tracing import trace_config
 
 logger = logging.getLogger("campus_ai_worker.interview")
 
@@ -39,7 +42,13 @@ def _extract_json(text: str) -> Any:
 
 
 def invoke_structured(schema: type[M], messages: list[Any], *, step: str) -> M:
-    cfg = trace_config(f"interview_{step}", provider=settings.LLM_PROVIDER)
+    # Inside the guard so it also holds in the report scorer's worker threads.
+    with tracing_disabled():
+        return _invoke_structured(schema, messages, step=step)
+
+
+def _invoke_structured(schema: type[M], messages: list[Any], *, step: str) -> M:
+    cfg = untraced_config()
     try:
         result = get_structured_model(schema).invoke(messages, config=cfg)
         if isinstance(result, schema):

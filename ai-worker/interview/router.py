@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from config import settings
 from interview.graph import QuestionGenerationFailed, plan_graph, turn_graph
+from interview.no_tracing import tracing_disabled, untraced_config
 from interview.report import ReportGenerationFailed, ReportNotAssessable, report_graph
 from interview.schemas import (
     PlanRequest,
@@ -37,14 +38,16 @@ def interview_ping() -> dict:
 def interview_plan(payload: PlanRequest) -> PlanResponse:
     """Plan topics for a new interview. Never fails on LLM errors: the planner
     falls back to the deterministic topic library."""
-    final = plan_graph().invoke(
-        {
-            "config": payload.config,
-            "profile": payload.profile,
-            "raw_resume": payload.resume_text,
-            "raw_jd": payload.job_description,
-        }
-    )
+    with tracing_disabled():  # R1: graph inputs hold resume/JD text
+        final = plan_graph().invoke(
+            {
+                "config": payload.config,
+                "profile": payload.profile,
+                "raw_resume": payload.resume_text,
+                "raw_jd": payload.job_description,
+            },
+            config=untraced_config(),
+        )
     return PlanResponse(plan=final["plan"], provider=settings.LLM_PROVIDER)
 
 
@@ -67,17 +70,19 @@ def interview_turn(payload: TurnRequest) -> TurnResponse:
     """Process one interview step (see module docstring)."""
     _check_transcript(payload)
     try:
-        final = turn_graph().invoke(
-            {
-                "config": payload.config,
-                "plan": payload.plan,
-                "profile": payload.profile,
-                "resume_text": payload.resume_text,
-                "jd_text": payload.job_description,
-                "transcript": payload.transcript,
-                "remaining_seconds": payload.remaining_seconds,
-            }
-        )
+        with tracing_disabled():  # R1: graph inputs hold resume/JD/answers
+            final = turn_graph().invoke(
+                {
+                    "config": payload.config,
+                    "plan": payload.plan,
+                    "profile": payload.profile,
+                    "resume_text": payload.resume_text,
+                    "jd_text": payload.job_description,
+                    "transcript": payload.transcript,
+                    "remaining_seconds": payload.remaining_seconds,
+                },
+                config=untraced_config(),
+            )
     except QuestionGenerationFailed:
         # No details: provider errors can echo prompt fragments.
         raise HTTPException(
@@ -109,9 +114,11 @@ def interview_report(payload: ReportRequest) -> ReportResponse:
                 detail="Transcript sequence numbers must be 1..n in order",
             )
     try:
-        final = report_graph().invoke(
-            {"config": payload.config, "plan": payload.plan, "transcript": payload.transcript}
-        )
+        with tracing_disabled():  # R1: graph inputs hold the transcript
+            final = report_graph().invoke(
+                {"config": payload.config, "plan": payload.plan, "transcript": payload.transcript},
+                config=untraced_config(),
+            )
     except ReportGenerationFailed:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

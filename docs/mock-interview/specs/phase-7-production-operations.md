@@ -1,8 +1,10 @@
 # Phase 7 — Production Operations and Monitoring Foundation
 
 Status: **design approved 2026-11-20 (decisions P7-D1 to P7-D9, §11). Phase 7.0 (decisions, roadmap, worker
-baseline) done; §13 is its record. 7.1 not started.** No application code has been written for Phase 7.
-Base: `feature/ai-mock-interview` @ `f69ee1d`. Overall status: `../PROJECT_STATE.md`.
+baseline) done and committed (`ee48610`); §13 is its record. Phase 7.1 (AI privacy and request tracing)
+implementation is complete; §14 is its record. 7.2–7.10 not started.** This document records implementation
+status and evidence; Git history tracks commit status.
+Base: `feature/ai-mock-interview` @ `f69ee1d` (7.0 committed as `ee48610`). Overall status: `../PROJECT_STATE.md`.
 
 > **Numbering note.** The roadmap was re-numbered on 2026-11-20 (P7-D1): 7 = production operations, 8 = advanced AI
 > interview intelligence (incl. coding round and company/full simulation), 9 = institute and placement management
@@ -62,7 +64,7 @@ migration up/down/up on throwaway SQLite when it has a migration, PROJECT_STATE 
 | # | Scope | Migration | Touches shared code? |
 |---|---|---|---|
 | **7.0** | **Done 2026-11-20 (§13).** Decisions §11 approved; roadmap re-numbered with old-to-new mapping; isolated worker venv; worker baseline; Sentry defaults verified | — | docs only |
-| **7.1** | Correlation + telemetry privacy: forward `X-Request-ID` to the worker; validate incoming id (≤64 chars, `[A-Za-z0-9._-]`, otherwise a fresh id); Sentry `include_local_variables=False`, `max_request_body_size="never"`, and a `before_send` that drops `request.data`, frame vars and breadcrumbs' `data` on `/mock-interview` and `/interview` paths; **interview LLM steps never attach the Langfuse callback** (no flag can re-enable it — mandatory rule R1, §12) | — | `ai_client._worker_request` (additive optional `headers=` kwarg); both `observability.py` copies (kept in sync, P7-D8); `ai-worker/interview/llm_io.py` |
+| **7.1** | **Implementation complete 2026-11-20 (§14).** Correlation + telemetry privacy: forward `X-Request-ID` and a per-call `X-AI-Invocation-ID` to the worker; validate incoming ids (≤64 chars, `[A-Za-z0-9._-]`, at least one letter/digit, otherwise a fresh id); Sentry `include_local_variables=False`, `max_request_body_size="never"`, and allow-list scrubbing of events, transactions and breadcrumbs (applied to all routes, see §14.3); **interview LLM steps and graph runs never reach Langfuse or LangSmith** (no flag can re-enable it — mandatory rule R1, §12) | — | `ai_client._worker_request` (additive optional `headers=` kwarg); both `observability.py` copies (kept in sync, P7-D8); `ai-worker/interview/llm_io.py` |
 | **7.2** | Worker LLM telemetry: a LangChain callback collects per-step `{provider, model, llm_calls, input_tokens, output_tokens, latency_ms, outcome, fallback_used}`; returned as an **additive optional `usage` field** on `/interview/plan|turn|report`; new worker Prometheus metrics (`ai-worker/llm_metrics.py`, no tenant labels) | — | worker `interview/llm_io.py`, `interview/router.py`, `interview/schemas.py` |
 | **7.3** | Usage ledger: `ai_usage_events` table (§5) written by the backend after every worker call (success **and** failure), durable and idempotent per §12 R4 (pre-generated `event_id`, unique key, insert-or-ignore, own short tenant-scoped transaction, RQ retry via `jobs.py` when `REDIS_URL` is set), never blocking or failing the student path; backend AI metrics (`app/observability/ai_metrics.py`, new module so the synced files stay untouched) | **yes** (additive) | `services/mock_interview_ai.py` |
 | **7.4** | Cost estimation: `AI_PRICE_TABLE` setting (JSON, empty = cost "unknown"), versioned; cost computed at write time in micro-units + `price_version`; raw tokens kept so re-costing is possible | — | config (new optional field) |
@@ -334,3 +336,141 @@ fallback call, so with `LANGFUSE_*` keys set the full prompts would be sent. R1 
 - Phase 8 multiplies LLM calls per turn, so token budgets need sizing before Phase 8 rollout.
 - The real-device backlog (Phase 5 §8, Phase 6 RD-01…RD-24) carries to the Phase 10 final acceptance milestone.
 - `test_face_qdrant_server.py` is not pytest-safe (above).
+
+## 14. Phase 7.1 record: AI privacy and request tracing (2026-11-20; implementation complete)
+
+Phase 7.1 implementation is complete. This document records implementation status and evidence; Git history tracks
+commit status.
+
+Base: HEAD `ee48610`. Requirements: R1 (Langfuse), R2 (Sentry), R5 (content-free telemetry); the "id before the call"
+part of R4. **No ledger table** (that is 7.3), no migration, no dependency or lock-file change, no API, payload,
+scoring or UI change.
+
+### 14.1 Request and invocation ids
+- **Shared validator** (`campus_obs/observability.py`, synced to both services): an id is accepted only if it is
+  1–64 chars of `[A-Za-z0-9._-]` with at least one letter or digit (`safe_correlation_id`). A malformed or
+  content-bearing incoming `X-Request-ID` is replaced by a fresh id instead of being logged and echoed.
+- **Backend:** `mock_interview_ai._post` creates a fresh invocation id (`uuid4().hex`) **before** the call and outside
+  the tenacity retry loop. It sends `X-AI-Invocation-ID` plus `X-Request-ID` (the API request's id, or the invocation id
+  when there is no request) through a new optional `headers=` argument on `ai_client._worker_request`; the worker
+  token always wins over a same-named entry. A connect-error retry sends the **same** ids; every new call (including a
+  student's `/next` retry after a failure) gets a new invocation id. The 5xx/read-timeout no-retry policy is unchanged.
+  `InterviewEngineUnavailable.invocation_id` carries the id. The invocation id is set in a context var for the call, so
+  the backend's JSON log lines (e.g. "worker call failed") include `invocation_id` and `request_id`. It is not
+  exposed to the browser.
+- **Worker:** new `correlation.py` middleware (outside the logging middleware) puts a valid `X-AI-Invocation-ID` into
+  the logging context and echoes it; invalid values are ignored and never logged. The report scorer's thread pool now
+  runs each chunk in a copy of the request context, so its log lines keep both ids.
+
+### 14.2 Langfuse: interview workflows excluded (R1)
+- Audit: Langfuse is used only in the worker, only as a LangChain callback handler via `tracing.trace_config`
+  (interview, mentor, resume, scoring). langfuse 4.12.0 registers no LangChain configure hook; its OpenTelemetry
+  exporter only exports Langfuse/gen_ai spans, and no OpenTelemetry LLM instrumentation is installed. A second,
+  indirect path was found: LangChain's own LangSmith tracer, enabled purely by environment variables.
+- New `interview/no_tracing.py`: every interview LLM call (`llm_io.invoke_structured`, structured and JSON-fallback
+  paths) and every interview graph run (`router.py` plan/turn/report) runs with `callbacks=[]` inside
+  `tracing_disabled()`, which (a) detaches from any parent runnable context (LangGraph **merges** inherited callback
+  managers with `callbacks=[]`, found by a test), (b) forces LangSmith tracing off via
+  `langsmith.tracing_context(enabled=False)`, (c) clears LangChain's `tracing_v2_callback_var`. The guard is inside
+  `invoke_structured`, so it also holds in the report scorer's threads.
+- `tracing.trace_config` returns `{}` for any name starting with "interview", even when Langfuse is configured
+  (guard against future misuse). No flag or setting re-enables interview tracing. Mentor, resume and proof-scoring
+  tracing is unchanged.
+
+### 14.3 Sentry privacy (R2), verified against sentry-sdk 2.63.0 in both venvs
+- `init_sentry` now uses `sentry_options()`: `send_default_pii=False`, `include_local_variables=False`,
+  `max_request_body_size="never"`, `before_send` / `before_send_transaction = scrub_event`,
+  `before_breadcrumb = scrub_breadcrumb`. Still off unless `SENTRY_DSN` is set.
+- `scrub_event` is an allow-list for **all** routes: request keeps method, URL without query/fragment/userinfo and
+  the headers `content-type`, `content-length`, `accept`, `user-agent`, valid `x-request-id`; body, cookies, query
+  string, env, other headers (Authorization, Cookie, X-Worker-Token, ...) are dropped. Exception **types and stack
+  frames are kept, messages are replaced by `[redacted]`** (they can echo input), frame `vars` removed. `user` and
+  `extra` dropped; contexts limited to runtime/os/trace/app/device (trace to ids/op/status); log events keep the
+  format string only (no params/formatted text); span data and breadcrumbs reduced to method/status/URL without
+  query. A scrubber exception drops the event. `request_id` / `invocation_id` are added as tags (set on the
+  per-request Sentry scope by the middlewares, because unhandled errors are reported after the logging middleware
+  has exited).
+- Trade-off: exception messages are redacted on every route, not only interview routes; types, stack and request id
+  remain for diagnosis.
+- **AI integrations disabled (pre-staging audit follow-up).** sentry-sdk 2.63.0 auto-enables integrations for
+  installed libraries; in the worker that was `langchain`, `langgraph` and `huggingface_hub`. The LangChain one wraps
+  `langchain_core.callbacks.manager._configure` and attaches a Sentry handler to every LangChain call, interview calls
+  included, emitting `gen_ai.*` spans. While it is active the SDK *suppresses* `openai`, `anthropic` and
+  `google_genai` (`_INTEGRATION_DEACTIVATES`), so disabling LangChain alone would switch the Google GenAI SDK
+  integration on under the Gemini provider. Mechanism: the SDK option **`disabled_integrations`** (it takes
+  precedence over default and auto-enabling integrations in `setup_integrations`), filled by
+  `observability.disabled_ai_integrations()` from a fixed list of Sentry AI integrations (`langchain`, `langgraph`,
+  `google_genai`, `openai`, `anthropic`, `huggingface_hub`, `cohere`, `litellm`, `openai_agents`, `pydantic_ai`,
+  `mcp`). Each is imported if possible; a Sentry integration module raises `DidNotEnable` on import when its library
+  is missing, and such an integration can never activate, so it is skipped. Effect (measured with a fake DSN):
+  **worker** active integrations lose `langchain`, `langgraph`, `huggingface_hub`, and `google_genai` stays off;
+  **backend** is unchanged (none of those libraries is installed; its list is identical before and after). Automatic
+  discovery itself stays on (`auto_enabling_integrations=True`), so ordinary integrations (starlette, fastapi,
+  logging, httpx, and on the backend sqlalchemy, redis, rq) keep working.
+
+### 14.4 Files
+- Shared (edited in `packages/campus_obs/observability.py`, copied by `scripts/sync_observability.py` to
+  `backend/app/observability/observability.py` and `ai-worker/observability.py`; `--check` in sync): validator,
+  `invocation_id_ctx`, log field, Sentry options (incl. `disabled_integrations`) and scrubbers, scope tagging.
+- Backend: `ai_client.py` (additive `headers=`), `app/services/mock_interview_ai.py` (ids, logging, exception field).
+- Worker: `correlation.py` (new), `main.py` (registers it), `interview/no_tracing.py` (new), `interview/llm_io.py`,
+  `interview/router.py`, `interview/report.py` (context copy), `tracing.py` (interview-name guard).
+- Tests (new): `backend/tests/test_mock_interview_correlation.py`, `backend/tests/test_sentry_privacy.py`,
+  `ai-worker/tests/test_interview_no_langfuse.py`, `ai-worker/tests/test_worker_correlation.py`,
+  `ai-worker/tests/test_sentry_privacy.py`, `ai-worker/tests/test_sentry_ai_integrations.py`, helper
+  `packages/campus_obs/sentry_privacy_probe.py` (not synced).
+
+**Interview-call regression test** (`ai-worker/tests/test_sentry_ai_integrations.py`, 8 tests): each scenario runs in
+a fresh subprocess that imports the real `main.py` with `SENTRY_DSN` set (fake DSN), so the real `init_sentry` runs
+at import with automatic discovery on; only the transport (in-memory) and the trace sample rate (1.0, worst case) are
+changed. It drives the real `/interview/plan` and `/interview/turn` routes and LangGraph graphs with a real LangChain
+chat model: resume, JD and answer sentinels in the prompts, a sentinel in the model's response and question, a
+sentinel-bearing provider error (502 path) and a deliberately failing route. It asserts:
+- no AI integration active; LangChain's `_configure` is not Sentry-wrapped; no handler attached to any interview LLM call;
+- no `gen_ai.*`/`ai.*` span; none of the 6 sentinels (or their first token) in any captured envelope;
+- Sentry's other output channels are off (`debug`, `enable_logs`, profiling, Spotlight), so errors, transactions,
+  sessions and client reports, which all go through `Transport.capture_envelope`, are the whole payload;
+- safe diagnostics still work: the route error and the interview 502 are reported with exception types
+  (`… LLMUnavailable → QuestionGenerationFailed → HTTPException`), stack frames, method, path and request-id tag,
+  messages `[redacted]`; transactions for `/interview/plan` and `/interview/turn` are still sent.
+
+A **control** scenario (same probe, integrations not disabled) must show `langchain`/`langgraph` active, the wrapped
+`_configure`, a Sentry handler on interview calls and `gen_ai.*` spans (observed: 15 spans: `gen_ai.chat`,
+`gen_ai.invoke_agent`, `gen_ai.create_agent`; no sentinel leaked even then, thanks to the PII gate and the scrubber).
+
+### 14.5 Tests run (2026-11-20)
+
+| Command | Result |
+|---|---|
+| `backend: pytest tests/test_sentry_privacy.py tests/test_mock_interview_correlation.py` | **31 passed**, 0 failed |
+| `backend: pytest tests/test_mock_interview_*.py tests/test_error_handler.py tests/test_health.py tests/test_mentor_memory.py tests/test_sentry_privacy.py` | **210 passed, 8 skipped, 0 failed** (skips = opt-in Postgres RLS file; no Postgres configured) |
+| `ai-worker: pytest` interview subset + face filter + the 3 new files | **75 passed**, 0 failed (48 + 6 baseline, 10 Langfuse, 5 correlation, 6 Sentry) |
+| `ai-worker: pytest tests` (whole folder) | 76 passed, 4 failed — all in `test_face_qdrant_server.py` (pre-existing, not pytest-safe, §13; 5 failed at baseline, one passed this time, same root cause). It wrote to `ai-worker/qdrant_data/` again |
+| Mutation: Langfuse guard replaced by the pre-7.1 `trace_config` call (scratch pytest plugin, no repo change) | 6 of 10 Langfuse tests **fail** as intended (the 4 guard/control tests are unaffected) |
+| Mutation: pre-7.1 Sentry options in the real probe | **all 8 sentinel types leak** (resume, JD, answer, bearer token, cookie, worker token, query, e-mail); with 7.1 options none |
+| `ruff check` on every changed/new Python file (backend ruff 0.15.19) | clean |
+| `python scripts/sync_observability.py --check` | in sync |
+| **R2 gap closure (after the pre-staging audit):** | |
+| `ai-worker: pytest -rA tests/test_sentry_ai_integrations.py tests/test_sentry_privacy.py tests/test_interview_no_langfuse.py tests/test_worker_correlation.py tests/test_interview_engine.py tests/test_interview_report.py tests/test_interview_flag.py tests/test_worker_security.py tests/test_face_tenant_filter.py` | **83 passed, 0 failed, 0 skipped** (8 new + 6 + 10 + 5 + 21 + 19 + 2 + 6 + 6) |
+| `backend: pytest -rA tests/test_sentry_privacy.py tests/test_mock_interview_correlation.py tests/test_error_handler.py tests/test_health.py` | **39 passed, 0 failed, 0 skipped** (6 + 25 + 4 + 4) |
+| `python scripts/sync_observability.py --check`; `ruff check` on the shared module copies and the new test | in sync; clean |
+
+Not run: the full backend suite (~18 min; scheduled at 7.3, 7.6 and 7.10 per §7), the Postgres suites (no
+throwaway Postgres), frontend checks (no frontend change), live LLM / live Sentry / live Langfuse (by design: tests
+are offline with a fake DSN and in-memory transport).
+
+### 14.6 Limitations and deferred items
+- Mentor, resume and proof-scoring worker calls don't send correlation headers yet, and keep their Langfuse tracing
+  when keys are set (unchanged; outside the interview scope). Resume drafting prompts contain resume text: worth a
+  separate privacy decision.
+- Parent-context inheritance is tested with a Langfuse-style handler; an inherited LangSmith tracer goes through the
+  same mechanism (detached the same way) but has no separate test, to keep tests off the network.
+- Starlette/FastAPI events and the interview LangChain/LangGraph path are verified end to end; spans and
+  breadcrumbs of other auto-enabled integrations (httpx, SQLAlchemy, Redis) are verified on synthetic payloads
+  through the same allow-list.
+- The AI-integration list is fixed for sentry-sdk 2.63.0. A future SDK upgrade that adds a new AI integration needs
+  the list reviewed; `test_sentry_ai_integrations.py` fails if a LangChain/LangGraph/Google GenAI integration becomes
+  active again, but cannot know about integrations that don't exist yet.
+- The full backend suite was not re-run after the shared Sentry change; the backend's active integration list was
+  measured identical before and after, and the backend Sentry tests pass.
+- The invocation id is not yet persisted; 7.3 uses it as the ledger's `event_id` source.

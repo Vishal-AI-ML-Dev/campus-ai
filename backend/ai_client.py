@@ -92,17 +92,22 @@ def _worker_request(
     *,
     timeout: httpx.Timeout,
     json: dict | None = None,
+    headers: dict[str, str] | None = None,
 ) -> httpx.Response:
     """Make one retrying HTTP call to the AI worker and raise on 4xx/5xx.
 
     Transient failures (network, timeout, 5xx) are retried with exponential
     backoff; a 4xx raises immediately (no retry). Callers decide whether to
     swallow the final exception (best-effort) or let it propagate.
+
+    ``headers`` (optional, Phase 7.1): extra request headers such as
+    correlation ids. They are fixed for the whole call, so every retry sends
+    the same values; the worker token always wins over a same-named entry.
     """
     resp = httpx.request(
         method,
         f"{settings.AI_WORKER_URL}{path}",
-        headers=_worker_headers(),
+        headers={**(headers or {}), **_worker_headers()},
         json=json,
         timeout=timeout,
     )
