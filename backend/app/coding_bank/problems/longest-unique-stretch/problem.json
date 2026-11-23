@@ -1,0 +1,65 @@
+{
+  "key": "longest-unique-stretch",
+  "version": 1,
+  "title": "Longest Stretch Without Repeats",
+  "difficulty": "medium",
+  "topics": [
+    "strings",
+    "hashing",
+    "two_pointers"
+  ],
+  "statement": "A sensor writes one character per second. Find the length of the longest contiguous stretch of the record in which no character appears twice.",
+  "input_format": "One line with the record (printable ASCII characters without spaces).",
+  "output_format": "Print the length of the longest stretch with all characters distinct.",
+  "constraints": "1 ≤ length ≤ 200000.",
+  "examples": [
+    {
+      "input": "abcabcbb\n",
+      "output": "3\n",
+      "explanation": "abc is the longest stretch without a repeat, so the answer is 3."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "abcabcbb\n",
+      "output": "3\n"
+    },
+    {
+      "input": "bbbbb\n",
+      "output": "1\n"
+    },
+    {
+      "input": "pwwkew\n",
+      "output": "3\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "Think of a window over the record that you grow on the right.",
+    "When the new character already appears inside the window, move the left edge past its previous position.",
+    "Remember the last position of each character so each step is constant time."
+  ],
+  "expected_complexity": {
+    "time": "O(n)",
+    "space": "O(k)"
+  },
+  "hidden_test_set": {
+    "id": "longest-unique-stretch",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 5,
+      "performance": 3
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

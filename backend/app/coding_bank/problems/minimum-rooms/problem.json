@@ -1,0 +1,64 @@
+{
+  "key": "minimum-rooms",
+  "version": 1,
+  "title": "Minimum Number of Rooms",
+  "difficulty": "medium",
+  "topics": [
+    "sorting_searching",
+    "greedy"
+  ],
+  "statement": "Each viva has a start time and an end time. A room can hold one viva at a time, and a viva ending at time t frees the room for a viva starting at time t. Find the minimum number of rooms needed.",
+  "input_format": "The first line contains n. Each of the next n lines has two integers start and end.",
+  "output_format": "Print the minimum number of rooms.",
+  "constraints": "1 ≤ n ≤ 200000; 0 ≤ start, end ≤ 1000000000 and start is less than end.",
+  "examples": [
+    {
+      "input": "3\n0 30\n5 10\n15 20\n",
+      "output": "2\n",
+      "explanation": "The first viva overlaps each of the others, but they do not overlap each other, so 2 rooms are enough."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "3\n0 30\n5 10\n15 20\n",
+      "output": "2\n"
+    },
+    {
+      "input": "2\n1 2\n2 3\n",
+      "output": "1\n"
+    },
+    {
+      "input": "3\n1 5\n1 5\n1 5\n",
+      "output": "3\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "Only the moments when vivas start or end matter.",
+    "Sort all start and end events; process an end before a start at the same time.",
+    "Track how many vivas are running and remember the largest value seen."
+  ],
+  "expected_complexity": {
+    "time": "O(n log n)",
+    "space": "O(n)"
+  },
+  "hidden_test_set": {
+    "id": "minimum-rooms",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 5,
+      "performance": 3
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

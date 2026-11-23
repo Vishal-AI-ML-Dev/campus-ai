@@ -39,7 +39,7 @@ All tables: `id`, `tenant_id` (FK tenants, CASCADE, indexed), timestamps, `ENABL
 | `mock_interview_reports` | Final evaluation | `session_id` (unique), `overall_score`, `category_scores_json`, `strengths_json`, `weaknesses_json`, `recommendations_json`, `rubric_version`, `provider` |
 | `mock_interview_campaigns` | Faculty assignment (Phase 9) | `created_by`, `title`, `interview_type`, config, `deadline` |
 | `mock_interview_campaign_targets` | Campaign ↔ section | `campaign_id`, `section_id` |
-| `mock_interview_code_submissions` | Coding round (originally Phase 7; Phase 8 since 2026-11-20) | `session_id`, `turn_id`, `language`, `source`, `result_json` |
+| `mock_interview_code_submissions` | Coding round (originally Phase 7; Phase 8 since 2026-11-20) | `session_id`, `turn_id`, `language`, `source`, `result_json` (Phase 8.0 proposal: `attempt_id` instead of `turn_id`, plus `mock_interview_code_attempts`, company-profile and simulation tables; **no hidden test data in any table**; spec §6) |
 
 Campaign/coding tables ship in their own later migrations so earlier phases stay small. No existing table is altered.
 No audio/video is stored by default; only transcripts.
@@ -92,7 +92,7 @@ the current roadmap is §6a.
 | # | Scope | Spec / status |
 |---|---|---|
 | **7** | **Production operations and monitoring:** request correlation, LLM telemetry, usage ledger, cost (unknown until a price table is approved), circuit breaker, institute quotas and controls, institute ops API/UI, token-protected `/metrics`, runbooks, retention | `specs/phase-7-production-operations.md`. **7.0** (`ee48610`) and **7.1** (`863a8aa`) done; **7.2–7.10 implementation complete** (spec §15); evidence and acceptance record in spec §15.10–§15.11; numeric cost pending an approved price table; token budgets count reported tokens only, with visibility and an alert for unknown usage (decision a, §15.12); Next.js 16.4.6 security upgrade and the Dockerfile ops-flag ARG done (§15.10 C); **Phase 7 not fully accepted** — live drills and device tests are Phase 10 |
-| **8** | **Advanced AI interview intelligence:** coding round (sandbox decision first; editor + LLM review without execution until a sandbox exists), company-based and full placement simulation (multi-round), deeper interview intelligence | Not started |
+| **8** | **Advanced AI interview intelligence:** coding round (sandbox decision first; editor + LLM review without execution until a sandbox exists), company-based and full placement simulation (multi-round), deeper interview intelligence | `specs/phase-8-advanced-ai-intelligence.md` (**revision 2, 2026-11-23**). **8.0 planning done. G1 (Batch 1, narrower) approved 2026-11-23; Batch 1 = 8.1 + 8.2 review-only coding round implemented and tested (spec §16, migration `e7a1c4d9b2f6`).** P8-D7, D9…D13 and all sandbox decisions remain *Recommended — awaiting user approval* (spec §14). Sub-phases: 8.1 coding foundations (migration A) → 8.2 coding UI (review-only) → 8.3 AI coding review (unverified) → 8.4 company profiles + JD skills (migration B) → 8.5a private test pack → 8.5b runner code (local/CI) → 8.5c pilot VM → 8.6 execution integration → 8.7 full simulation (migration C) → 8.8 hardening. Approval gates G1–G5 (spec §15): G1 unlocks all no-execution work; G3 = VM provisioning and cost; **no untrusted code runs before G4** |
 | **9** | **Institute and placement management:** faculty campaigns (`mock_interview_campaigns`, `…_campaign_targets`), faculty/placement analytics, CSV export | Not started |
 | **10** | **Enterprise integrations, platform-level security and final acceptance:** platform-operator role and cross-institute ops view (deferred by P7-D2), integrations, security review, deployment doc, **full regression and all real-device testing** | Not started |
 
@@ -118,6 +118,15 @@ physical-device tests run once, as the Phase 10 final acceptance milestone.
 - **Voice (Phase 5).** Pipecat + server STT/TTS doesn't fit the 512 MB free-tier services. Options: (a) browser Web Speech API for STT/TTS, answers posted as text to the same engine — zero new infra, weaker Hindi/Hinglish quality on some browsers; (b) a separate Pipecat service with hosted STT/TTS (e.g. Deepgram/ElevenLabs/Google) — better quality, adds cost, keys and a new deployment. Recommendation: (a) first, behind the same flag, with (b) as a later adapter. **Decided 2026-11-19: (a), behind its own sub-flag `AI_MOCK_INTERVIEW_VOICE_ENABLED`.** Option (b), and any server-side audio, stays deferred and needs separate privacy approval.
 - **Video privacy and consent (Phase 6).** **Decided 2026-11-19:** browser-only camera preview, no recording/upload/storage, per-session acknowledgement not stored server-side, no external provider, separate video flag + fail-closed video allow-list. See `specs/phase-6-video-interview.md` §1.
 - **Coding sandbox (originally Phase 7; Phase 8 since 2026-11-20).** Self-hosted Judge0 or Piston on a separate host with no network, cgroup CPU/memory/pid limits and a time limit. Until one exists, the coding round offers editor + LLM review of the code **without running it**.
+  **Updated 2026-11-23 (Phase 8.0, proposal, not approved):** the threat model and option comparison are in
+  `specs/phase-8-advanced-ai-intelligence.md` §4. Recommendation: a dedicated, secret-free Linux VM running a thin
+  `code-runner` service that starts one gVisor (`runsc`) container per submission with no network (Judge0 ≥ 1.13.1 on
+  the same dedicated VM only as fallback: it needs a privileged container). Render free services cannot host it.
+  Decisions P8-S1…S6; review-only mode remains the default until they are approved and the VM exists.
+  **Revision 2 (2026-11-23, proposal, not approved):** hidden tests and reference solutions move to a runner-private
+  test pack in a separate private repository (P8-S7); the runner accepts problem/test-set identifiers, never expected
+  outputs; 20-threat model, per-language limits, token rotation and approval gates G1–G5 in spec §5, §4.4, §4.6, §15.
+  No VM is provisioned and no cost is incurred without explicit approval (gate G3).
 - **Recording retention.** Default: no audio/video stored. If wanted later: Supabase private bucket, owner + authorized faculty only, with a retention period.
 
 ## 8. Testing per phase

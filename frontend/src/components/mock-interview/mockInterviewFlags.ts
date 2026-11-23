@@ -11,6 +11,7 @@
 import type { NavItem, Role } from "@/lib/auth"
 import { useApiResource } from "@/lib/useApiResource"
 import { VIDEO_UI_READY, videoBuildEnabled } from "./mockInterviewModes"
+import { codingBuildEnabled } from "./coding/codingFlow"
 
 export const MOCK_INTERVIEW_BUILD_ENABLED =
 	process.env.NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED === "true"
@@ -25,6 +26,16 @@ export const MOCK_INTERVIEW_BUILD_ENABLED =
 export const MOCK_INTERVIEW_VIDEO_BUILD_ENABLED = videoBuildEnabled({
 	NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED: process.env.NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED,
 	NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED: process.env.NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED,
+})
+
+/**
+ * Phase 8.2 coding build flag (default OFF). Needs the master build flag too.
+ * The backend still decides per institute (AI_MOCK_INTERVIEW_CODING_* flags)
+ * and only offers "coding" in /options when its gates pass.
+ */
+export const MOCK_INTERVIEW_CODING_BUILD_ENABLED = codingBuildEnabled({
+	NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED: process.env.NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED,
+	NEXT_PUBLIC_MOCK_INTERVIEW_CODING_ENABLED: process.env.NEXT_PUBLIC_MOCK_INTERVIEW_CODING_ENABLED,
 })
 
 /** Video may be offered in the setup form (build flag AND the 6.3 UI exists). */

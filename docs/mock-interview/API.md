@@ -270,3 +270,53 @@ carry `X-Request-ID` and `X-AI-Invocation-ID` (Phase 7.1).
 
 Production `/metrics` (backend and worker) only with a valid `METRICS_TOKEN`; see
 `runbooks/metrics-access.md`.
+
+## Phase 8.1: coding round, review-only (additive; default off)
+
+Gate: `AI_MOCK_INTERVIEW_ENABLED` + master allow-list + `AI_MOCK_INTERVIEW_CODING_ENABLED` + the institute in
+`AI_MOCK_INTERVIEW_CODING_TENANT_IDS` (**empty = no institute**) + student role + at least one servable problem
+(`published`; `draft` only with the development-only `AI_MOCK_INTERVIEW_CODING_ALLOW_DRAFT_PROBLEMS`, ignored when
+`ENVIRONMENT=production`). Every coding route 404s when the gate is closed. **No code is executed** (review-only,
+P8-D8); there is no run endpoint (B1-c).
+
+### Changes to existing routes (approved P8-D16)
+
+- `POST /sessions`: `interview_type` also accepts `"coding"` (422 "Coding interviews are not available" when the gate
+  is closed); `duration_minutes` also accepts `60` — coding rounds must use 30/45/60, HR/technical keep 15/30/45
+  (422 otherwise); optional `coding: {languages[1..4] of python313|cpp17|java21|c11, topics[≤5], problem_key?}`
+  (only with `"coding"`). Coding rounds are text-only in Batch 1: `mode` voice/video → 422 "Coding rounds are
+  text-only for now".
+- `/options.interview_types` lists `{value: "coding", label: "Coding"}` only while the gate admits the caller.
+- Session detail (`GET /sessions/{id}`, `/sessions/active`, create/start/finish/abandon responses) gains
+  `coding_summary: {problems, problems_closed, graded_submissions, review_only}` **only for coding sessions**; every
+  other session's JSON is byte-identical (the key is omitted).
+- `POST /sessions/{id}/start` on a coding round assigns problems (no AI call); `finish` turns saved drafts into
+  automatic graded submissions (completed when anything was submitted, else abandoned); `abandon` as before.
+- Coding rounds on the HR/technical routes (documented 409s until 8.3): `POST …/answer`, `POST …/next` →
+  `409 "Coding rounds don't use interview questions yet."`; `GET|POST …/report` →
+  `409 "Feedback for coding rounds is not available yet."`
+- `/history` lists coding rounds unchanged in shape (`interview_type: "coding"`, `report: null`).
+
+### New routes (students only; another student's or institute's session → 404)
+
+| Route | Notes | Limit |
+|---|---|---|
+| `GET /coding/catalog` | languages, topics, difficulties, durations `[30,45,60]`, `graded_submissions_per_problem` (3), `hints_per_problem`, `source_max_bytes` (65536), `review_only: true`, `problems[{key,title,difficulty,topics}]` (practice choice) | — |
+| `GET /sessions/{id}/coding` | `{session_id, status, languages, review_only, remaining_seconds, graded_submissions_per_problem, attempts[{seq, status, language, draft_source, draft_rev, hints_used, hints_available, submissions_used, submissions_remaining, problem}]}`; `problem` = public fields only (statement, formats, constraints, examples, visible tests, starter per language, time/memory limits, `hints_revealed`) | — |
+| `PUT /sessions/{id}/coding/attempts/{seq}/draft` | `{language, source ≤ 64 KB UTF-8, draft_rev}` → `{seq, draft_rev, saved_at}`; stale `draft_rev` → 409 | 30/min |
+| `POST /sessions/{id}/coding/attempts/{seq}/submissions` | `{language, source, idempotency_key [A-Za-z0-9_-]{8,64}}` → **202** `{id, attempt_seq, kind, language, status: "not_executed", verdict: null, verification: "not_verified", is_best, created_at}`; same key → same row; same key + other code → 409; identical code → earlier row, no count; 4th → 409; > 6 graded per problem per student in 7 days → 429 | 3/min per problem |
+| `GET /sessions/{id}/coding/attempts/{seq}/submissions` | attempt history (metadata, no code) | — |
+| `GET /sessions/{id}/coding/submissions/{sid}` | one submission (no code) | 60/min |
+| `POST /sessions/{id}/coding/attempts/{seq}/hints` | next authored hint `{seq, hint_number, hint, hints_used, hints_available}`; none left → 409. Hints never lower a score | 5/min |
+| `POST /sessions/{id}/coding/attempts/{seq}/done` | closes one problem (idempotent) → coding state | 20/min |
+
+Stable messages: 409 "This coding round is not in progress", "This problem is closed. Your saved code is kept.",
+"Your code was changed in another tab or window. Reload to continue.", "You have used all 3 graded submissions for
+this problem. Your best result is kept.", "There are no more hints for this problem.", "This request key was
+already used for different code."; 422 "Choose one of the languages selected for this round.", "Code is limited to
+64 KB.", "Write some code before submitting."; 429 "You have submitted this problem 6 times in the last 7 days. Try a
+different problem."; 503 "Coding problems are unavailable right now. Please try again later." (invalid bank).
+Rate limits are per caller and per request path (slowapi), i.e. per problem for the attempt routes.
+
+Time: a round whose time is up ends on the next request (saved drafts become automatic submissions,
+`end_reason: "time_up"`). No AI call, no ledger row and no log line carries source code.

@@ -68,6 +68,13 @@ export type InterviewSession = {
 	turns: InterviewTurn[]
 	closing_message: string | null
 	end_reason: string | null
+	/** Phase 8.1: present only for coding rounds (review-only). */
+	coding_summary?: {
+		problems: number
+		problems_closed: number
+		graded_submissions: number
+		review_only: boolean
+	}
 }
 
 export type ReportCategory = {
@@ -173,6 +180,8 @@ export type CreateInterviewInput = {
 	language: string
 	/** Phase 5 voice, Phase 6 video; omitted for text so the request is unchanged. */
 	mode?: "voice" | "video"
+	/** Phase 8.1: coding-round choices; sent only for interview_type "coding". */
+	coding?: { languages: string[]; topics: string[]; problem_key?: string }
 }
 
 const base = "/mock-interview/sessions"
@@ -209,7 +218,7 @@ export function labelFor(choices: Choice[] | undefined, value: string): string {
 	return choices?.find((c) => c.value === value)?.label ?? value
 }
 
-export const TYPE_LABELS: Record<string, string> = { hr: "HR", technical: "Technical" }
+export const TYPE_LABELS: Record<string, string> = { hr: "HR", technical: "Technical", coding: "Coding" }
 export const MODE_LABELS: Record<string, string> = { text: "Text", voice: "Voice", video: "Video" }
 export const DIFFICULTY_LABELS: Record<string, string> = {
 	easy: "Beginner",

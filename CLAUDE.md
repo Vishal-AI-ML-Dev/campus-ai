@@ -28,6 +28,10 @@ State, plan and audits: `docs/mock-interview/` — start with `PROJECT_STATE.md`
 Flags (all default off): backend `AI_MOCK_INTERVIEW_ENABLED`, `AI_MOCK_INTERVIEW_TENANT_IDS`, `AI_MOCK_INTERVIEW_VOICE_ENABLED`,
 `AI_MOCK_INTERVIEW_VIDEO_ENABLED` + `AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS` (empty = no institute); worker `MOCK_INTERVIEW_ENABLED`;
 frontend build `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED`, `NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED`.
+Phase 8 (coding, review-only — no code is ever executed): backend `AI_MOCK_INTERVIEW_CODING_ENABLED` +
+`AI_MOCK_INTERVIEW_CODING_TENANT_IDS` (empty = no institute), dev-only `AI_MOCK_INTERVIEW_CODING_ALLOW_DRAFT_PROBLEMS`
+(ignored in production); frontend `NEXT_PUBLIC_MOCK_INTERVIEW_CODING_ENABLED`. Hidden tests/reference solutions never
+go in this repo (`backend/app/coding_bank/` is public material only).
 Phase 7 (operations): backend `AI_MOCK_INTERVIEW_OPS_ENABLED` (off), `AI_MOCK_INTERVIEW_TENANT_MONTHLY_SESSION_MAX` /
 `…_TOKEN_MAX` (empty = no cap), `AI_PRICE_TABLE` (empty = cost not configured; never invent prices), `METRICS_TOKEN`
 (backend + worker; empty = production `/metrics` 404), frontend `NEXT_PUBLIC_MOCK_INTERVIEW_OPS_ENABLED` (off).

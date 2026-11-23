@@ -1,0 +1,64 @@
+{
+  "key": "count-inversions",
+  "version": 1,
+  "title": "Count Inversions",
+  "difficulty": "hard",
+  "topics": [
+    "sorting_searching",
+    "recursion"
+  ],
+  "statement": "A ranking list is given. An inversion is a pair of positions i and j with i before j but value i greater than value j. Count the inversions.",
+  "input_format": "The first line contains n. The second line contains n integers.",
+  "output_format": "Print the number of inversions.",
+  "constraints": "1 ≤ n ≤ 200000; 0 ≤ value ≤ 1000000000.",
+  "examples": [
+    {
+      "input": "5\n2 4 1 3 5\n",
+      "output": "3\n",
+      "explanation": "The inversions are (2,1), (4,1) and (4,3), so the answer is 3."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "5\n2 4 1 3 5\n",
+      "output": "3\n"
+    },
+    {
+      "input": "4\n1 2 3 4\n",
+      "output": "0\n"
+    },
+    {
+      "input": "4\n4 3 2 1\n",
+      "output": "6\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "Checking every pair is too slow for 200000 values.",
+    "While merging two sorted halves, every time an element from the right half is taken first, it forms inversions with all remaining left elements.",
+    "The count can be about 2 times 10 to the power 10, which needs 64-bit integers."
+  ],
+  "expected_complexity": {
+    "time": "O(n log n)",
+    "space": "O(n)"
+  },
+  "hidden_test_set": {
+    "id": "count-inversions",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 5,
+      "performance": 4
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

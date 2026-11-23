@@ -26,6 +26,9 @@ import InterviewInstructions from "@/components/mock-interview/InterviewInstruct
 import InterviewRoom from "@/components/mock-interview/InterviewRoom"
 import InterviewSetupForm from "@/components/mock-interview/InterviewSetupForm"
 import VideoInterviewWorkspace from "@/components/mock-interview/VideoInterviewWorkspace"
+import CodingFinished from "@/components/mock-interview/coding/CodingFinished"
+import CodingWorkspace from "@/components/mock-interview/coding/CodingWorkspace"
+import { isCodingSession } from "@/components/mock-interview/coding/codingFlow"
 import type { HistoryItem, InterviewSession } from "@/components/mock-interview/mockInterviewApi"
 import MockInterviewUnavailableNotice from "@/components/mock-interview/MockInterviewUnavailableNotice"
 import {
@@ -106,6 +109,11 @@ function InterviewWorkspace() {
 				<InterviewHistory onOpen={setViewing} />
 			</div>
 		)
+	// Phase 8.2: a coding round (instructions -> room -> finished) has its own
+	// workspace. It is routed whatever the build flag, so a round created while
+	// coding was on can always be finished. Text, voice and video are unchanged.
+	if (isCodingSession(session))
+		return <CodingWorkspace session={session} onChange={setLocal} onNew={() => setLocal(null)} />
 	// Phase 6.3: a video session (lobby -> room -> finished) has its own
 	// workspace, the single owner of the camera. Text and voice are unchanged.
 	if (session.mode === "video")
@@ -135,6 +143,8 @@ function PastInterview({ item, onBack }: { item: HistoryItem; onBack: () => void
 				</button>
 			</div>
 		)
+	if (isCodingSession(past.data))
+		return <CodingFinished session={past.data} onNew={onBack} newLabel="Back to interviews" />
 	return (
 		<InterviewFinished
 			session={past.data}

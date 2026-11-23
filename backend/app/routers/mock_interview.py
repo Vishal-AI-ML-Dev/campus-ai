@@ -22,6 +22,12 @@ Flags (app/core/config.py, both default OFF / empty):
   AI_MOCK_INTERVIEW_VOICE_ENABLED  Phase 5 sub-flag: offer voice interviews
   AI_MOCK_INTERVIEW_VIDEO_ENABLED  Phase 6 sub-flag: offer video interviews
   AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS  Phase 6 video allow-list (empty = nobody)
+  AI_MOCK_INTERVIEW_CODING_ENABLED  Phase 8.1 sub-flag: offer coding rounds
+  AI_MOCK_INTERVIEW_CODING_TENANT_IDS  Phase 8.1 coding allow-list (empty = nobody)
+
+Phase 8.1: coding sessions use the coding routes (``mock_interview_coding.py``);
+the HR/technical question and report routes answer them with a documented 409
+until coding feedback arrives (8.3).
 
 Mounted under the `/mock-interview` prefix by `main.py` (at /v1 and the
 deprecated unversioned path, like every feature router).
@@ -52,6 +58,7 @@ from app.schemas.mock_interview import (
 )
 from app.schemas.ai_operations import UsageMeOut
 from app.services import mock_interview as svc
+from app.services import mock_interview_coding as coding
 from app.services import mock_interview_policy as policy
 from app.services import mock_interview_report as report_svc
 
@@ -121,6 +128,28 @@ def mock_interview_video_enabled_for(user: User) -> bool:
         return False
     allowed = _allowed_tenant_ids(settings.AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS)
     return allowed is not None and user.tenant_id in allowed
+
+
+def mock_interview_coding_enabled_for(user: User) -> bool:
+    """Phase 8.1 coding sub-flag, evaluated per user. Fail closed at every step.
+
+    Same shape as the video gate: master gate, students only, the coding
+    switch, and the institute in the separate coding allow-list (an EMPTY
+    coding list enables nobody). Problem availability is checked separately.
+    """
+    if not mock_interview_enabled_for(user):
+        return False
+    if user.role != UserRole.student:
+        return False
+    if not settings.AI_MOCK_INTERVIEW_CODING_ENABLED:
+        return False
+    allowed = _allowed_tenant_ids(settings.AI_MOCK_INTERVIEW_CODING_TENANT_IDS)
+    return allowed is not None and user.tenant_id in allowed
+
+
+def mock_interview_coding_available_for(user: User) -> bool:
+    """Coding gate open AND at least one problem may be served (B1-b)."""
+    return mock_interview_coding_enabled_for(user) and coding.problems_available()
 
 
 def require_mock_interview(
@@ -195,6 +224,17 @@ def require_mock_interview_student(
     return current_user
 
 
+def _reject_coding(s, detail: str) -> None:
+    """Phase 8.1: HR/technical question and report routes refuse coding rounds.
+
+    409 until coding feedback arrives (8.3). Without this guard a coding
+    session could reach the HR/technical engine or rubric (the worker falls
+    back to the HR rubric for unknown types).
+    """
+    if coding.is_coding(s):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
 @router.get("/options", response_model=MockInterviewOptionsOut)
 def mock_interview_options(
     db: Session = Depends(get_db),
@@ -208,7 +248,13 @@ def mock_interview_options(
         interview_types=[
             MockInterviewChoice(value="hr", label="HR"),
             MockInterviewChoice(value="technical", label="Technical"),
-        ],
+        ]
+        # Phase 8.1: only when the coding gate admits the caller.
+        + (
+            [MockInterviewChoice(value="coding", label="Coding")]
+            if mock_interview_coding_available_for(user)
+            else []
+        ),
         difficulties=[
             MockInterviewChoice(value="easy", label="Beginner"),
             MockInterviewChoice(value="medium", label="Intermediate"),
@@ -247,6 +293,7 @@ def mock_interview_options(
 @router.post(
     "/sessions",
     response_model=MockInterviewSessionOut,
+    response_model_exclude_unset=True,
     status_code=status.HTTP_201_CREATED,
 )
 def create_mock_interview_session(
@@ -255,6 +302,14 @@ def create_mock_interview_session(
     user: User = Depends(require_mock_interview_student),
 ) -> dict:
     """Create an interview (status ``setup``). Nothing is sent to the AI yet."""
+    initial_meta = None
+    if payload.interview_type == "coding":
+        # Phase 8.1: same contract as voice/video - unavailable input is 422.
+        if not mock_interview_coding_available_for(user):
+            raise HTTPException(status_code=422, detail=coding.MSG_UNAVAILABLE)
+        if payload.mode != "text":
+            raise HTTPException(status_code=422, detail=coding.MSG_TEXT_ONLY)  # decision B1-a
+        initial_meta = {"coding": coding.validate_create(payload)}
     if payload.mode == "voice" and not mock_interview_voice_enabled():
         raise HTTPException(
             status_code=422,  # literal: the constant name differs across Starlette versions
@@ -265,7 +320,7 @@ def create_mock_interview_session(
             status_code=422,  # same contract as voice: an unavailable mode is invalid input
             detail="Video interviews are not available",
         )
-    return svc.to_detail(db, svc.create_session(db, user, payload))
+    return svc.to_detail(db, svc.create_session(db, user, payload, initial_meta))
 
 
 @router.get("/usage/me", response_model=UsageMeOut)
@@ -293,7 +348,11 @@ def list_mock_interview_sessions(
     return svc.list_sessions(db, user)
 
 
-@router.get("/sessions/active", response_model=MockInterviewSessionOut | None)
+@router.get(
+    "/sessions/active",
+    response_model=MockInterviewSessionOut | None,
+    response_model_exclude_unset=True,
+)
 def get_active_mock_interview_session(
     db: Session = Depends(get_db),
     user: User = Depends(require_mock_interview_student),
@@ -303,7 +362,9 @@ def get_active_mock_interview_session(
     return svc.to_detail(db, s) if s else None
 
 
-@router.get("/sessions/{session_id}", response_model=MockInterviewSessionOut)
+@router.get(
+    "/sessions/{session_id}", response_model=MockInterviewSessionOut, response_model_exclude_unset=True
+)
 def get_mock_interview_session(
     session_id: int,
     db: Session = Depends(get_db),
@@ -313,7 +374,11 @@ def get_mock_interview_session(
     return svc.to_detail(db, svc.get_owned_session(db, session_id, user))
 
 
-@router.post("/sessions/{session_id}/start", response_model=MockInterviewSessionOut)
+@router.post(
+    "/sessions/{session_id}/start",
+    response_model=MockInterviewSessionOut,
+    response_model_exclude_unset=True,
+)
 @limiter.limit(_AI_STEP_LIMIT, key_func=_caller_key)
 def start_mock_interview_session(
     request: Request,
@@ -322,12 +387,22 @@ def start_mock_interview_session(
     db: Session = Depends(get_db),
     user: User = Depends(require_mock_interview_student),
 ) -> dict:
-    """Plan the interview and ask the opening question. Idempotent."""
+    """Plan the interview and ask the opening question. Idempotent.
+
+    Phase 8.1: a coding round starts without any AI call (problems are
+    assigned from the bank and the timer starts).
+    """
     s = svc.get_owned_session(db, session_id, user)
+    if coding.is_coding(s):
+        return svc.to_detail(db, coding.start(db, user, s))
     return svc.to_detail(db, svc.start_session(db, user, s))
 
 
-@router.post("/sessions/{session_id}/answer", response_model=MockInterviewSessionOut)
+@router.post(
+    "/sessions/{session_id}/answer",
+    response_model=MockInterviewSessionOut,
+    response_model_exclude_unset=True,
+)
 @limiter.limit(_AI_STEP_LIMIT, key_func=_caller_key)
 def answer_mock_interview_question(
     request: Request,
@@ -343,13 +418,18 @@ def answer_mock_interview_question(
     ``POST /next`` continues. Re-sending the same answer is a no-op.
     """
     s = svc.get_owned_session(db, session_id, user)
+    _reject_coding(s, coding.CODING_STEP_UNSUPPORTED)
     return svc.to_detail(
         db,
         svc.submit_answer(db, user, s, payload.turn_seq, payload.answer, source=payload.source),
     )
 
 
-@router.post("/sessions/{session_id}/next", response_model=MockInterviewSessionOut)
+@router.post(
+    "/sessions/{session_id}/next",
+    response_model=MockInterviewSessionOut,
+    response_model_exclude_unset=True,
+)
 @limiter.limit(_AI_STEP_LIMIT, key_func=_caller_key)
 def next_mock_interview_question(
     request: Request,
@@ -360,21 +440,36 @@ def next_mock_interview_question(
 ) -> dict:
     """Fetch the next question after a saved answer (retry path). Idempotent."""
     s = svc.get_owned_session(db, session_id, user)
+    _reject_coding(s, coding.CODING_STEP_UNSUPPORTED)
     return svc.to_detail(db, svc.advance(db, user, s))
 
 
-@router.post("/sessions/{session_id}/finish", response_model=MockInterviewSessionOut)
+@router.post(
+    "/sessions/{session_id}/finish",
+    response_model=MockInterviewSessionOut,
+    response_model_exclude_unset=True,
+)
 def finish_mock_interview_session(
     session_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(require_mock_interview_student),
 ) -> dict:
-    """End early: completed if at least one answer was given, else abandoned."""
+    """End early: completed if at least one answer was given, else abandoned.
+
+    Phase 8.1 coding round: saved drafts become automatic graded submissions;
+    completed when anything was submitted, else abandoned.
+    """
     s = svc.get_owned_session(db, session_id, user)
+    if coding.is_coding(s):
+        return svc.to_detail(db, coding.end(db, s, abandon=False))
     return svc.to_detail(db, svc.end_session(db, s, abandon=False))
 
 
-@router.post("/sessions/{session_id}/abandon", response_model=MockInterviewSessionOut)
+@router.post(
+    "/sessions/{session_id}/abandon",
+    response_model=MockInterviewSessionOut,
+    response_model_exclude_unset=True,
+)
 def abandon_mock_interview_session(
     session_id: int,
     db: Session = Depends(get_db),
@@ -382,6 +477,8 @@ def abandon_mock_interview_session(
 ) -> dict:
     """Abandon the interview. Idempotent."""
     s = svc.get_owned_session(db, session_id, user)
+    if coding.is_coding(s):
+        return svc.to_detail(db, coding.end(db, s, abandon=True))
     return svc.to_detail(db, svc.end_session(db, s, abandon=True))
 
 
@@ -410,6 +507,7 @@ def get_mock_interview_report(
 ) -> dict:
     """My stored feedback report (404 if not mine, or not generated yet)."""
     s = svc.get_owned_session(db, session_id, user)
+    _reject_coding(s, coding.CODING_FEEDBACK_UNAVAILABLE)
     return report_svc.to_report(db, s, report_svc.get_report(db, s))
 
 
@@ -429,4 +527,5 @@ def generate_mock_interview_report(
     (nothing is stored; try again).
     """
     s = svc.get_owned_session(db, session_id, user)
+    _reject_coding(s, coding.CODING_FEEDBACK_UNAVAILABLE)
     return report_svc.to_report(db, s, report_svc.generate_report(db, s))

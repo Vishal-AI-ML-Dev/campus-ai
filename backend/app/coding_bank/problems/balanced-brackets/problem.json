@@ -1,0 +1,68 @@
+{
+  "key": "balanced-brackets",
+  "version": 1,
+  "title": "Balanced Brackets",
+  "difficulty": "easy",
+  "topics": [
+    "stack_queue",
+    "strings"
+  ],
+  "statement": "A code editor wants to warn students about unmatched brackets. Given a string made of the characters ( ) [ ] { }, decide whether every opening bracket is closed by the matching bracket in the right order.",
+  "input_format": "One line containing the bracket string (it may be empty).",
+  "output_format": "Print YES if the brackets are balanced, otherwise NO.",
+  "constraints": "0 ≤ length ≤ 100000.",
+  "examples": [
+    {
+      "input": "([]{})\n",
+      "output": "YES\n",
+      "explanation": "Every bracket is closed in the right order, so the answer is YES."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "([]{})\n",
+      "output": "YES\n"
+    },
+    {
+      "input": "([)]\n",
+      "output": "NO\n"
+    },
+    {
+      "input": "((\n",
+      "output": "NO\n"
+    },
+    {
+      "input": "\n",
+      "output": "YES\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "The most recently opened bracket must be the first one to close.",
+    "A stack fits this: push opening brackets, and on a closing bracket check the top.",
+    "At the end the stack must be empty; a closing bracket with an empty stack is also a failure."
+  ],
+  "expected_complexity": {
+    "time": "O(n)",
+    "space": "O(n)"
+  },
+  "hidden_test_set": {
+    "id": "balanced-brackets",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 4,
+      "performance": 1
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

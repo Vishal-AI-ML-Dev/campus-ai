@@ -1,0 +1,64 @@
+{
+  "key": "longest-increasing-run",
+  "version": 1,
+  "title": "Longest Increasing Subsequence",
+  "difficulty": "hard",
+  "topics": [
+    "dp",
+    "sorting_searching"
+  ],
+  "statement": "Given a sequence of scores, find the length of the longest subsequence (not necessarily contiguous) whose values are strictly increasing.",
+  "input_format": "The first line contains n. The second line contains n integers.",
+  "output_format": "Print the length of the longest strictly increasing subsequence.",
+  "constraints": "1 ≤ n ≤ 200000; values are between -1000000000 and 1000000000.",
+  "examples": [
+    {
+      "input": "8\n10 9 2 5 3 7 101 18\n",
+      "output": "4\n",
+      "explanation": "2 3 7 18 is one longest strictly increasing subsequence, length 4."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "8\n10 9 2 5 3 7 101 18\n",
+      "output": "4\n"
+    },
+    {
+      "input": "5\n5 5 5 5 5\n",
+      "output": "1\n"
+    },
+    {
+      "input": "6\n1 2 3 4 5 6\n",
+      "output": "6\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "A quadratic dynamic programme is correct but too slow for 200000 values.",
+    "Keep, for every length, the smallest possible last value of an increasing subsequence of that length.",
+    "That list stays sorted, so binary search tells you where each new value goes."
+  ],
+  "expected_complexity": {
+    "time": "O(n log n)",
+    "space": "O(n)"
+  },
+  "hidden_test_set": {
+    "id": "longest-increasing-run",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 5,
+      "performance": 4
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

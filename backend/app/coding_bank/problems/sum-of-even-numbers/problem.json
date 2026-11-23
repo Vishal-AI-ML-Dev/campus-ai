@@ -1,0 +1,64 @@
+{
+  "key": "sum-of-even-numbers",
+  "version": 1,
+  "title": "Sum of Even Numbers",
+  "difficulty": "easy",
+  "topics": [
+    "arrays",
+    "math"
+  ],
+  "statement": "A canteen keeps a list of token numbers issued during the day. The manager wants the total of all token numbers that are even. Given the list, print the sum of its even values.",
+  "input_format": "The first line contains n. The second line contains n integers.",
+  "output_format": "Print one integer: the sum of the even values (0 if there are none).",
+  "constraints": "1 ≤ n ≤ 100000; each value is between -1000000000 and 1000000000.",
+  "examples": [
+    {
+      "input": "5\n1 2 3 4 5\n",
+      "output": "6\n",
+      "explanation": "2 and 4 are even, so the sum is 6."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "5\n1 2 3 4 5\n",
+      "output": "6\n"
+    },
+    {
+      "input": "3\n1 3 5\n",
+      "output": "0\n"
+    },
+    {
+      "input": "4\n-2 -4 7 10\n",
+      "output": "4\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "A number is even when the remainder after dividing by 2 is zero. Negative numbers can be even too.",
+    "Keep a running total and add each value only when it is even.",
+    "The total can be larger than a 32-bit integer can hold; use a 64-bit type where your language needs one."
+  ],
+  "expected_complexity": {
+    "time": "O(n)",
+    "space": "O(1)"
+  },
+  "hidden_test_set": {
+    "id": "sum-of-even-numbers",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 4,
+      "performance": 1
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

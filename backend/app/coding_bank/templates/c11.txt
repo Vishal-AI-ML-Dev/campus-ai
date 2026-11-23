@@ -1,0 +1,8 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+int main(void) {
+    /* Read the input as described in the problem, then print the answer. */
+    return 0;
+}

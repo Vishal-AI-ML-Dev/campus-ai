@@ -8,7 +8,7 @@ import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class MockInterviewStatusOut(BaseModel):
@@ -77,12 +77,53 @@ class MockInterviewOptionsOut(BaseModel):
     answer_max_chars: int = ANSWER_MAX_CHARS
 
 
+# Phase 8.1: coding rounds use their own durations (decision P8-D16).
+INTERVIEW_DURATIONS = (15, 30, 45)
+CODING_DURATIONS = (30, 45, 60)
+CODING_LANGUAGES = ("python313", "cpp17", "java21", "c11")
+
+
+class MockInterviewCodingConfigIn(BaseModel):
+    """Phase 8.1: optional coding-round choices (only with ``interview_type="coding"``).
+
+    Topics and ``problem_key`` are checked against the problem bank by the
+    service (422 when unknown or not available).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    languages: list[Literal["python313", "cpp17", "java21", "c11"]] = Field(
+        default_factory=lambda: list(CODING_LANGUAGES), min_length=1, max_length=4
+    )
+    topics: list[str] = Field(default_factory=list, max_length=5)
+    # Practice mode: one specific problem (spec 3.4).
+    problem_key: str | None = Field(default=None, min_length=3, max_length=80)
+
+    @field_validator("languages")
+    @classmethod
+    def _distinct_languages(cls, v: list[str]) -> list[str]:
+        if len(set(v)) != len(v):
+            raise ValueError("Choose each language only once")
+        return v
+
+    @field_validator("topics")
+    @classmethod
+    def _distinct_topics(cls, v: list[str]) -> list[str]:
+        v = [t.strip() for t in v]
+        if len(set(v)) != len(v) or any(not t or len(t) > 40 for t in v):
+            raise ValueError("Choose each topic only once")
+        return v
+
+
 class MockInterviewSessionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    interview_type: Literal["hr", "technical"]
+    # Phase 8.1: "coding" only while the coding gate admits the caller (422
+    # otherwise, checked in the router like voice/video).
+    interview_type: Literal["hr", "technical", "coding"]
     difficulty: Literal["easy", "medium", "hard"] = "medium"
-    duration_minutes: Literal[15, 30, 45] = 30
+    # 15/30/45 for hr/technical (unchanged); 30/45/60 for coding (P8-D16).
+    duration_minutes: Literal[15, 30, 45, 60] = 30
     target_role: str = Field(min_length=2, max_length=150)
     company_name: str | None = Field(default=None, max_length=150)
     resume_id: int | None = Field(default=None, ge=1)
@@ -92,6 +133,20 @@ class MockInterviewSessionCreate(BaseModel):
     # Phase 6: video only while the video flag + video allow-list admit the
     # caller (checked in the router; 422 otherwise, as for voice).
     mode: Literal["text", "voice", "video"] = "text"
+    # Phase 8.1: coding-round choices; only allowed with interview_type="coding".
+    coding: MockInterviewCodingConfigIn | None = None
+
+    @model_validator(mode="after")
+    def _coding_rules(self) -> "MockInterviewSessionCreate":
+        if self.interview_type == "coding":
+            if self.duration_minutes not in CODING_DURATIONS:
+                raise ValueError("Coding rounds last 30, 45 or 60 minutes")
+        else:
+            if self.duration_minutes not in INTERVIEW_DURATIONS:
+                raise ValueError("Interviews last 15, 30 or 45 minutes")
+            if self.coding is not None:
+                raise ValueError("Coding options are only allowed for a coding round")
+        return self
 
     @field_validator("target_role")
     @classmethod
@@ -160,6 +215,16 @@ class MockInterviewSessionSummaryOut(BaseModel):
     completed_at: datetime | None
 
 
+class MockInterviewCodingSummaryOut(BaseModel):
+    """Phase 8.1: coding-round progress (coding sessions only; additive, P8-D16)."""
+
+    problems: int
+    problems_closed: int
+    graded_submissions: int
+    # Batch 1 is always review-only: no code is executed (P8-D8).
+    review_only: bool
+
+
 class MockInterviewSessionOut(MockInterviewSessionSummaryOut):
     resume_id: int | None
     has_job_description: bool
@@ -171,6 +236,9 @@ class MockInterviewSessionOut(MockInterviewSessionSummaryOut):
     turns: list[MockInterviewTurnOut]
     closing_message: str | None
     end_reason: str | None
+    # Phase 8.1: present only for coding sessions (omitted from the JSON of
+    # every other session, so existing responses are byte-identical).
+    coding_summary: MockInterviewCodingSummaryOut | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -15,9 +15,11 @@ import {
 	type InterviewOptions,
 	type InterviewSession,
 } from "./mockInterviewApi"
-import { MOCK_INTERVIEW_VIDEO_AVAILABLE } from "./mockInterviewFlags"
+import { MOCK_INTERVIEW_CODING_BUILD_ENABLED, MOCK_INTERVIEW_VIDEO_AVAILABLE } from "./mockInterviewFlags"
 import RemainingQuota from "./RemainingQuota"
 import { visibleModes } from "./mockInterviewModes"
+import CodingSetupFields, { type CodingChoices } from "./coding/CodingSetupFields"
+import { visibleInterviewTypes } from "./coding/codingFlow"
 
 const inputClass =
 	"w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30 dark:border-white/10 dark:bg-slate-900"
@@ -91,6 +93,13 @@ export default function InterviewSetupForm({
 	const [company, setCompany] = useState("")
 	const [resumeId, setResumeId] = useState("")
 	const [jd, setJd] = useState("")
+	// Phase 8.2: coding-round choices (only used when the type is "coding").
+	const [codingChoices, setCodingChoices] = useState<CodingChoices>({
+		languages: ["python313", "cpp17", "java21", "c11"],
+		topics: [],
+		problemKey: "",
+		duration: "45",
+	})
 	const [submitting, setSubmitting] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 
@@ -113,6 +122,9 @@ export default function InterviewSetupForm({
 	const videoOffered = modes.some((m) => m.value === "video")
 	const video = videoOffered && mode === "video"
 	const modeChoice = voiceOffered || videoOffered
+	// Phase 8.2: "coding" only when the server offers it AND this build has the coding UI.
+	const types = visibleInterviewTypes(opts.interview_types, MOCK_INTERVIEW_CODING_BUILD_ENABLED)
+	const coding = type === "coding" && types.some((t) => t.value === "coding")
 
 	async function onSubmit(e: React.FormEvent) {
 		e.preventDefault()
@@ -122,9 +134,27 @@ export default function InterviewSetupForm({
 			setError("Enter the job role you are preparing for.")
 			return
 		}
+		if (coding && codingChoices.languages.length === 0) {
+			setError("Choose at least one programming language.")
+			return
+		}
 		setSubmitting(true)
 		try {
-			const created = await mockInterviewApi.create({
+			// Phase 8.2: a coding round is text-only and sends only its own fields.
+			const created = coding
+				? await mockInterviewApi.create({
+						interview_type: "coding",
+						difficulty,
+						duration_minutes: Number(codingChoices.duration),
+						target_role: role.trim(),
+						language: "en",
+						coding: {
+							languages: codingChoices.languages,
+							topics: codingChoices.topics,
+							...(codingChoices.problemKey ? { problem_key: codingChoices.problemKey } : {}),
+						},
+					})
+				: await mockInterviewApi.create({
 				interview_type: type,
 				difficulty,
 				duration_minutes: Number(duration),
@@ -163,8 +193,14 @@ export default function InterviewSetupForm({
 			</div>
 			<RemainingQuota />
 
-			<ChoiceGroup legend="Interview type" name="type" options={opts.interview_types} value={type} onChange={setType} />
-			{modeChoice ? (
+			<ChoiceGroup legend="Interview type" name="type" options={types} value={type} onChange={setType} />
+			{coding ? (
+				<p className="text-xs text-slate-500 dark:text-slate-400">
+					A timed coding round: solve problems in an editor and submit your code. Review-only for now: your code
+					is saved but not run, and there is no score yet.
+				</p>
+			) : null}
+			{modeChoice && !coding ? (
 				<div>
 					<ChoiceGroup legend="Answer by" name="mode" options={modes} value={mode} onChange={setMode} />
 					{voice ? (
@@ -186,7 +222,10 @@ export default function InterviewSetupForm({
 				</div>
 			) : null}
 			<ChoiceGroup legend="Difficulty" name="difficulty" options={opts.difficulties} value={difficulty} onChange={setDifficulty} />
-			<div className="grid gap-5 sm:grid-cols-2">
+			{coding ? (
+				<CodingSetupFields value={codingChoices} onChange={setCodingChoices} difficulty={difficulty} />
+			) : null}
+			<div className={coding ? "hidden" : "grid gap-5 sm:grid-cols-2"}>
 				<ChoiceGroup
 					legend="Duration"
 					name="duration"
@@ -212,7 +251,7 @@ export default function InterviewSetupForm({
 						className={`mt-1 ${inputClass}`}
 					/>
 				</div>
-				<div>
+				<div className={coding ? "hidden" : undefined}>
 					<label htmlFor="mi-company" className={labelClass}>
 						Company <span className="text-xs font-normal text-slate-400">(optional)</span>
 					</label>
@@ -227,7 +266,7 @@ export default function InterviewSetupForm({
 				</div>
 			</div>
 
-			<div>
+			<div className={coding ? "hidden" : undefined}>
 				<label htmlFor="mi-resume" className={labelClass}>
 					Resume <span className="text-xs font-normal text-slate-400">(optional)</span>
 				</label>
@@ -253,7 +292,7 @@ export default function InterviewSetupForm({
 				) : null}
 			</div>
 
-			<div>
+			<div className={coding ? "hidden" : undefined}>
 				<label htmlFor="mi-jd" className={labelClass}>
 					Job description <span className="text-xs font-normal text-slate-400">(optional)</span>
 				</label>

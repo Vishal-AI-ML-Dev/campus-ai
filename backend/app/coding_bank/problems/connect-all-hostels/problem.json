@@ -1,0 +1,64 @@
+{
+  "key": "connect-all-hostels",
+  "version": 1,
+  "title": "Connect All Hostels",
+  "difficulty": "hard",
+  "topics": [
+    "graphs",
+    "greedy"
+  ],
+  "statement": "A campus wants to lay network cables so that all n hostels are connected. Each possible cable connects two hostels at a cost. Find the minimum total cost that connects every hostel.",
+  "input_format": "The first line contains n and m. Each of the next m lines has u, v and cost.",
+  "output_format": "Print the minimum total cost, or -1 if the hostels cannot all be connected.",
+  "constraints": "1 ≤ n ≤ 100000; 0 ≤ m ≤ 200000; 1 ≤ cost ≤ 1000000.",
+  "examples": [
+    {
+      "input": "4 5\n1 2 1\n2 3 4\n1 3 3\n3 4 2\n2 4 5\n",
+      "output": "6\n",
+      "explanation": "Using costs 1, 3 and 2 connects all four hostels for 6."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "4 5\n1 2 1\n2 3 4\n1 3 3\n3 4 2\n2 4 5\n",
+      "output": "6\n"
+    },
+    {
+      "input": "3 1\n1 2 5\n",
+      "output": "-1\n"
+    },
+    {
+      "input": "1 0\n",
+      "output": "0\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "You need exactly n - 1 cables that join all hostels with no cycle.",
+    "Consider cables from cheapest to most expensive and skip any that would form a cycle.",
+    "A disjoint-set (union-find) structure checks cycles quickly; totals may exceed 32 bits."
+  ],
+  "expected_complexity": {
+    "time": "O(m log m)",
+    "space": "O(n + m)"
+  },
+  "hidden_test_set": {
+    "id": "connect-all-hostels",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 5,
+      "performance": 4
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

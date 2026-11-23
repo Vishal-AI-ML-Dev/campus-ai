@@ -43,12 +43,17 @@ export default function InterviewHistory({ onOpen }: { onOpen: (item: HistoryIte
 							<p className="truncate font-medium">
 								{TYPE_LABELS[item.interview_type] ?? item.interview_type}
 								{item.mode === "voice" ? " · Voice" : item.mode === "video" ? " · Video" : ""}
+								{item.interview_type === "coding" ? " · Feedback only" : ""}
 								{item.target_role ? ` · ${item.target_role}` : ""}
 							</p>
 							<p className="text-xs text-slate-500 dark:text-slate-400">
 								{formatDate(item.completed_at ?? item.created_at)} · {STATUS_TEXT[item.status] ?? item.status}
-								{" · "}
-								{item.answered} answered
+								{item.interview_type === "coding" ? null : (
+									<>
+										{" · "}
+										{item.answered} answered
+									</>
+								)}
 							</p>
 						</div>
 						<span className="tabular-nums text-sm font-semibold text-indigo-600 dark:text-indigo-400">
@@ -59,7 +64,13 @@ export default function InterviewHistory({ onOpen }: { onOpen: (item: HistoryIte
 							onClick={() => onOpen(item)}
 							className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-medium hover:bg-slate-50 dark:border-white/20 dark:hover:bg-white/5"
 						>
-							{item.status === "completed" ? (item.report ? "View report" : "Get report") : "View transcript"}
+							{item.interview_type === "coding"
+								? "View summary"
+								: item.status === "completed"
+									? item.report
+										? "View report"
+										: "Get report"
+									: "View transcript"}
 						</button>
 					</li>
 				))}

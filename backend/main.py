@@ -106,6 +106,7 @@ from app.routers.materials import router as materials_router
 from app.routers.mentor import router as mentor_router
 from app.routers.mock_interview import router as mock_interview_router
 from app.routers.mock_interview_admin import router as mock_interview_admin_router
+from app.routers.mock_interview_coding import router as mock_interview_coding_router
 from app.routers.notifications import router as notifications_router
 from app.routers.people import router as people_router
 from app.routers.placement import router as placement_router
@@ -288,6 +289,8 @@ FEATURE_ROUTERS = [
     # Phase 7.7: institute operations (admin/TPO), 404 unless
     # AI_MOCK_INTERVIEW_OPS_ENABLED (default off) is on for the institute.
     mock_interview_admin_router,
+    # Phase 8.1: coding round (review-only; flag-gated, 404 when off).
+    mock_interview_coding_router,
 ]
 
 for _feature_router in FEATURE_ROUTERS:

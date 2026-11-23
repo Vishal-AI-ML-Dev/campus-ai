@@ -1,0 +1,64 @@
+{
+  "key": "subarrays-with-sum",
+  "version": 1,
+  "title": "Count Subarrays With a Given Sum",
+  "difficulty": "medium",
+  "topics": [
+    "hashing",
+    "arrays"
+  ],
+  "statement": "Given daily profit values (which may be negative), count how many contiguous runs of days have a total profit exactly equal to k.",
+  "input_format": "The first line contains n and k. The second line contains n integers.",
+  "output_format": "Print the number of contiguous subarrays whose sum is k.",
+  "constraints": "1 ≤ n ≤ 200000; values are between -10000 and 10000; k is between -1000000000 and 1000000000.",
+  "examples": [
+    {
+      "input": "5 3\n1 2 1 2 1\n",
+      "output": "4\n",
+      "explanation": "The runs [1,2], [2,1], [1,2] and [2,1] each sum to 3, so the answer is 4."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "5 3\n1 2 1 2 1\n",
+      "output": "4\n"
+    },
+    {
+      "input": "3 0\n0 0 0\n",
+      "output": "6\n"
+    },
+    {
+      "input": "4 -1\n1 -1 -1 1\n",
+      "output": "4\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "The sum of a run equals the difference of two prefix sums.",
+    "While scanning, count how many earlier prefix sums equal the current prefix sum minus k.",
+    "Store prefix-sum counts in a hash map, starting with the empty prefix (sum 0) counted once."
+  ],
+  "expected_complexity": {
+    "time": "O(n)",
+    "space": "O(n)"
+  },
+  "hidden_test_set": {
+    "id": "subarrays-with-sum",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 5,
+      "performance": 3
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

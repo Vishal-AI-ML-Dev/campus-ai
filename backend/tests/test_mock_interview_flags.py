@@ -118,8 +118,11 @@ def test_turning_flag_off_again_disables_immediately(client, make_user, token_he
 
 
 def test_only_planned_interview_tables_exist():
-    """Phase 1 added no tables; Phase 2 adds exactly sessions, turns, reports."""
+    """Phase 1 added no tables; Phase 2 adds exactly sessions, turns, reports;
+    Phase 8.1 (migration e7a1c4d9b2f6) adds exactly code attempts and code submissions."""
     assert sorted(t for t in models.Base.metadata.tables if "interview" in t) == [
+        "mock_interview_code_attempts",
+        "mock_interview_code_submissions",
         "mock_interview_reports",
         "mock_interview_sessions",
         "mock_interview_turns",

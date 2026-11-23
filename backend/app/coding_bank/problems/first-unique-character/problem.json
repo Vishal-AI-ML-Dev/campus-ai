@@ -1,0 +1,64 @@
+{
+  "key": "first-unique-character",
+  "version": 1,
+  "title": "First Unique Character",
+  "difficulty": "easy",
+  "topics": [
+    "strings",
+    "hashing"
+  ],
+  "statement": "A roll call system writes each student's initial into a string as they arrive. Find the position of the first initial that appears exactly once in the whole string. Positions start at 0.",
+  "input_format": "One line with a string of lowercase English letters.",
+  "output_format": "Print the index of the first character that occurs exactly once, or -1 if there is none.",
+  "constraints": "1 ≤ length ≤ 100000.",
+  "examples": [
+    {
+      "input": "aabcbd\n",
+      "output": "3\n",
+      "explanation": "Counts: a=2, b=2, c=1, d=1. The first character with count 1 is c at index 3."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "aabcbd\n",
+      "output": "3\n"
+    },
+    {
+      "input": "aabb\n",
+      "output": "-1\n"
+    },
+    {
+      "input": "z\n",
+      "output": "0\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "You need to know how many times each letter appears before you can decide.",
+    "Make one pass to count every letter, then a second pass to find the first count of one.",
+    "There are only 26 letters, so a small array works as well as a map."
+  ],
+  "expected_complexity": {
+    "time": "O(n)",
+    "space": "O(1)"
+  },
+  "hidden_test_set": {
+    "id": "first-unique-character",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 4,
+      "performance": 1
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

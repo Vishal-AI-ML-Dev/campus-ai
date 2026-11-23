@@ -338,3 +338,24 @@ Design and decisions D1–D12: `specs/phase-6-video-interview.md`.
   every mock-interview request body is JSON without media-like fields.
 - Responsive: Mock Interview adds no horizontal overflow from 320 to 1366 px. The dashboard shell's own mobile
   overflow (fixed sidebar) is outside this feature.
+
+## Phase 8.1–8.2: coding round (review-only)
+
+Spec: `specs/phase-8-advanced-ai-intelligence.md` (decisions §14, Batch 1 record §16).
+
+- **A coding round is an ordinary session** (`interview_type = "coding"`, text mode). Its choices live in
+  `plan_json["coding"]`; problems are `mock_interview_code_attempts` rows assigned at start (no AI call); submitted
+  code is `mock_interview_code_submissions` (migration `e7a1c4d9b2f6`, RLS forced, composite tenant keys).
+- **Problem bank:** public parts only, in `backend/app/coding_bank/` (24 drafts pending human review), validated by an
+  allow-list loader (`services/coding_bank.py`); hidden tests and reference solutions belong to the runner-private
+  test pack (8.5a) and never enter this repository.
+- **Nothing is executed** anywhere in Batch 1: graded submissions are stored as `not_executed`; no result is
+  simulated. Execution arrives with the sandbox (8.5/8.6, gates G2–G4).
+- **Server-side limits:** atomic conditional UPDATEs (3 graded submissions, hints, one in flight, draft revision),
+  idempotency keys, identical-code short-circuit, 6 graded per problem per student per 7 days.
+- **HR/technical paths refuse coding rounds** (409 on answer/next/report) so a coding session can never reach the AI
+  engine or the HR/technical rubric (the worker falls back to the HR rubric for unknown types).
+- **Frontend:** `components/mock-interview/coding/` — `CodingWorkspace` (instructions → room → finished),
+  `CodingRoom` (problem | editor | submissions; tabs below 1024 px; server autosave, never browser storage; no
+  proctoring listeners), `CodeEditor` (CodeMirror 6 via dynamic `import()` only in the room, textarea fallback).
+  Build flag `NEXT_PUBLIC_MOCK_INTERVIEW_CODING_ENABLED` (default off) only narrows what the server offers.

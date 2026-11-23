@@ -1,6 +1,10 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-23 (Phase 7 finalization: spec §15.10/§15.11 evidence and acceptance record written;
+_Last updated: 2026-11-23 (Phase 8 Batch 1 — 8.1 coding foundations + 8.2 coding UI, review-only: implementation
+complete and tested; G1 narrower scope approved; see spec §16.
+Earlier: Phase 8.0 planning, spec revision 2: `specs/phase-8-advanced-ai-intelligence.md`;
+every decision Recommended — awaiting user approval; design NOT approved, no code. Phase 7 committed as `869d42b`.
+Earlier 2026-11-23 (Phase 7 finalization: spec §15.10/§15.11 evidence and acceptance record written;
 `next build` passes; token-budget audit in spec §15.12 — one cost correction made, its tests still to run; budget
 policy decision open. Phase 7 NOT fully accepted: live drills are Phase 10.
 2026-11-21: Phase 7.2–7.10 production operations: implementation complete and tested; numeric
@@ -23,8 +27,8 @@ block wins.
 | 4 | Evaluation report + history | Implemented, committed; live LLM not run | `18d8db0` |
 | **5** | **Voice interview (browser speech)** | **Implemented, committed; automated/simulated tests pass; real-device tests pending** | `34fd3a9` |
 | **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented. 6.3 video lobby, room and lifecycle implemented, `VIDEO_UI_READY = true`. 6.4 wiring (done in 6.3) audited, one fix, automated gaps closed, real-device matrix written. 6.5 done in 6.3, audited in 6.5 (report parity proven by tests). 6.6 automated hardening done (accessibility, responsive, privacy guards, full regression). **Phase 6 NOT complete: real-device checklist (24 rows) pending** | 6.1 `1ad5628`, 6.2 `17247e2`, 6.3 `aef2999`, 6.4 `0262f97` |
-| **7** | **Production operations and monitoring** (`specs/phase-7-production-operations.md`, runbooks in `runbooks/`) | **7.0–7.10 implementation complete.** 7.2 worker usage/latency, 7.3 usage ledger + metrics, 7.4 cost framework (**numeric pricing pending: no approved price table**), 7.5 circuit breaker + alerts, 7.6 institute controls + quotas, 7.7 admin API, 7.8 admin UI, 7.9 protected `/metrics`, 7.10 runbooks + retention script. Live drills and real-device tests are Phase 10 | 7.0 `ee48610`; 7.1 `863a8aa`; 7.2–7.10: see Git history |
-| 8 | Advanced AI interview intelligence, incl. coding round (old 7) and company/full simulation (old 8) | Not started | — |
+| **7** | **Production operations and monitoring** (`specs/phase-7-production-operations.md`, runbooks in `runbooks/`) | **7.0–7.10 implementation complete.** 7.2 worker usage/latency, 7.3 usage ledger + metrics, 7.4 cost framework (**numeric pricing pending: no approved price table**), 7.5 circuit breaker + alerts, 7.6 institute controls + quotas, 7.7 admin API, 7.8 admin UI, 7.9 protected `/metrics`, 7.10 runbooks + retention script. Live drills and real-device tests are Phase 10 | 7.0 `ee48610`; 7.1 `863a8aa`; 7.2–7.10 `869d42b` |
+| **8** | **Advanced AI interview intelligence**, incl. coding round (old 7) and company/full simulation (old 8) (`specs/phase-8-advanced-ai-intelligence.md`) | **8.0 planning done (spec r2). G1 (narrower, Batch 1) approved 2026-11-23: P8-D1…D6, D8, D14…D17, B1-a/b/c Accepted. Batch 1 (8.1 + 8.2, review-only coding round) implementation complete and tested (spec §16); nothing is executed. All 24 problems are drafts pending human review (production serves none). Still open: P8-D7, D9…D13, all sandbox decisions (G2–G5)** | Batch 1: Git history |
 | 9 | Institute and placement management, incl. faculty campaigns (old 9) | Not started | — |
 | 10 | Enterprise integrations, platform-level security, final acceptance (full regression + all real-device tests) | Not started | — |
 
@@ -464,6 +468,72 @@ tracks commit status. Full record, deviations and test evidence: `specs/phase-7-
   advisory gate; `npm audit --omit=dev` 0 vulnerabilities (7 dev-only moderate lint-tooling findings remain:
   `typescript-eslint`, `minimatch`); Docker image builds with the flag on/off prove the build-time inlining (images
   removed, containers/volumes unchanged).
+
+### Phase 8.0 — advanced AI interview intelligence planning (2026-11-23; docs only)
+
+Full design: `specs/phase-8-advanced-ai-intelligence.md`. Preflight: branch `feature/ai-mock-interview`, HEAD
+`869d42b` (Phase 7), 0 staged; your local files (`frontend/Dockerfile`, `frontend/next.config.ts`,
+`docker-compose.override.yml`, `.claude/`, `frontend/AGENTS.md`, `ai-worker/qdrant_data/`,
+`PHASE_7_MASTER_HANDOFF.md`) untouched.
+
+- **Findings that shape the design:** the sessions CHECK already allows `coding`/`company`/`full` (no sessions-table
+  change needed); placement drives already hold institute-owned company/role/JD data (an approved source); staging
+  runs on Render free services, which cannot host a sandbox; the frontend has no editor dependency.
+- **Proposal:** coding round (Python, C++, Java, C; stdin/stdout; 24 original problems in a versioned repo bank;
+  CodeMirror 6 editor); a separate `code-runner` on a dedicated VM with gVisor (`runsc`), one no-network container per
+  submission; `coding-v1` rubric where test-derived categories are backend-computed and the LLM cannot change them;
+  review-only mode (no execution, no overall score) until the runner exists; institute-authored company profiles
+  with mandatory sources and a claim filter; full simulations whose rounds are ordinary sessions linked through a new
+  table (existing report/history unchanged; additive optional fields only).
+- **Proposed migrations (none written):** A `mock_interview_code_attempts` + `mock_interview_code_submissions`
+  (8.1); B `mock_interview_company_profiles` (8.4); C `mock_interview_simulations` +
+  `mock_interview_simulation_rounds` (8.7). All tenant-scoped, RLS forced, composite tenant FKs.
+- **Sub-phases:** 8.1 coding foundations → 8.2 coding UI → 8.3 AI coding review (unverified) → 8.4 company →
+  8.5 sandbox runner (needs P8-S1…S6 + a VM you provision) → 8.6 execution integration → 8.7 full simulation →
+  8.8 hardening. Each stops for review.
+- **Tests run:** none (documentation only).
+- **Open decisions:** spec §14 (P8-D1…D16, P8-S1…S6).
+- **Next action (superseded by revision 2 below):** review the spec and approve or amend §14.
+
+**Revision 2 (2026-11-23, docs only, at your request).** Preflight: same branch, HEAD `869d42b`, 0 staged; the
+origin remote exists but its visibility was not verified, so the spec treats the repository as possibly public.
+- Hidden tests, reference solutions and calibration data leave this repository: a runner-private test pack in a
+  separate private repository (new P8-S7). The runner takes `problem_key@version` + `test_set` identifiers, judges
+  in its trusted layer and returns only group counts for hidden tests.
+- `coding-v1` re-weighted to 40/20/10 objective + 15/10/5 AI estimates (testing approach added); hint penalty
+  removed (hints are an analytics signal); problem score ≤ 12/100 when no basic test passes; deterministic,
+  versioned calculation; `not_verified` instead of any simulated result.
+- Best graded submission (deterministic ordering) instead of the last; atomic all-round quota reservation with a
+  release policy; 7-day expiry with cleanup and student status; server-side atomic limits and race protection;
+  per-class error handling; new P8-D17 (run/custom source nulled after the report).
+- Sandbox: trusted/untrusted split, full container hardening list, per-language limits, process-tree kill, token
+  rotation, admin audit, 20-threat model with detection/verification/residual risk, split CI (public synthetic vs
+  private pack).
+- Sub-phases tagged [pre-VM] / [needs-VM] / [decision] / [cost]; 8.5 split into 8.5a/b/c; gates G1–G5. No cost
+  quoted (no reliable current prices verified); no VM provisioned.
+- **Status:** every decision *Recommended — awaiting user approval*. **Next action:** approve, amend or reject the
+  §14 register; G1 unlocks 8.1. Phase 8 implementation does not start before that.
+
+### Phase 8 Batch 1 — 8.1 coding foundations + 8.2 coding UI (2026-11-23; implementation complete)
+
+Full record, deviations and evidence: `specs/phase-8-advanced-ai-intelligence.md` §16. API: `API.md` "Phase 8.1".
+
+- **Backend:** coding gate (master + student + `AI_MOCK_INTERVIEW_CODING_ENABLED` + fail-closed
+  `AI_MOCK_INTERVIEW_CODING_TENANT_IDS`; dev-only draft-problem setting ignored in production); public problem bank
+  (24 drafts, allow-list validator; no hidden tests or reference solutions in the repo); migration A `e7a1c4d9b2f6`
+  (`mock_interview_code_attempts`, `mock_interview_code_submissions`, RLS forced); review-only service and 8 routes;
+  atomic server-side limits; HR/technical answer/next/report routes answer coding rounds with documented 409s.
+- **Frontend:** CodeMirror 6 (7 exact-pinned packages, lazy), coding setup fields, instructions, room (server
+  autosave, tabs below 1024 px, no proctoring), finished summary, history label; build flag
+  `NEXT_PUBLIC_MOCK_INTERVIEW_CODING_ENABLED` (Dockerfile builder `ARG`).
+- **Alembic head:** `e7a1c4d9b2f6`.
+- **Tests:** new SQLite 104 passed; Postgres RLS 18 and Postgres API 18 passed (throwaway container, removed); full
+  SQLite regression first run 579 passed / 1 failed (table-list guard test, updated for the 2 planned tables); **final re-run 580 passed, 0 failed, 18 skipped** (Postgres-only); frontend unit 166/166, tsc, lint 0 errors, build exit 0; real-Chromium smoke
+  35/35 + build-flag-off check + production lazy-load check. Real devices: Phase 10.
+- **Deviations (narrower):** no institute-level coding pause row yet (existing institute pause covers coding);
+  execution counters/quotas wait for 8.6; rate limits are per problem path.
+- **Next:** review the Batch 1 diff and staging list; approve P8-D7 for 8.3 and P8-D9…D11 for 8.4; arrange human
+  review of the 24 draft problems; G2 decisions before any runner code.
 
 ### Next recommended action (approved sequence)
 1. Phases 6.1 (`1ad5628`), 6.2 (`17247e2`), 6.3 (`aef2999`), 6.4 (`0262f97`) and 6.5 (`75ed83c`) are committed. Phase

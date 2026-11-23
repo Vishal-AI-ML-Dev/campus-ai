@@ -1,0 +1,64 @@
+{
+  "key": "next-greater-element",
+  "version": 1,
+  "title": "Next Greater Element",
+  "difficulty": "medium",
+  "topics": [
+    "stack_queue",
+    "arrays"
+  ],
+  "statement": "For each day's temperature, find the first later day with a strictly higher temperature and print that temperature, or -1 if no later day is warmer.",
+  "input_format": "The first line contains n. The second line contains n integers.",
+  "output_format": "Print n integers separated by spaces.",
+  "constraints": "1 ≤ n ≤ 200000; values are between -1000000000 and 1000000000.",
+  "examples": [
+    {
+      "input": "5\n2 1 2 4 3\n",
+      "output": "4 2 4 -1 -1\n",
+      "explanation": "After 2 the next higher value is 4; after 1 it is 2; after 4 and 3 there is none."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "5\n2 1 2 4 3\n",
+      "output": "4 2 4 -1 -1\n"
+    },
+    {
+      "input": "3\n3 2 1\n",
+      "output": "-1 -1 -1\n"
+    },
+    {
+      "input": "4\n1 1 1 2\n",
+      "output": "2 2 2 -1\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "Checking every later day for every day is too slow for 200000 values.",
+    "Scan from the right and keep a stack of candidates that could still be the answer.",
+    "Pop values that are not greater than the current one; the top is then the answer."
+  ],
+  "expected_complexity": {
+    "time": "O(n)",
+    "space": "O(n)"
+  },
+  "hidden_test_set": {
+    "id": "next-greater-element",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 5,
+      "performance": 3
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

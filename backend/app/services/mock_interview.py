@@ -273,7 +273,10 @@ def _engine_down(session_id: int, step: str) -> HTTPException:
 
 
 def create_session(
-    db: Session, user: User, payload: MockInterviewSessionCreate
+    db: Session,
+    user: User,
+    payload: MockInterviewSessionCreate,
+    initial_meta: dict | None = None,
 ) -> MockInterviewSession:
     # Serialize creates per student (Postgres row lock; no-op on SQLite) so two
     # parallel requests can't both pass the one-active / daily checks.
@@ -316,6 +319,8 @@ def create_session(
         duration_minutes=payload.duration_minutes,
         resume_id=payload.resume_id,
         job_description=payload.job_description,
+        # Phase 8.1: coding rounds keep their choices here (no new column).
+        plan_json=initial_meta,
         created_at=now,
         updated_at=now,
     )
@@ -414,6 +419,11 @@ def expire_if_overdue(db: Session, s: MockInterviewSession) -> MockInterviewSess
 
     Without this an abandoned tab would block new interviews forever.
     """
+    if s.interview_type == "coding":
+        # Phase 8.1: coding rounds have their own end rules (auto-submit drafts).
+        from app.services import mock_interview_coding as coding
+
+        return coding.expire_if_overdue(db, s)
     if s.status != "in_progress":
         return s
     remaining = remaining_seconds(s)
@@ -677,7 +687,11 @@ def to_detail(db: Session, s: MockInterviewSession) -> dict:
     turns = _turns(db, s)
     meta = _plan_meta(s)
     plan = meta.get("plan") if isinstance(meta.get("plan"), dict) else {}
-    if s.status == "setup" or (s.status == "in_progress" and not turns):
+    coding = s.interview_type == "coding"
+    if coding:
+        # Phase 8.1: a coding round has no interview questions (yet).
+        awaiting = "start" if s.status == "setup" else "none"
+    elif s.status == "setup" or (s.status == "in_progress" and not turns):
         awaiting = "start"
     elif s.status == "in_progress":
         awaiting = "answer" if turns[-1].answer_text is None else "next_question"
@@ -685,7 +699,7 @@ def to_detail(db: Session, s: MockInterviewSession) -> dict:
         awaiting = "none"
     remaining = remaining_seconds(s) if s.status == "in_progress" else None
     topics = plan.get("topics") if isinstance(plan.get("topics"), list) else None
-    return {
+    detail = {
         "id": s.id,
         "interview_type": s.interview_type,
         "mode": s.mode,
@@ -724,3 +738,10 @@ def to_detail(db: Session, s: MockInterviewSession) -> dict:
         "closing_message": meta.get("closing_message"),
         "end_reason": meta.get("end_reason"),
     }
+    if coding:
+        # Phase 8.1: only coding sessions carry this key; every other session's
+        # JSON stays byte-identical (routes use response_model_exclude_unset).
+        from app.services import mock_interview_coding as coding_svc
+
+        detail["coding_summary"] = coding_svc.summary(db, s)
+    return detail

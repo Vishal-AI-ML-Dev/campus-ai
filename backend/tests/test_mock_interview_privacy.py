@@ -90,7 +90,9 @@ def test_answer_and_create_bodies_have_exactly_the_documented_fields(client):
     answer = set(_resolve(spec, schemas["MockInterviewAnswerIn"])["properties"])
     assert answer == {"turn_seq", "answer", "source"}
     create = set(_resolve(spec, schemas["MockInterviewSessionCreate"])["properties"])
+    # Phase 8.1 (approved P8-D16): the optional "coding" choices object; it holds
+    # only languages / topics / problem_key (see test_mock_interview_coding_privacy).
     assert create == {
         "interview_type", "difficulty", "duration_minutes", "target_role", "company_name",
-        "resume_id", "job_description", "language", "mode",
+        "resume_id", "job_description", "language", "mode", "coding",
     }

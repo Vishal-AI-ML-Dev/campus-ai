@@ -169,6 +169,17 @@ class Settings(BaseSettings):
     # video list enables NO institute (fail closed). Students only.
     AI_MOCK_INTERVIEW_VIDEO_ENABLED: bool = False
     AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS: str = ""
+    # Phase 8.1 sub-flag: offer coding rounds (editor + review-only mode; no
+    # code is ever executed by this service). Needs the master switch and
+    # master allow-list too, AND the institute must be listed in
+    # AI_MOCK_INTERVIEW_CODING_TENANT_IDS. Like video, an EMPTY coding list
+    # enables NO institute (fail closed). Students only.
+    AI_MOCK_INTERVIEW_CODING_ENABLED: bool = False
+    AI_MOCK_INTERVIEW_CODING_TENANT_IDS: str = ""
+    # Development only (decision B1-b): also offer problems whose status is
+    # "draft" (not yet human-reviewed). Ignored when ENVIRONMENT=production,
+    # so production only ever serves "published" problems.
+    AI_MOCK_INTERVIEW_CODING_ALLOW_DRAFT_PROBLEMS: bool = False
 
     # --- AI Mock Interview: production operations (Phase 7) --------------
     # Institute operations: admin/TPO usage + controls API, institute quotas,

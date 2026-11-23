@@ -1,0 +1,64 @@
+{
+  "key": "merge-two-sorted-lists",
+  "version": 1,
+  "title": "Merge Two Sorted Lists",
+  "difficulty": "easy",
+  "topics": [
+    "two_pointers",
+    "sorting_searching"
+  ],
+  "statement": "Two invigilators each sorted their stack of roll numbers in non-decreasing order. Combine both stacks into one list that is still sorted.",
+  "input_format": "The first line contains n and m. The second line contains n sorted integers and the third line contains m sorted integers. A list with zero elements has an empty line.",
+  "output_format": "Print all n + m values in non-decreasing order, separated by spaces.",
+  "constraints": "0 ≤ n, m ≤ 100000; 1 ≤ n + m; values are between -1000000000 and 1000000000.",
+  "examples": [
+    {
+      "input": "3 2\n1 4 9\n2 3\n",
+      "output": "1 2 3 4 9\n",
+      "explanation": "Taking the smaller front value each time gives 1 2 3 4 9."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "3 2\n1 4 9\n2 3\n",
+      "output": "1 2 3 4 9\n"
+    },
+    {
+      "input": "0 3\n\n5 5 6\n",
+      "output": "5 5 6\n"
+    },
+    {
+      "input": "2 2\n-3 -3\n-3 0\n",
+      "output": "-3 -3 -3 0\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "Both lists are already sorted; you do not need a general sort.",
+    "Keep one index into each list and repeatedly take the smaller current value.",
+    "When one list runs out, copy the rest of the other list."
+  ],
+  "expected_complexity": {
+    "time": "O(n + m)",
+    "space": "O(n + m)"
+  },
+  "hidden_test_set": {
+    "id": "merge-two-sorted-lists",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 4,
+      "performance": 1
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}
