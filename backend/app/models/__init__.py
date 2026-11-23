@@ -82,6 +82,7 @@ from app.models.mock_interview import (
     MockInterviewTurn,
     MockInterviewReport,
 )
+from app.models.ai_operations import AIFeatureControl, AIUsageEvent
 
 __all__ = [
     "Base",
@@ -142,4 +143,6 @@ __all__ = [
     "MockInterviewSession",
     "MockInterviewTurn",
     "MockInterviewReport",
+    "AIUsageEvent",
+    "AIFeatureControl",
 ]

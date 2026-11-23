@@ -17,6 +17,7 @@ import { useCurrentUser, NAV_BY_ROLE } from "@/lib/auth"
 import ThemeToggle from "@/components/ThemeToggle"
 import NotificationBell from "@/components/notifications/NotificationBell"
 import { useMockInterviewNavItem } from "@/components/mock-interview/mockInterviewFlags"
+import { useInterviewOpsNavItem } from "@/components/interview-operations/opsApi"
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
 	const router = useRouter()
@@ -24,6 +25,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 	const { user, loading } = useCurrentUser()
 	// AI Mock Interview nav entry: null (and no request) unless its build flag is on.
 	const mockInterviewNavItem = useMockInterviewNavItem(user?.role)
+	// Phase 7.8: Interview Ops for admins/TPOs; null (no request) unless its build flag is on.
+	const interviewOpsNavItem = useInterviewOpsNavItem(user?.role)
 
 	// While the provider is loading (or redirecting), show a simple splash.
 	if (loading || !user) {
@@ -35,7 +38,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 	}
 
 	const baseNav = NAV_BY_ROLE[user.role] ?? []
-	const nav = mockInterviewNavItem ? [...baseNav, mockInterviewNavItem] : baseNav
+	const nav = [...baseNav, mockInterviewNavItem, interviewOpsNavItem].filter(
+		(item): item is NonNullable<typeof item> => item !== null,
+	)
 
 	function isActive(href: string): boolean {
 		// "Overview" (/dashboard) should only match exactly; others match prefix.

@@ -1,4 +1,4 @@
-# AI Mock Interview — API (Phases 3–6.1)
+# AI Mock Interview — API (Phases 3–7)
 
 ## Where and who
 
@@ -219,3 +219,54 @@ Mounted only when the worker's `MOCK_INTERVIEW_ENABLED=true`.
 - **Request:** `{config, plan?: {topics[{name, focus}], question_budget}, transcript[{seq, topic, question, is_follow_up, answer|null}]}`. The seqs must run 1..n (otherwise 422).
 - **Response:** `{rubric_version, overall_score, categories[], questions[{seq, status, scores{key: {score 0-5, evidence}}, feedback}], strengths[], weaknesses[], recommendations[], provider}`.
 - **Errors:** 502 when a scoring call failed (retryable); 422 when nothing could be assessed with evidence.
+
+## Phase 7: production operations (additive; all new routes default off)
+
+All under `/v1/mock-interview` (and the unversioned alias). Content-free: no route returns questions, answers,
+plans, resumes, job descriptions or reports.
+
+### Student
+
+| Method | Path | Success | Notes |
+|---|---|---|---|
+| GET | `/usage/me` | `{available, reason, daily_limit, used_today, remaining_today, voice_allowed, video_allowed}` | 404 unless `AI_MOCK_INTERVIEW_OPS_ENABLED` is on for the institute. `reason`: `paused` \| `daily_limit` \| `institute_limit` \| null. Only the caller's own numbers. |
+
+`POST /sessions` may additionally answer (only with institute operations on): **403** "…paused…", **422** "Voice/Video
+interviews are not available" (institute turned the mode off), **429** daily/institute limits. `GET /options` may
+list fewer `modes` when an institute turned voice/video off. Response shapes are unchanged.
+
+### Institute operations (`/admin/*`)
+
+404 for everyone unless operations are on for the caller's institute; then GET = `admin` + `tpo`, PUT = `admin`
+(TPO 403); teachers, students, recruiters 403; data of other institutes is never counted (diagnostics 404).
+
+| Method | Path | Success |
+|---|---|---|
+| GET | `/admin/usage?days=1..90` (default 30) | `{days, since, totals{sessions_*, ai_calls, ai_failures, circuit_open, quota_blocked, llm_calls, input_tokens, output_tokens, calls_with_unknown_tokens, calls_with_partial_tokens, avg_latency_ms, p95_latency_ms}, daily[], by_step[], by_model[], by_outcome{}, modes{}, cost{status, currency, total_micros, priced_calls, unpriced_calls, price_versions[]}}` |
+| GET | `/admin/usage/students?days&limit=1..100&offset` | `[{student_id, full_name, sessions_created, sessions_completed, ai_calls, ai_failures, input_tokens, output_tokens, last_activity}]`, `X-Total-Count` |
+| GET | `/admin/controls` | `{feature, configured, paused, voice_allowed, video_allowed, limits{}, effective_limits{}, platform_limits{}, platform_voice_enabled, platform_video_enabled, updated_at, can_edit}` |
+| PUT | `/admin/controls` | body `{paused, voice_allowed, video_allowed, limits{student_sessions_per_day, tenant_sessions_per_month, tenant_tokens_per_month}}` (unknown fields 422; a limit above the platform limit 422) → same as GET; writes audit `mock_interview.controls_update` |
+| GET | `/admin/sessions/{id}/diagnostics` | `{session_id, student_id, status, mode, interview_type, duration_minutes, created_at, started_at, completed_at, turns, answered, report_generated, events[{event_id, created_at, step, outcome, http_status, error_class, latency_ms, llm_latency_ms, llm_calls, input_tokens, output_tokens, fallback_used, provider, model, request_id}]}` |
+| GET | `/admin/health` | `{circuit_enabled, steps[{step, state, consecutive_failures, retry_in_seconds, last_hour_calls, last_hour_failures, last_hour_error_rate}], note}` |
+
+`cost.status`: `pricing_not_configured` (no approved table: `total_micros` null), `estimated`, `partial`,
+`no_priced_calls`, `mixed_currency`. Token counts never include unknown values.
+
+Rate limits: 60/min per caller on usage/diagnostics, 20/min on PUT.
+
+### Audit (additive filters)
+
+`GET /v1/audit` (admin only, unchanged response) gains `target_type`, `since`, `until` (ISO-8601; naive = UTC;
+`since > until` → 422).
+
+### Worker contract additions
+
+`/interview/plan|turn|report` successful responses carry an optional `usage` block: `{provider, model, llm_calls,
+failed_calls, fallback_used, input_tokens|null, output_tokens|null, tokens_reported, tokens_unreported,
+llm_latency_ms}`. The backend removes it before any other processing and stores it in `ai_usage_events`. Requests
+carry `X-Request-ID` and `X-AI-Invocation-ID` (Phase 7.1).
+
+### Metrics
+
+Production `/metrics` (backend and worker) only with a valid `METRICS_TOKEN`; see
+`runbooks/metrics-access.md`.

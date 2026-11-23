@@ -421,6 +421,9 @@ def contract_report() -> dict:
     assert r.status_code == 200, r.text
     data = r.json()
     data["provider"] = "fixture"
+    # Phase 7.2: the additive usage block (latency, counts) varies per run and
+    # is stripped by the backend before validation; it is not part of the contract.
+    assert isinstance(data.pop("usage"), dict)
     return data
 
 

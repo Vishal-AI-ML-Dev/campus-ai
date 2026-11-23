@@ -170,6 +170,42 @@ class Settings(BaseSettings):
     AI_MOCK_INTERVIEW_VIDEO_ENABLED: bool = False
     AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS: str = ""
 
+    # --- AI Mock Interview: production operations (Phase 7) --------------
+    # Institute operations: admin/TPO usage + controls API, institute quotas,
+    # GET /mock-interview/usage/me. OFF = those routes 404 and no quota beyond
+    # the existing per-student limits is enforced. Needs the master switch too.
+    AI_MOCK_INTERVIEW_OPS_ENABLED: bool = False
+    # Optional platform ceilings for institute quotas, as positive integers
+    # ("" = no cap). An institute can only set lower values (Phase 7.6).
+    AI_MOCK_INTERVIEW_TENANT_MONTHLY_SESSION_MAX: str = ""
+    AI_MOCK_INTERVIEW_TENANT_MONTHLY_TOKEN_MAX: str = ""
+    # Token budgets count only provider-reported tokens (decision 2026-11-23,
+    # spec 15.12 option a; the session cap is the hard limit). Warn (never
+    # block) when at least this percent of the month's AI calls - once there
+    # are MIN_CALLS of them - had unknown or partial usage. Checked only when
+    # an institute token budget applies. 0 = no alert.
+    AI_MOCK_INTERVIEW_UNREPORTED_TOKENS_ALERT_PERCENT: int = Field(default=10, ge=0, le=100)
+    AI_MOCK_INTERVIEW_UNREPORTED_TOKENS_ALERT_MIN_CALLS: int = Field(default=20, ge=1, le=100000)
+    # Approved model price table (JSON, see docs/mock-interview/runbooks/
+    # pricing.md). Empty = cost "pricing not configured": tokens are still
+    # recorded, cost stays null. Prices are never invented (decision P7-D9).
+    AI_PRICE_TABLE: str = ""
+    # Circuit breaker for interview AI calls - ON by default (approved
+    # exception P7-D4, conservative thresholds). Inert while
+    # AI_MOCK_INTERVIEW_ENABLED is off; AI_CIRCUIT_ENABLED=false disables it.
+    AI_CIRCUIT_ENABLED: bool = True
+    AI_CIRCUIT_FAILURE_THRESHOLD: int = Field(default=5, ge=1, le=1000)
+    AI_CIRCUIT_ERROR_RATE: float = Field(default=0.5, gt=0, le=1)
+    AI_CIRCUIT_MIN_CALLS: int = Field(default=10, ge=1, le=10000)
+    AI_CIRCUIT_WINDOW_SECONDS: int = Field(default=120, ge=10, le=86400)
+    AI_CIRCUIT_OPEN_SECONDS: int = Field(default=60, ge=5, le=3600)
+    # Minimum gap between two alerts with the same name/key (Phase 7.5).
+    AI_ALERT_THROTTLE_SECONDS: int = Field(default=300, ge=0, le=86400)
+    # Phase 7.9: dedicated bearer token for GET /metrics in production
+    # (>= 32 chars, different from every other secret). Empty or invalid =
+    # /metrics stays unregistered (404) in production. Ignored elsewhere.
+    METRICS_TOKEN: str = ""
+
     @property
     def docs_enabled(self) -> bool:
         """Swagger UI, ReDoc and /openapi.json (Phase 7).
@@ -224,6 +260,26 @@ settings = get_settings()
 
 # Values that must never be used as real production secrets.
 _INSECURE_SECRET_KEYS = {"", "dev-secret-change-me", "changeme", "secret"}
+
+
+def metrics_token_issue(s: Settings = settings) -> str | None:
+    """Why METRICS_TOKEN cannot protect /metrics (None = usable). Phase 7.9.
+
+    The token must be a dedicated secret: >= 32 characters, no whitespace,
+    not a known placeholder, and different from every other secret. The
+    message never contains the value.
+    """
+    token = s.METRICS_TOKEN
+    if not token:
+        return "METRICS_TOKEN is not set"
+    if token != token.strip() or any(ch.isspace() for ch in token):
+        return "METRICS_TOKEN contains whitespace"
+    if len(token) < MIN_SECRET_KEY_LENGTH or token in _INSECURE_SECRET_KEYS:
+        return f"METRICS_TOKEN is shorter than {MIN_SECRET_KEY_LENGTH} characters or a placeholder"
+    others = (s.SECRET_KEY, s.AI_WORKER_TOKEN, s.STAGING_GATE_TOKEN, s.SUPABASE_SERVICE_KEY)
+    if any(token == (other or "").strip() for other in others if other):
+        return "METRICS_TOKEN must be different from every other secret"
+    return None
 
 
 def insecure_secret_issues(s: Settings = settings) -> list[str]:

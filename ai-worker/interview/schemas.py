@@ -96,9 +96,28 @@ class PlanRequest(BaseModel):
     job_description: str | None = Field(default=None, max_length=MAX_JD_CHARS)
 
 
+class StepUsage(BaseModel):
+    """Phase 7.2: LLM usage of one worker request (numbers/ids only, no text).
+
+    Token counts are None when the provider reported none (unknown, not zero).
+    """
+
+    provider: str | None = None
+    model: str | None = None
+    llm_calls: int = 0
+    failed_calls: int = 0
+    fallback_used: bool = False
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    tokens_reported: int = 0
+    tokens_unreported: int = 0
+    llm_latency_ms: int = 0
+
+
 class PlanResponse(BaseModel):
     plan: InterviewPlan
     provider: str
+    usage: StepUsage | None = None  # Phase 7.2, additive
 
 
 class TurnEvaluation(BaseModel):
@@ -149,6 +168,7 @@ class TurnResponse(BaseModel):
     end_reason: str | None = None
     level: Difficulty
     provider: str
+    usage: StepUsage | None = None  # Phase 7.2, additive
 
 
 # --- Structured LLM outputs ---------------------------------------------------
@@ -253,6 +273,7 @@ class ReportResponse(BaseModel):
     weaknesses: list[ReportItem]
     recommendations: list[str]
     provider: str
+    usage: StepUsage | None = None  # Phase 7.2, additive
 
 
 class LLMCategoryScore(BaseModel):

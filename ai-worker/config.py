@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # SENTRY_DSN empty = disabled (worker runs fine without it).
     ENVIRONMENT: str = "development"
     SENTRY_DSN: str = ""
+    # Phase 7.9: dedicated bearer token for GET /metrics in production (>= 32
+    # chars, different from AI_WORKER_TOKEN). Empty or invalid = /metrics stays
+    # unregistered (404) in production. Ignored outside production.
+    METRICS_TOKEN: str = ""
 
     @field_validator("ENVIRONMENT")
     @classmethod
@@ -74,6 +78,21 @@ class Settings(BaseSettings):
     LANGFUSE_PUBLIC_KEY: str = ""
     LANGFUSE_SECRET_KEY: str = ""
     LANGFUSE_HOST: str = "https://cloud.langfuse.com"
+
+
+def metrics_token_issue(s: "Settings") -> str | None:
+    """Why METRICS_TOKEN cannot protect /metrics (None = usable). Never
+    includes the value."""
+    token = s.METRICS_TOKEN
+    if not token:
+        return "METRICS_TOKEN is not set"
+    if any(ch.isspace() for ch in token):
+        return "METRICS_TOKEN contains whitespace"
+    if len(token) < MIN_WORKER_TOKEN_LENGTH:
+        return f"METRICS_TOKEN is shorter than {MIN_WORKER_TOKEN_LENGTH} characters"
+    if token == s.AI_WORKER_TOKEN.strip():
+        return "METRICS_TOKEN must be different from AI_WORKER_TOKEN"
+    return None
 
 
 def insecure_worker_issues(s: "Settings") -> list[str]:

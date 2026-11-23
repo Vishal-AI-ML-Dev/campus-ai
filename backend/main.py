@@ -60,10 +60,11 @@ Key URLs (feature routes are served under /v1 AND legacy unversioned paths):
     /audit         -> append-only governance audit log (admin only)
 """
 
+import hmac
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from slowapi import _rate_limit_exceeded_handler
@@ -79,7 +80,7 @@ from app.routers.attendance import router as attendance_router
 from app.routers.audit import router as audit_router
 from app.routers.auth import router as auth_router
 from app.routers.calendar_events import router as calendar_router
-from app.core.config import insecure_secret_issues, settings
+from app.core.config import insecure_secret_issues, metrics_token_issue, settings
 from app.core.csrf import make_csrf_middleware
 from app.core.security_headers import hsts_value, make_security_headers_middleware
 from app.core.staging_gate import make_staging_gate_middleware
@@ -104,6 +105,7 @@ from app.routers.leaveod import router as leaveod_router
 from app.routers.materials import router as materials_router
 from app.routers.mentor import router as mentor_router
 from app.routers.mock_interview import router as mock_interview_router
+from app.routers.mock_interview_admin import router as mock_interview_admin_router
 from app.routers.notifications import router as notifications_router
 from app.routers.people import router as people_router
 from app.routers.placement import router as placement_router
@@ -185,7 +187,15 @@ app.middleware("http")(request_logging_middleware)
 # GET /metrics for scraping. No-op when prometheus_client isn't installed.
 # Phase 7: off in production (no collection, no route) until monitoring
 # access is decided - see Settings.metrics_enabled.
-if settings.metrics_enabled:
+# Phase 7.9: in production, collected and served only with a valid dedicated
+# METRICS_TOKEN (see the protected route below); otherwise still off.
+_METRICS_TOKEN_ISSUE = metrics_token_issue(settings)
+_METRICS_PROTECTED = settings.ENVIRONMENT == "production" and _METRICS_TOKEN_ISSUE is None
+if settings.ENVIRONMENT == "production" and settings.METRICS_TOKEN and _METRICS_TOKEN_ISSUE:
+    # Fail closed: an unusable token keeps /metrics unregistered (404). The
+    # reason is logged, never the value.
+    logging.getLogger("campus-ai").warning("/metrics stays disabled: %s", _METRICS_TOKEN_ISSUE)
+if settings.metrics_enabled or _METRICS_PROTECTED:
     app.middleware("http")(metrics_middleware)
 
 # CORS: allow the frontend to call the API from the browser. Deployed origins
@@ -275,6 +285,9 @@ FEATURE_ROUTERS = [
     # AI Mock Interview: feature-flagged (AI_MOCK_INTERVIEW_ENABLED, default
     # off). Only /mock-interview/status answers while it is off.
     mock_interview_router,
+    # Phase 7.7: institute operations (admin/TPO), 404 unless
+    # AI_MOCK_INTERVIEW_OPS_ENABLED (default off) is on for the institute.
+    mock_interview_admin_router,
 ]
 
 for _feature_router in FEATURE_ROUTERS:
@@ -345,3 +358,22 @@ if settings.metrics_enabled:
         """
         body, content_type = render_latest()
         return Response(content=body, media_type=content_type)
+
+elif _METRICS_PROTECTED:
+
+    @app.get("/metrics", include_in_schema=False)
+    def metrics_protected(request: Request) -> Response:
+        """Production scrape endpoint (Phase 7.9): ``Authorization: Bearer
+        <METRICS_TOKEN>`` required, compared in constant time. The token is
+        never logged or echoed; a wrong or missing token gets a bare 401."""
+        auth = request.headers.get("authorization") or ""
+        scheme, _, provided = auth.partition(" ")
+        expected = settings.METRICS_TOKEN.encode("utf-8")
+        if scheme.lower() != "bearer" or not hmac.compare_digest(
+            provided.strip().encode("utf-8"), expected
+        ):
+            return Response(status_code=401, headers={"WWW-Authenticate": "Bearer"})
+        body, content_type = render_latest()
+        return Response(
+            content=body, media_type=content_type, headers={"Cache-Control": "no-store"}
+        )

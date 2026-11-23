@@ -58,9 +58,30 @@ def test_mock_interview_request_bodies_are_json_without_media_fields(client):
         assert set(content) == {"application/json"}, (method, path, set(content))
         names = set(_field_names(spec, content["application/json"]["schema"]))
         assert names, (method, path)
-        leaked = sorted(n for n in names if MEDIA.search(n))
+        leaked = sorted(n for n in names if MEDIA.search(n) and not _is_control_flag(spec, path, method, n))
         assert not leaked, (method, path, leaked)
     assert bodies >= 4  # create session + answer, at /v1 and unversioned
+
+
+# Phase 7.7: the institute controls body switches modes on/off. These names
+# contain "video" but are booleans - they cannot carry media. Exempt ONLY these
+# names, ONLY on PUT .../admin/controls, and ONLY while their type is boolean.
+CONTROL_FLAGS = {"video_allowed", "voice_allowed"}
+
+
+def _is_control_flag(spec, path, method, name):
+    if method != "put" or not path.endswith("/mock-interview/admin/controls") or name not in CONTROL_FLAGS:
+        return False
+    body = _resolve(spec, spec["paths"][path][method]["requestBody"]["content"]["application/json"]["schema"])
+    return _resolve(spec, body["properties"][name]).get("type") == "boolean"
+
+
+def test_controls_flags_are_the_only_exemption_and_are_booleans(client):
+    spec = client.app.openapi()
+    flagged = [(p, m) for p, m, op in _operations(spec) if op.get("requestBody") and any(
+        _is_control_flag(spec, p, m, n) for n in CONTROL_FLAGS)]
+    assert sorted(flagged) == [("/mock-interview/admin/controls", "put"),
+                               ("/v1/mock-interview/admin/controls", "put")]
 
 
 def test_answer_and_create_bodies_have_exactly_the_documented_fields(client):

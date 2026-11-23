@@ -132,7 +132,7 @@ Where each item below was checked:
 | Endpoint | Production | Notes |
 |---|---|---|
 | `/docs`, `/redoc`, `/openapi.json` (API + ai-worker) | **404** | Not registered when `ENVIRONMENT=production`. |
-| `/metrics` (API + ai-worker) | **404** | Not collected or registered. Monitoring access is a pending decision (options: private scrape network, or a bearer-token protected route). |
+| `/metrics` (API + ai-worker) | **404** unless `METRICS_TOKEN` is set | Decided in AI Mock Interview Phase 7.9 (P7-D7): with a valid dedicated `METRICS_TOKEN` (>= 32 chars, different from every other secret) the endpoint is registered and requires `Authorization: Bearer <METRICS_TOKEN>` (constant-time compare, 401 otherwise; on the worker it is exempt from `X-Worker-Token`). Empty or invalid token = not registered, as before. See `docs/mock-interview/runbooks/metrics-access.md`. |
 | `/health` | 200 `{"status":"healthy"}` | Liveness. Dependency-free; safe to expose. Use for container restarts. |
 | `/health/ready` | 200/503 | Readiness: DB required, Redis optional. Reveals only status, latency and an exception class name. Keep it for platform health checks; restrict at the proxy if the platform allows private health checks. |
 | `/db-check` | **404** | Not registered in production (Phase 7A decision); dev/test only. Use `/health/ready` for DB readiness. |

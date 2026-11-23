@@ -50,7 +50,9 @@ from app.schemas.mock_interview import (
     MockInterviewSessionSummaryOut,
     MockInterviewStatusOut,
 )
+from app.schemas.ai_operations import UsageMeOut
 from app.services import mock_interview as svc
+from app.services import mock_interview_policy as policy
 from app.services import mock_interview_report as report_svc
 
 router = APIRouter(
@@ -199,6 +201,9 @@ def mock_interview_options(
     user: User = Depends(require_mock_interview_student),
 ) -> MockInterviewOptionsOut:
     """Setup choices for a Phase 3 text interview, plus the caller's resumes."""
+    # Phase 7.6: an institute may turn voice/video off (never on); True when
+    # institute operations are off.
+    institute_voice, institute_video = policy.modes_allowed(db, user.tenant_id)
     return MockInterviewOptionsOut(
         interview_types=[
             MockInterviewChoice(value="hr", label="HR"),
@@ -218,12 +223,12 @@ def mock_interview_options(
         modes=[MockInterviewChoice(value="text", label="Text")]
         + (
             [MockInterviewChoice(value="voice", label="Voice")]
-            if mock_interview_voice_enabled()
+            if mock_interview_voice_enabled() and institute_voice
             else []
         )
         + (
             [MockInterviewChoice(value="video", label="Video")]
-            if mock_interview_video_enabled_for(user)
+            if mock_interview_video_enabled_for(user) and institute_video
             else []
         ),
         resumes=[
@@ -261,6 +266,22 @@ def create_mock_interview_session(
             detail="Video interviews are not available",
         )
     return svc.to_detail(db, svc.create_session(db, user, payload))
+
+
+@router.get("/usage/me", response_model=UsageMeOut)
+def my_mock_interview_usage(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_mock_interview_student),
+) -> dict:
+    """Phase 7.6: can I start a new interview, and how many are left today?
+
+    404 unless institute operations (AI_MOCK_INTERVIEW_OPS_ENABLED) are on for
+    the caller's institute. Only the caller's own numbers are returned; an
+    institute limit shows as ``reason = "institute_limit"`` without totals.
+    """
+    if not policy.ops_enabled_for(user.tenant_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+    return policy.availability(db, user)
 
 
 @router.get("/sessions", response_model=list[MockInterviewSessionSummaryOut])

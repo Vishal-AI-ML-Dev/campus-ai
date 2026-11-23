@@ -28,6 +28,7 @@ ARG HSTS_MAX_AGE=0
 # Phase 6 video build flag (default off). Read at build time: it is inlined
 # into the bundle and decides the mock-interview camera Permissions-Policy.
 ARG NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED=false
+ARG NEXT_PUBLIC_MOCK_INTERVIEW_OPS_ENABLED=false
 ARG HSTS_INCLUDE_SUBDOMAINS=false
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
     NEXT_PUBLIC_API_PREFIX=$NEXT_PUBLIC_API_PREFIX \

@@ -44,7 +44,9 @@ from sqlalchemy.orm import Session
 from app.models import MockInterviewSession, MockInterviewTurn, Resume, User
 from app.routers.mentor import _build_verified_profile
 from app.schemas.mock_interview import MockInterviewSessionCreate
+from app.services import ai_usage
 from app.services import mock_interview_ai as engine
+from app.services import mock_interview_policy as policy
 
 logger = logging.getLogger("campus_ai.mock_interview")
 
@@ -253,6 +255,13 @@ def _release(db: Session, s_id: int, tenant_id: int, token: datetime, meta: dict
         db.rollback()
 
 
+def _ai_scope(tenant_id: int, student_id: int, session_id: int):
+    """Who/what the next AI calls are for, for the usage ledger (Phase 7.3)."""
+    return ai_usage.usage_context(
+        tenant_id, student_id, subject_type="mock_interview_session", subject_id=session_id
+    )
+
+
 def _engine_down(session_id: int, step: str) -> HTTPException:
     logger.warning("mock interview %s: AI step %s unavailable", session_id, step)
     return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=_ENGINE_DOWN)
@@ -289,6 +298,9 @@ def create_session(
     if payload.resume_id is not None and owned_resume(db, payload.resume_id, user) is None:
         # Same answer for "not yours" and "does not exist".
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found")
+    # Phase 7.6: institute controls and quotas - NEW sessions only (R8). No-op
+    # unless AI_MOCK_INTERVIEW_OPS_ENABLED is on for this institute.
+    policy.enforce_create(db, user, payload.mode)
 
     now = utcnow()
     s = MockInterviewSession(
@@ -456,9 +468,10 @@ def start_session(db: Session, user: User, s: MockInterviewSession) -> MockInter
 
     if not isinstance(plan, dict):
         try:
-            planned = engine.plan_interview(
-                {"config": config, "profile": profile, "resume_text": resume_text, "job_description": jd}
-            )
+            with _ai_scope(tenant_id, user.id, s_id):
+                planned = engine.plan_interview(
+                    {"config": config, "profile": profile, "resume_text": resume_text, "job_description": jd}
+                )
         except engine.InterviewEngineUnavailable:
             _release(db, s_id, tenant_id, token, meta)
             raise _engine_down(s_id, "plan")
@@ -466,17 +479,18 @@ def start_session(db: Session, user: User, s: MockInterviewSession) -> MockInter
         meta = {**meta, "plan": plan, "provider": planned.get("provider")}
 
     try:
-        opening = engine.interview_turn(
-            {
-                "config": config,
-                "plan": plan,
-                "profile": profile,
-                "resume_text": resume_text,
-                "job_description": jd,
-                "transcript": [],
-                "remaining_seconds": int(config["duration_minutes"]) * 60,
-            }
-        )
+        with _ai_scope(tenant_id, user.id, s_id):
+            opening = engine.interview_turn(
+                {
+                    "config": config,
+                    "plan": plan,
+                    "profile": profile,
+                    "resume_text": resume_text,
+                    "job_description": jd,
+                    "transcript": [],
+                    "remaining_seconds": int(config["duration_minutes"]) * 60,
+                }
+            )
         question = opening.get("question")
         if not isinstance(question, dict) or not str(question.get("text") or "").strip():
             raise engine.InterviewEngineUnavailable("/interview/turn")
@@ -586,7 +600,8 @@ def advance(db: Session, user: User, s: MockInterviewSession) -> MockInterviewSe
     token, meta = _claim(db, s)
 
     try:
-        result = engine.interview_turn(payload)
+        with _ai_scope(tenant_id, user.id, s_id):
+            result = engine.interview_turn(payload)
     except engine.InterviewEngineUnavailable:
         _release(db, s_id, tenant_id, token, meta)
         raise _engine_down(s_id, "turn")

@@ -16,6 +16,7 @@ import {
 	type InterviewSession,
 } from "./mockInterviewApi"
 import { MOCK_INTERVIEW_VIDEO_AVAILABLE } from "./mockInterviewFlags"
+import RemainingQuota from "./RemainingQuota"
 import { visibleModes } from "./mockInterviewModes"
 
 const inputClass =
@@ -160,6 +161,7 @@ export default function InterviewSetupForm({
 					paste.
 				</p>
 			</div>
+			<RemainingQuota />
 
 			<ChoiceGroup legend="Interview type" name="type" options={opts.interview_types} value={type} onChange={setType} />
 			{modeChoice ? (

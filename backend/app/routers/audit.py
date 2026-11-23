@@ -13,7 +13,9 @@ consistent with what actually happened.
 Mounted under the `/audit` prefix by `main.py`.
 """
 
-from fastapi import APIRouter, Depends, Response
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -61,6 +63,9 @@ def record_audit(
 def list_audit(
     response: Response,
     action: str | None = None,
+    target_type: str | None = Query(None, max_length=40),
+    since: datetime | None = None,
+    until: datetime | None = None,
     db: Session = Depends(get_db),
     admin: User = Depends(admin_only),
     page: Pagination = Depends(pagination_params),
@@ -68,8 +73,13 @@ def list_audit(
     """List recent audit entries, newest first (admin only).
 
     Optional ?action= filters by exact action key (e.g. "user.role_change").
+    Phase 7.7 (additive): ?target_type= exact match, ?since= / ?until=
+    ISO-8601 bounds on created_at (inclusive / exclusive; naive = UTC).
     Use ?limit= / ?offset= to page (X-Total-Count header carries the total).
     """
+    since, until = _utc(since), _utc(until)
+    if since is not None and until is not None and since > until:
+        raise HTTPException(status_code=422, detail="'since' must not be after 'until'")
     stmt = (
         select(AuditLog)
         .where(AuditLog.tenant_id == admin.tenant_id)
@@ -77,4 +87,16 @@ def list_audit(
     )
     if action:
         stmt = stmt.where(AuditLog.action == action)
+    if target_type:
+        stmt = stmt.where(AuditLog.target_type == target_type)
+    if since is not None:
+        stmt = stmt.where(AuditLog.created_at >= since)
+    if until is not None:
+        stmt = stmt.where(AuditLog.created_at < until)
     return list(paginate(db, response, stmt, page))
+
+
+def _utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)

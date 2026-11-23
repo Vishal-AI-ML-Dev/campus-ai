@@ -106,6 +106,8 @@ class MockInterviewSession(Base):
         ),
         # Student history list: newest first, per student.
         Index("ix_mock_interview_sessions_student_created", "student_id", "created_at"),
+        # Phase 7.6 (migration d6f0b4c8e3a5): monthly institute quota count.
+        Index("ix_mock_interview_sessions_tenant_created", "tenant_id", "created_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

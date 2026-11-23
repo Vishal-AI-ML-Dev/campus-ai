@@ -1,8 +1,11 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-20 (Phase 7.1 AI privacy and request tracing: implementation complete; Git history tracks
-commit status.
-Phase 7.0 done: decisions, roadmap re-numbering, worker baseline. Phase 6.6 automated
+_Last updated: 2026-11-23 (Phase 7 finalization: spec §15.10/§15.11 evidence and acceptance record written;
+`next build` passes; token-budget audit in spec §15.12 — one cost correction made, its tests still to run; budget
+policy decision open. Phase 7 NOT fully accepted: live drills are Phase 10.
+2026-11-21: Phase 7.2–7.10 production operations: implementation complete and tested; numeric
+cost estimates wait for an approved price table. Phase 7.1 (`863a8aa`) and 7.0 (`ee48610`) done; Git history tracks
+commit status. Phase 6.6 automated
 hardening done; Phase 6 NOT complete: real-device checklist pending, now part of the Phase 10 final acceptance)._
 
 **This file is the single source of truth for status.** The "Status at a glance" block below is current. Everything
@@ -20,7 +23,7 @@ block wins.
 | 4 | Evaluation report + history | Implemented, committed; live LLM not run | `18d8db0` |
 | **5** | **Voice interview (browser speech)** | **Implemented, committed; automated/simulated tests pass; real-device tests pending** | `34fd3a9` |
 | **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented. 6.3 video lobby, room and lifecycle implemented, `VIDEO_UI_READY = true`. 6.4 wiring (done in 6.3) audited, one fix, automated gaps closed, real-device matrix written. 6.5 done in 6.3, audited in 6.5 (report parity proven by tests). 6.6 automated hardening done (accessibility, responsive, privacy guards, full regression). **Phase 6 NOT complete: real-device checklist (24 rows) pending** | 6.1 `1ad5628`, 6.2 `17247e2`, 6.3 `aef2999`, 6.4 `0262f97` |
-| **7** | **Production operations and monitoring** (`specs/phase-7-production-operations.md`) | **Design approved (P7-D1–D9, R1–R8). 7.0 done (decisions, roadmap, isolated worker venv, worker baseline, Sentry defaults verified). 7.1 AI privacy and request tracing: implementation complete and tested. 7.2–7.10 not started** | 7.0 `ee48610` (docs); 7.1: see Git history |
+| **7** | **Production operations and monitoring** (`specs/phase-7-production-operations.md`, runbooks in `runbooks/`) | **7.0–7.10 implementation complete.** 7.2 worker usage/latency, 7.3 usage ledger + metrics, 7.4 cost framework (**numeric pricing pending: no approved price table**), 7.5 circuit breaker + alerts, 7.6 institute controls + quotas, 7.7 admin API, 7.8 admin UI, 7.9 protected `/metrics`, 7.10 runbooks + retention script. Live drills and real-device tests are Phase 10 | 7.0 `ee48610`; 7.1 `863a8aa`; 7.2–7.10: see Git history |
 | 8 | Advanced AI interview intelligence, incl. coding round (old 7) and company/full simulation (old 8) | Not started | — |
 | 9 | Institute and placement management, incl. faculty campaigns (old 9) | Not started | — |
 | 10 | Enterprise integrations, platform-level security, final acceptance (full regression + all real-device tests) | Not started | — |
@@ -33,8 +36,9 @@ Roadmap re-numbered 2026-11-20 (P7-D1); old-to-new mapping: `IMPLEMENTATION_PLAN
   `AI_MOCK_INTERVIEW_VOICE_ENABLED` (Phase 5), `AI_MOCK_INTERVIEW_VIDEO_ENABLED` + `AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS`
   (Phase 6; empty list = no institute), the worker's `MOCK_INTERVIEW_ENABLED`, and the frontend build flags
   `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED` and `NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED` (Phase 6).
-- **Production readiness: NOT established.** The live LLM, real-device speech, `next build` and multi-worker load
-  testing have not been verified, and no production rollout has been done.
+- **Production readiness: NOT established.** The live LLM, real-device speech and multi-worker load
+  testing have not been verified, and no production rollout has been done. (`next build` passed locally on
+  2026-11-23, Phase 7 spec §15.10 B; a Docker image build with the ops flag has not been done.)
 
 ### Phase 5 — current status
 
@@ -351,7 +355,7 @@ Details: `specs/phase-6-video-interview.md` §12.
   - backend: 2 tests; every mock-interview request body is JSON with no media-like field.
 - **Dependency review (no change):** `next` 16.4.4 has 7 moderate advisories, fixed in 16.4.6. Most need features
   this app does not use; GHSA-pc58-hwjq-p385 is possibly relevant to the staging proxy. The upgrade needs your
-  approval.
+  approval. *(Resolved 2026-11-23: upgraded to 16.4.6, spec Phase 7 §15.10 C.)*
 - **Files:**
   - new: `frontend/src/components/mock-interview/EndInterviewControl.tsx`,
     `frontend/tests/unit/{videoPrivacyGuards,mockInterviewA11y}.test.mjs`,
@@ -423,6 +427,44 @@ Full record: `specs/phase-7-production-operations.md` §14.
   copies in sync. Not run: full backend suite (scheduled for 7.3), Postgres suites, frontend (unchanged).
 - **No** migration, dependency, lock-file, frontend or flag change.
 
+### Phase 7.2–7.10 — production operations foundation (2026-11-21; implementation complete)
+
+Phase 7.2–7.10 implementation is complete. This document records implementation status and evidence; Git history
+tracks commit status. Full record, deviations and test evidence: `specs/phase-7-production-operations.md` §15.
+
+- **7.2** worker per-request LLM usage (`usage` block: calls, provider tokens or null, latency, fallback) + worker
+  metrics. **7.3** `ai_usage_events` ledger (migration `c5e9a3b7d2f4`, unique invocation id, RLS), one content-free
+  row per AI call for every outcome, idempotent, RQ retry, never blocks a student; backend AI metrics.
+  **7.4** cost framework from an approved table only — **no table exists, so cost = "pricing not configured"**.
+  **7.5** per-step circuit breaker (on by default, P7-D4) + throttled background alerts. **7.6** institute controls
+  and quotas (migration `d6f0b4c8e3a5`), env ceiling ∩ institute, only at create (R8), `/usage/me`.
+  **7.7** admin/TPO operations API (own institute only, TPO read-only) + audit filters. **7.8** Interview Ops page,
+  nav, remaining-quota line (build flag off). **7.9** token-protected production `/metrics` (backend + worker).
+  **7.10** runbooks, audited 400-day purge script, Phase 10 checklist skeleton.
+- **New settings:** `AI_MOCK_INTERVIEW_OPS_ENABLED` (off), `AI_MOCK_INTERVIEW_TENANT_MONTHLY_SESSION_MAX` /
+  `…_TOKEN_MAX`, `AI_PRICE_TABLE`, `AI_CIRCUIT_*` (on), `AI_ALERT_THROTTLE_SECONDS`, `METRICS_TOKEN` (backend +
+  worker), `NEXT_PUBLIC_MOCK_INTERVIEW_OPS_ENABLED` (off).
+- **Not changed:** existing API responses and schemas (OpenAPI compared with HEAD), scoring, prompts, retries,
+  timeouts, provider selection, dependencies, lock files, `frontend/Dockerfile`, `frontend/next.config.ts`.
+- **Open:** approved price table (numeric cost estimation pending); Phase 10 drills. (Docker ARG and Next.js
+  security upgrade done 2026-11-23, see below.)
+- **Finalization 2026-11-23:** `npm run build` exit 0 (first run stopped on a Next.js security-advisory gate, see
+  spec §15.10 B; ties to the open Next.js patch-upgrade decision); spec §15.10–§15.12 written; `ai_usage.build_event`
+  no longer prices partially reported requests (focused budget/pricing tests 66 passed, Ruff clean, spec §15.10 B);
+  unknown-token budget behaviour verified (only provider-reported tokens count); token-budget policy **decided:
+  option (a)** — budgets unchanged, plus `calls_with_partial_tokens` in the admin summary/ops page and the
+  `mock_interview_token_usage_unreported` warning (defaults 10 % / 20 calls, approved; spec §15.12); verified:
+  backend focused 106 passed, Postgres (throwaway, as `app_user`) 12 passed, frontend unit 150/150, tsc, lint,
+  `npm run build` exit 0 on retry after the Next.js advisory gate (spec §15.10 B). The earlier throwaway Postgres
+  container was already removed by its `--rm`; the new one was removed the same way.
+- **Security and Docker changes 2026-11-23 (user-authorized, spec §15.10 C):** `next` and `eslint-config-next`
+  16.4.4 → **16.4.6** (exact pins; `package.json` + lockfile only; React 19.2.4 unchanged; `next upgrade --agent` not
+  used). `frontend/Dockerfile` builder stage gained `ARG NEXT_PUBLIC_MOCK_INTERVIEW_OPS_ENABLED=false` (Phase 5 lines
+  untouched). Verified: unit 150/150, tsc, lint (0 errors), `npm run build` exit 0 on the **first** run with no
+  advisory gate; `npm audit --omit=dev` 0 vulnerabilities (7 dev-only moderate lint-tooling findings remain:
+  `typescript-eslint`, `minimatch`); Docker image builds with the flag on/off prove the build-time inlining (images
+  removed, containers/volumes unchanged).
+
 ### Next recommended action (approved sequence)
 1. Phases 6.1 (`1ad5628`), 6.2 (`17247e2`), 6.3 (`aef2999`), 6.4 (`0262f97`) and 6.5 (`75ed83c`) are committed. Phase
    6.6's automated hardening is complete.
@@ -434,8 +476,9 @@ Phase 5's real-device checks (`specs/phase-5-voice-interview.md` §8) remain ope
 
 **Update 2026-11-20 (Phase 7.0):** the sequence above is superseded. Item 2 (and Phase 5 §8) moved to the **Phase 10
 final acceptance milestone**; Phases 5 and 6 stay marked "not complete" until then. Item 3 is still open.
-**Next action (updated after 7.1):** after Phase 7.1 is in Git history, start **Phase 7.2** — worker LLM
-telemetry (on approval).
+**Next action (updated after 7.2–7.10):** review the Phase 7.2–7.10 change set (spec §15); supply an approved
+model price table when available (`runbooks/pricing.md`); plan Phase 8 on approval. Phase 7 live drills are on the
+Phase 10 checklist (`specs/phase-10-final-acceptance-checklist.md`).
 Also open: decide whether to delete the untracked `ai-worker/qdrant_data/` test artefact and whether to add a pytest
 skip marker to `ai-worker/tests/test_face_qdrant_server.py`.
 
@@ -753,7 +796,8 @@ No High findings. No IDOR or tenant leak: every query is filtered by tenant and 
 **Dependency-security note (for a separate review; no change made):**
 - The installed Next.js is **16.4.4**, pinned exactly in `frontend/package.json`.
 - While `next dev` was running, it printed "Your version of Next.js is affected by a known security vulnerability", pointing at the npm advisories bulk endpoint. It also told AI agents to run `next upgrade --agent=security`.
-- Not acted on: dependencies are unchanged, pending your authorization.
+- Not acted on: dependencies are unchanged, pending your authorization. *(Resolved 2026-11-23: `next` 16.4.6 with
+  authorization, without `next upgrade --agent`; Phase 7 spec §15.10 C.)*
 
 **Phase 4 is complete as far as automated verification goes**, and it is committed locally as `18d8db0`.
 
@@ -1103,4 +1147,4 @@ See "Status at a glance" for the full list. In short:
 
 ## Next exact action
 **Phase 5 final manual verification** (spec §8). Nothing else is in progress. Phase 6 has **not** started.
-- Separately and optionally: a dependency-security review of Next.js 16.4.4.
+- Separately and optionally: a dependency-security review of Next.js 16.4.4. *(Done 2026-11-23: upgraded to 16.4.6.)*

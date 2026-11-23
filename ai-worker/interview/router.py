@@ -8,6 +8,10 @@ Stateless: the backend sends the config, plan and transcript on every call.
   POST /interview/turn  -> opening question, or evaluation of the last answer
                            plus the next question / closing message
   POST /interview/report -> final evidence-backed report (Phase 4)
+
+Phase 7.2: every successful response carries an additive ``usage`` block
+(provider, model, LLM calls, provider-reported tokens or null, LLM latency,
+fallback flag) - numbers and ids only, never text.
 """
 
 from fastapi import APIRouter, HTTPException, status
@@ -15,6 +19,7 @@ from fastapi import APIRouter, HTTPException, status
 from config import settings
 from interview.graph import QuestionGenerationFailed, plan_graph, turn_graph
 from interview.no_tracing import tracing_disabled, untraced_config
+from interview.usage import usage_scope
 from interview.report import ReportGenerationFailed, ReportNotAssessable, report_graph
 from interview.schemas import (
     PlanRequest,
@@ -38,7 +43,7 @@ def interview_ping() -> dict:
 def interview_plan(payload: PlanRequest) -> PlanResponse:
     """Plan topics for a new interview. Never fails on LLM errors: the planner
     falls back to the deterministic topic library."""
-    with tracing_disabled():  # R1: graph inputs hold resume/JD text
+    with tracing_disabled(), usage_scope() as usage:  # R1: graph inputs hold resume/JD text
         final = plan_graph().invoke(
             {
                 "config": payload.config,
@@ -48,7 +53,9 @@ def interview_plan(payload: PlanRequest) -> PlanResponse:
             },
             config=untraced_config(),
         )
-    return PlanResponse(plan=final["plan"], provider=settings.LLM_PROVIDER)
+    return PlanResponse(
+        plan=final["plan"], provider=settings.LLM_PROVIDER, usage=usage.summary()
+    )
 
 
 def _check_transcript(payload: TurnRequest) -> None:
@@ -70,7 +77,7 @@ def interview_turn(payload: TurnRequest) -> TurnResponse:
     """Process one interview step (see module docstring)."""
     _check_transcript(payload)
     try:
-        with tracing_disabled():  # R1: graph inputs hold resume/JD/answers
+        with tracing_disabled(), usage_scope() as usage:  # R1: inputs hold resume/JD/answers
             final = turn_graph().invoke(
                 {
                     "config": payload.config,
@@ -97,6 +104,7 @@ def interview_turn(payload: TurnRequest) -> TurnResponse:
         end_reason=final.get("end_reason"),
         level=final["level"],
         provider=settings.LLM_PROVIDER,
+        usage=usage.summary(),
     )
 
 
@@ -114,7 +122,7 @@ def interview_report(payload: ReportRequest) -> ReportResponse:
                 detail="Transcript sequence numbers must be 1..n in order",
             )
     try:
-        with tracing_disabled():  # R1: graph inputs hold the transcript
+        with tracing_disabled(), usage_scope() as usage:  # R1: inputs hold the transcript
             final = report_graph().invoke(
                 {"config": payload.config, "plan": payload.plan, "transcript": payload.transcript},
                 config=untraced_config(),
@@ -138,4 +146,5 @@ def interview_report(payload: ReportRequest) -> ReportResponse:
         weaknesses=final["weaknesses"],
         recommendations=final["recommendations"],
         provider=settings.LLM_PROVIDER,
+        usage=usage.summary(),
     )

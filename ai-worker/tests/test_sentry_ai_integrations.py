@@ -249,7 +249,9 @@ def test_langchain_is_not_wrapped_and_no_sentry_handler_on_interview_calls():
     out = _probe()
     assert "sentry_sdk" not in out["configure_code_file"], out["configure_code_file"]
     assert out["handlers_seen"], "the interview never reached the LLM"
-    assert all(h == [] for h in out["handlers_seen"]), out["handlers_seen"]
+    # Phase 7.2: only the in-process token counter may be attached.
+    allowed = {"interview.usage.TokenCounter"}
+    assert all(set(h) <= allowed for h in out["handlers_seen"]), out["handlers_seen"]
 
 
 def test_interview_routes_ran_the_real_engine():

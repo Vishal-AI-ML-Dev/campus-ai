@@ -161,10 +161,17 @@ def _client() -> TestClient:
     return TestClient(app)
 
 
+# Phase 7.2: the only handler an interview LLM call may carry is the in-process
+# token counter (reads provider usage numbers, keeps no text, sends nothing).
+ALLOWED_HANDLERS = {"TokenCounter"}
+
+
 def _assert_untraced(recorder: Recorder, model: SpyChatModel, *, min_llm_calls: int) -> None:
     assert recorder.events == [], f"tracer received {len(recorder.events)} events"
     assert len(model.seen) >= min_llm_calls, "the scenario did not reach the LLM"
-    assert all(h == [] for h in model.seen), f"handlers attached to LLM calls: {model.seen}"
+    assert all(set(h) <= ALLOWED_HANDLERS for h in model.seen), (
+        f"handlers attached to LLM calls: {model.seen}"
+    )
 
 
 def _plan() -> dict:
@@ -252,7 +259,7 @@ def test_parent_callbacks_are_not_inherited_by_interview_steps():
     children = [e for e in rec.events if e[2] is not None]
     assert children == [], f"interview runs reported to a parent tracer: {children}"
     assert {e[0] for e in rec.events} <= {"chain_start", "chain_end"}  # the parent itself
-    assert model.seen and all(h == [] for h in model.seen)
+    assert model.seen and all(set(h) <= ALLOWED_HANDLERS for h in model.seen)
 
 
 # --- Guards ---------------------------------------------------------------------

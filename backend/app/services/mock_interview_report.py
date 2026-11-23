@@ -247,6 +247,7 @@ def generate_report(db: Session, s: MockInterviewSession) -> MockInterviewReport
 
     # Capture plain values now: the lease commit below expires ORM objects.
     s_id, tenant_id, interview_type = s.id, s.tenant_id, s.interview_type
+    student_id = s.student_id
     answers = {t.seq: t.answer_text for t in turns}
     payload = {
         "config": svc._config(s),
@@ -264,7 +265,9 @@ def generate_report(db: Session, s: MockInterviewSession) -> MockInterviewReport
     }
     token, meta = svc._claim(db, s, seconds=REPORT_LEASE_SECONDS, busy=_REPORT_BUSY)
     try:
-        report = _validated(engine.generate_report(payload), interview_type, answers)
+        with svc._ai_scope(tenant_id, student_id, s_id):  # usage ledger (Phase 7.3)
+            raw_report = engine.generate_report(payload)
+        report = _validated(raw_report, interview_type, answers)
     except (engine.InterviewEngineUnavailable, ValidationError, ValueError) as exc:
         timed_out = getattr(exc, "timed_out", False)
         unassessable = getattr(exc, "status_code", None) == 422

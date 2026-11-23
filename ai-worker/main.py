@@ -20,11 +20,12 @@ Run (from the ai-worker folder):
 """
 
 import hmac
+import logging
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
-from config import insecure_worker_issues, settings
+from config import insecure_worker_issues, metrics_token_issue, settings
 from errors import register_exception_handlers
 from metrics import metrics_middleware, render_latest
 from observability import (
@@ -69,6 +70,12 @@ if settings.is_production:
 # (off in production until an access-controlled scrape path is decided).
 _DOCS_ON = not settings.is_production
 _METRICS_ON = not settings.is_production
+# Phase 7.9: in production /metrics exists only with a valid dedicated
+# METRICS_TOKEN; it is then exempt from the worker token and checks its own.
+_METRICS_TOKEN_ISSUE = metrics_token_issue(settings)
+_METRICS_PROTECTED = settings.is_production and _METRICS_TOKEN_ISSUE is None
+if settings.is_production and settings.METRICS_TOKEN and _METRICS_TOKEN_ISSUE:
+    logging.getLogger("campus_ai_worker").warning("/metrics stays disabled: %s", _METRICS_TOKEN_ISSUE)
 
 app = FastAPI(
     title="Campus AI - AI Worker",
@@ -87,7 +94,7 @@ app.middleware("http")(invocation_id_middleware)
 # Aggregate Prometheus metrics at GET /metrics (no-op if prometheus_client
 # isn't installed). /metrics is an open path (see _OPEN_PATHS) so a scraper
 # doesn't need the worker token.
-if _METRICS_ON:
+if _METRICS_ON or _METRICS_PROTECTED:
     app.middleware("http")(metrics_middleware)
 
 # Uniform JSON error envelope (+ request id) for every failure kind.
@@ -101,7 +108,7 @@ register_exception_handlers(app)
 _OPEN_PATHS = frozenset(
     {"/", "/health"}
     | ({"/docs", "/openapi.json", "/redoc", "/docs/oauth2-redirect"} if _DOCS_ON else set())
-    | ({"/metrics"} if _METRICS_ON else set())
+    | ({"/metrics"} if (_METRICS_ON or _METRICS_PROTECTED) else set())
 )
 
 
@@ -160,3 +167,18 @@ if _METRICS_ON:
         """Prometheus scrape endpoint (not registered in production, Phase 7)."""
         body, content_type = render_latest()
         return Response(content=body, media_type=content_type)
+
+elif _METRICS_PROTECTED:
+
+    @app.get("/metrics", include_in_schema=False)
+    def metrics_protected(request: Request) -> Response:
+        """Production scrape endpoint (Phase 7.9): Bearer METRICS_TOKEN,
+        constant-time compare; 401 without detail otherwise."""
+        auth = request.headers.get("authorization") or ""
+        scheme, _, provided = auth.partition(" ")
+        if scheme.lower() != "bearer" or not hmac.compare_digest(
+            provided.strip().encode("utf-8"), settings.METRICS_TOKEN.encode("utf-8")
+        ):
+            return Response(status_code=401, headers={"WWW-Authenticate": "Bearer"})
+        body, content_type = render_latest()
+        return Response(content=body, media_type=content_type, headers={"Cache-Control": "no-store"})
