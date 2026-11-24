@@ -42,7 +42,7 @@ from app.models.mock_interview import _in_list
 
 PROFILE_PLACEMENT_STATUS_VALUES = ("active", "opted_out", "debarred")
 DRIVE_LIFECYCLE_VALUES = ("draft", "published", "closed", "completed", "cancelled")
-APPLICATION_STATUS_VALUES = ("applied", "shortlisted", "selected", "rejected")
+APPLICATION_STATUS_VALUES = ("applied", "shortlisted", "selected", "rejected", "withdrawn")
 
 
 class StudentPlacementProfile(Base):

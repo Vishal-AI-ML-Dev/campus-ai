@@ -7,6 +7,7 @@
  */
 
 import { useState } from "react"
+import { parsePracticePrefill } from "@/components/placement-hub/placementLogic"
 import { useApiResource } from "@/lib/useApiResource"
 import { ErrorState, LoadingState, Spinner } from "@/components/ui/states"
 import {
@@ -75,6 +76,18 @@ function ChoiceGroup({
 	)
 }
 
+/**
+ * Phase 9.4: a placement drive's "Practise now" link pre-fills the role, the
+ * company name and (when enabled and published) the company profile. Only in
+ * builds with the Placement Hub flag; the student still reviews and submits,
+ * and the server validates every value as usual.
+ */
+function readPracticePrefill(): { role: string; company: string; profileId: number | null } {
+	const none = { role: "", company: "", profileId: null }
+	if (process.env.NEXT_PUBLIC_PLACEMENT_MANAGEMENT_ENABLED !== "true" || typeof window === "undefined") return none
+	return parsePracticePrefill(window.location.search)
+}
+
 export default function InterviewSetupForm({
 	onCreated,
 	onConflict,
@@ -91,8 +104,9 @@ export default function InterviewSetupForm({
 	const [duration, setDuration] = useState("30")
 	const [language, setLanguage] = useState("en")
 	const [mode, setMode] = useState("text")
-	const [role, setRole] = useState("")
-	const [company, setCompany] = useState("")
+	const [prefill] = useState(readPracticePrefill)
+	const [role, setRole] = useState(prefill.role)
+	const [company, setCompany] = useState(prefill.company)
 	const [resumeId, setResumeId] = useState("")
 	const [jd, setJd] = useState("")
 	// Phase 8.2: coding-round choices (only used when the type is "coding").
@@ -103,7 +117,9 @@ export default function InterviewSetupForm({
 		duration: "45",
 	})
 	// Phase 8.4: optional company profile / role template (hidden while the server says 404).
-	const [companyChoice, setCompanyChoice] = useState<CompanyChoice>(NO_COMPANY)
+	const [companyChoice, setCompanyChoice] = useState<CompanyChoice>(
+		prefill.profileId !== null ? { profileId: prefill.profileId, templateKey: null, focusSkills: [] } : NO_COMPANY,
+	)
 	const [submitting, setSubmitting] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 

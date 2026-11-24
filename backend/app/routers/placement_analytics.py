@@ -56,8 +56,18 @@ def placement_overview(
     # Phase 9.1 hardening: filter by institute in the app as well, so the
     # result never depends on RLS alone (identical on production Postgres).
     drives = list(db.scalars(select(Drive).where(Drive.tenant_id == _staff.tenant_id)))
+    # Phase 9 (review M1): a `withdrawn` application (student withdrew,
+    # placement management only) is not part of the funnel, so it must not
+    # count toward totals, applicants or selection-rate denominators either.
+    # Institutes without placement management never have withdrawn rows, so
+    # their numbers are unchanged.
     apps = list(
-        db.scalars(select(Application).where(Application.tenant_id == _staff.tenant_id))
+        db.scalars(
+            select(Application).where(
+                Application.tenant_id == _staff.tenant_id,
+                Application.status != ApplicationStatus.withdrawn,
+            )
+        )
     )
 
     # Phase 5Q: `users` has no row-level security, so scope to the caller's

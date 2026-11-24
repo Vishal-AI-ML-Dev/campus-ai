@@ -568,12 +568,14 @@ def drive_applications(
     db: Session = Depends(get_db),
     tenant_id: int = Depends(get_current_tenant_id),
     page: Pagination = Depends(pagination_params),
+    current_user: User = Depends(get_current_user),
 ) -> list[ApplicantOut]:
     """List applicants on a drive (TPO), each with a verified-data snapshot.
 
     Selected/shortlisted candidates are surfaced first, then by CGPA.
     """
     drive = _require_drive(db, drive_id, tenant_id)
+    pm = _v2(current_user)
     stmt = select(Application).where(
         Application.tenant_id == tenant_id,
         Application.drive_id == drive_id,
@@ -588,14 +590,21 @@ def drive_applications(
         ApplicationStatus.shortlisted: 1,
         ApplicationStatus.applied: 2,
         ApplicationStatus.rejected: 3,
+        ApplicationStatus.withdrawn: 4,
     }
+    # Phase 9.2: flagged institutes see the CURRENT eligibility v2 verdict
+    # (same engine as apply); the response shape is unchanged.
+    v2 = _V2Eligibility(pm, db, drive, [a.student_id for a in applications]) if pm else None
     out: list[ApplicantOut] = []
     for application in applications:
         student = get_scoped_user(db, application.student_id, drive.tenant_id)
         if student is None:
             continue
-        profile = _student_profile(db, student.id)
-        eligible, _reasons = _evaluate(profile, drive)
+        if v2 is not None:
+            profile, eligible = v2.verdict(student)
+        else:
+            profile = _student_profile(db, student.id)
+            eligible, _reasons = _evaluate(profile, drive)
         out.append(
             ApplicantOut(
                 application_id=application.id,
@@ -613,6 +622,27 @@ def drive_applications(
         )
     out.sort(key=lambda a: (rank.get(a.status, 9), -a.cgpa))
     return paginate_list(response, out, page)
+
+
+class _V2Eligibility:
+    """Batched eligibility v2 for a set of applicants (Phase 9.2)."""
+
+    def __init__(self, pm, db: Session, drive: Drive, student_ids: list[int]) -> None:
+        tenant_id = drive.tenant_id
+        self.pm = pm
+        self.ctx = pm.drive_context(db, drive)
+        self.metrics = pm.bulk_metrics(db, tenant_id, student_ids)
+        self.profiles = pm.profiles_for(db, tenant_id, student_ids)
+        self.placed = pm.placed_student_ids(db, tenant_id, student_ids)
+        self.db, self.tenant_id = db, tenant_id
+
+    def verdict(self, student: User) -> tuple[dict, bool]:
+        m = self.metrics.get(student.id) or self.pm.empty_metrics()
+        dept = self.pm.departments_for(self.db, self.tenant_id, [student])[student.id]
+        ok, _r = self.pm.evaluate(
+            self.ctx, m, self.profiles.get(student.id), dept, student.id in self.placed
+        )
+        return m, ok
 
 
 @router.patch(
@@ -642,6 +672,10 @@ def set_application_status(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Application not found"
         )
+    # Phase 9.2 (P9-D8): `withdrawn` is student-only and final on every path.
+    from app.services.placement_management import guard_staff_status_change
+
+    guard_staff_status_change(application.status, payload.status)
     if payload.status == ApplicationStatus.applied:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

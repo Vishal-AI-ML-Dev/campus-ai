@@ -522,6 +522,15 @@ def change_application_status(
 ) -> Application:
     note = (note or "").strip() or None  # legacy bodies are not stripped
     application = require_application(db, application_id, actor.tenant_id)
+    seen = application.status
+    # L1: a selection places the student, so it shares the per-student lock
+    # with withdrawals (taken before any application row is written). If the
+    # application changed while we waited, refuse rather than reinterpret the
+    # request against someone else's decision.
+    lock_student_for_placement(db, actor.tenant_id, application.student_id)
+    db.refresh(application)
+    if application.status != seen:
+        raise _http(status.HTTP_409_CONFLICT, "This application was changed by someone else. Reload and try again.")
     drive = db.get(Drive, application.drive_id)
     cfg = get_settings(db, drive)
     if cfg is not None and cfg.lifecycle == "cancelled":
@@ -530,6 +539,7 @@ def change_application_status(
     current = application.status
     if expected_status is not None and expected_status != current:
         raise _http(status.HTTP_409_CONFLICT, "This application was changed by someone else. Reload and try again.")
+    guard_staff_status_change(current, to_status)
     if to_status == ApplicationStatus.applied:
         raise _http(status.HTTP_400_BAD_REQUEST, "Cannot move an application back to 'applied'.")
     if to_status == current:
@@ -742,11 +752,15 @@ def transition_drive(db: Session, actor: User, drive: Drive, to: str) -> Placeme
             db.rollback()
             raise _http(status.HTTP_409_CONFLICT, "The drive was changed by someone else. Reload and try again.")
     drive.is_open = to == "published"
+    if current == "draft" and to == "published":
+        notified = notify_drive_published(db, actor, drive)
+    else:
+        notified = 0
     record_audit(
         db,
         actor,
         "placement.drive_lifecycle",
-        f"Drive {drive.id}: {current} -> {to}",
+        f"Drive {drive.id}: {current} -> {to}" + (f"; {notified} eligible students notified" if notified else ""),
         "drive",
         drive.id,
     )
@@ -818,3 +832,322 @@ def upsert_profile(db: Session, actor: User, student: User, data) -> StudentPlac
 
 def escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+# =============================================================================
+# Phase 9.2 - batched drive contexts, withdrawal, bulk status, notifications
+# =============================================================================
+WITHDRAWABLE = frozenset({ApplicationStatus.applied, ApplicationStatus.shortlisted})
+MAX_PUBLISH_NOTIFICATIONS = 2000
+MSG_CHANGED = "This application was changed by someone else. Reload and try again."
+
+
+def guard_staff_status_change(current: ApplicationStatus, to_status: ApplicationStatus) -> None:
+    """Staff can never set or leave `withdrawn` (P9-D8: student-only, final).
+
+    Used by the v2 status route AND the legacy route (flag on or off), so the
+    new enum value can never be written by a TPO through any path."""
+    if to_status == ApplicationStatus.withdrawn:
+        raise _http(status.HTTP_400_BAD_REQUEST, "Only the student can withdraw an application.")
+    if current == ApplicationStatus.withdrawn:
+        raise _http(status.HTTP_409_CONFLICT, "The student withdrew this application; it cannot be changed.")
+
+
+def drive_contexts(db: Session, drives: list[Drive]) -> dict[int, DriveContext]:
+    """DriveContext for many drives of ONE institute in three queries."""
+    if not drives:
+        return {}
+    tenant_id = drives[0].tenant_id
+    ids = [d.id for d in drives]
+    cfgs = {
+        c.drive_id: c
+        for c in db.scalars(
+            select(PlacementDriveSettings).where(
+                PlacementDriveSettings.tenant_id == tenant_id, PlacementDriveSettings.drive_id.in_(ids)
+            )
+        )
+    }
+    dept_rows = db.execute(
+        select(PlacementDriveDepartment.drive_id, PlacementDriveDepartment.department_id).where(
+            PlacementDriveDepartment.tenant_id == tenant_id, PlacementDriveDepartment.drive_id.in_(ids)
+        )
+    ).all()
+    by_drive: dict[int, list[int]] = defaultdict(list)
+    for drive_id, dept_id in dept_rows:
+        by_drive[drive_id].append(dept_id)
+    all_dept_ids = {d for _x, d in dept_rows}
+    names: dict[int, str] = {}
+    if all_dept_ids:
+        names = dict(
+            db.execute(
+                select(Department.id, Department.name).where(
+                    Department.id.in_(all_dept_ids), Department.tenant_id == tenant_id
+                )
+            ).all()
+        )
+    out: dict[int, DriveContext] = {}
+    for d in drives:
+        cfg = cfgs.get(d.id)
+        dept_ids = tuple(sorted(by_drive.get(d.id, []))) if cfg is not None else ()
+        out[d.id] = DriveContext(
+            drive=d, cfg=cfg, department_ids=dept_ids, department_names={i: names[i] for i in dept_ids if i in names}
+        )
+    return out
+
+
+def failed_criteria(reasons: list[dict]) -> list[str]:
+    return [r["criterion"] for r in reasons if not r["passed"]]
+
+
+def offer_statuses(db: Session, tenant_id: int, application_ids: list[int]) -> dict[int, str]:
+    if not application_ids:
+        return {}
+    return {
+        app_id: st.value
+        for app_id, st in db.execute(
+            select(Offer.application_id, Offer.status).where(
+                Offer.tenant_id == tenant_id, Offer.application_id.in_(application_ids)
+            )
+        ).all()
+    }
+
+
+def withdraw_blocker(
+    application: Application, offer_status: str | None, placed: bool, lifecycle: str
+) -> str | None:
+    """Why the student cannot withdraw this application now (None = allowed)."""
+    if application.status == ApplicationStatus.withdrawn:
+        return "You already withdrew this application."
+    if application.status not in WITHDRAWABLE:
+        return f"An application that is '{application.status.value}' can no longer be withdrawn."
+    if lifecycle == "cancelled":
+        return "This drive was cancelled; its applications are frozen."
+    if offer_status == OfferStatus.accepted.value:
+        return "You accepted an offer for this application."
+    if offer_status == OfferStatus.extended.value:
+        return "You have an open offer for this application. Accept or decline it first."
+    if placed:
+        return "You are already placed; contact your placement office."
+    return None
+
+
+def lock_student_for_placement(db: Session, tenant_id: int, student_id: int) -> None:
+    """Shared per-student serialization point (Phase 9 review L1).
+
+    Every write that can give a student a live offer or a placement - a
+    recruiter extending/re-extending an offer, the student accepting an offer,
+    the TPO selecting an application - and the student's own withdrawal take
+    a row lock on the student's ``users`` row (``SELECT ... FOR UPDATE``, held
+    until the transaction ends) BEFORE reading the state they check, and
+    re-read that state after acquiring it. Whichever writer locks first
+    finishes; the other then sees the committed result and is refused.
+
+    Lock order is always: this student row first, then application/offer rows
+    (deadlock-free). Same pattern as ``mock_interview.create_session``. On
+    SQLite ``FOR UPDATE`` renders as nothing (single-writer database).
+    """
+    db.execute(
+        select(User.id)
+        .where(User.id == student_id, User.tenant_id == tenant_id)
+        .with_for_update()
+    )
+
+
+def withdraw_application(
+    db: Session, student: User, application_id: int, expected_status: ApplicationStatus | None
+) -> Application:
+    """P9-D8: the student withdraws their OWN application (final)."""
+    application = require_application(db, application_id, student.tenant_id)
+    if application.student_id != student.id:
+        raise _http(status.HTTP_404_NOT_FOUND, MSG_APPLICATION_NOT_FOUND)
+    # L1: serialize with offer extension/acceptance and selection, then re-read
+    # the application so every check below sees the latest committed state.
+    lock_student_for_placement(db, student.tenant_id, student.id)
+    db.refresh(application)
+    drive = db.get(Drive, application.drive_id)
+    lifecycle = effective_lifecycle(drive, get_settings(db, drive))
+    current = application.status
+    if expected_status is not None and expected_status != current:
+        raise _http(status.HTTP_409_CONFLICT, MSG_CHANGED)
+    offer = offer_statuses(db, student.tenant_id, [application.id]).get(application.id)
+    placed = student.id in placed_student_ids(db, student.tenant_id, [student.id])
+    blocker = withdraw_blocker(application, offer, placed, lifecycle)
+    if blocker is not None:
+        raise _http(status.HTTP_409_CONFLICT, blocker)
+
+    result = db.execute(
+        update(Application)
+        .where(
+            Application.id == application.id,
+            Application.tenant_id == student.tenant_id,
+            Application.student_id == student.id,
+            Application.status == current,
+        )
+        .values(status=ApplicationStatus.withdrawn, decided_at=_now())
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        raise _http(status.HTTP_409_CONFLICT, MSG_CHANGED)
+    _add_event(db, application, current, ApplicationStatus.withdrawn, student, None)
+    record_audit(
+        db,
+        student,
+        "placement.application_withdraw",
+        f"Application {application.id} (drive {drive.id}): {current.value} -> withdrawn",
+        target_type="application",
+        target_id=application.id,
+    )
+    db.commit()
+    db.refresh(application)
+    return application
+
+
+def bulk_change_status(
+    db: Session,
+    actor: User,
+    drive: Drive,
+    to_status: ApplicationStatus,
+    items: list[tuple[int, ApplicationStatus]],
+    note: str | None,
+    dry_run: bool,
+) -> list[dict]:
+    """Validate every item server-side; with dry_run=False apply each valid one
+    with its own compare-and-set (expected status = what the TPO saw), so a
+    row changed by someone else is reported, never overwritten. One commit;
+    one history event + audit row + notification per successful change."""
+    cfg = get_settings(db, drive)
+    if cfg is not None and cfg.lifecycle == "cancelled":
+        raise _http(status.HTTP_409_CONFLICT, "This drive was cancelled; its applications are frozen.")
+    ids = [i for i, _e in items]
+    apps = {
+        a.id: a
+        for a in db.scalars(
+            select(Application).where(
+                Application.tenant_id == actor.tenant_id,
+                Application.drive_id == drive.id,
+                Application.id.in_(ids),
+            )
+        )
+    }
+    results: list[dict] = []
+    for app_id, expected in items:
+        res = dict(application_id=app_id, ok=False, from_status=None, to_status=to_status, error_code=None, detail=None)
+        application = apps.get(app_id)
+        if application is None:
+            res.update(error_code="not_found", detail=MSG_APPLICATION_NOT_FOUND)
+            results.append(res)
+            continue
+        current = application.status
+        res["from_status"] = current
+        if current != expected:
+            res.update(error_code="changed", detail=f"Now '{current.value}' (you saw '{expected.value}').")
+        elif current == to_status:
+            res.update(error_code="same_status", detail=f"Already '{current.value}'.")
+        elif current == ApplicationStatus.withdrawn or to_status not in APPLICATION_TRANSITIONS.get(current, frozenset()):
+            res.update(
+                error_code="invalid_transition",
+                detail=f"Cannot change '{current.value}' to '{to_status.value}'.",
+            )
+        elif current in NOTE_REQUIRED_FROM and not note:
+            res.update(error_code="note_required", detail="A note is required to correct a final decision.")
+        else:
+            res["ok"] = True
+        results.append(res)
+
+    if dry_run:
+        return results
+
+    changed = 0
+    for res in results:
+        if not res["ok"]:
+            continue
+        application = apps[res["application_id"]]
+        current = res["from_status"]
+        outcome = db.execute(
+            update(Application)
+            .where(
+                Application.id == application.id,
+                Application.tenant_id == actor.tenant_id,
+                Application.status == current,
+            )
+            .values(status=to_status, note=note, decided_by_id=actor.id, decided_at=_now())
+            .execution_options(synchronize_session=False)
+        )
+        if outcome.rowcount != 1:
+            res.update(ok=False, error_code="changed", detail="Changed by someone else just now.")
+            continue
+        changed += 1
+        _add_event(db, application, current, to_status, actor, note)
+        record_audit(
+            db,
+            actor,
+            "placement.application_status",
+            f"Application {application.id} (drive {drive.id}): {current.value} -> {to_status.value} (bulk)",
+            target_type="application",
+            target_id=application.id,
+        )
+        notify(
+            db,
+            tenant_id=actor.tenant_id,
+            user_id=application.student_id,
+            type=NotificationType.application_status.value,
+            title=f"Application update: {to_status.value}",
+            body=note or None,
+            link="/placement/applications",
+            actor_id=actor.id,
+        )
+    record_audit(
+        db,
+        actor,
+        "placement.bulk_status",
+        f"Drive {drive.id}: bulk -> {to_status.value}; {changed} changed, {len(results) - changed} not changed",
+        target_type="drive",
+        target_id=drive.id,
+    )
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise _http(status.HTTP_409_CONFLICT, "The applications were changed at the same time. Reload and try again.")
+    return results
+
+
+def eligible_student_ids(db: Session, ctx: DriveContext) -> list[int]:
+    """Active students of the drive's institute who pass eligibility v2 now."""
+    tenant_id = ctx.drive.tenant_id
+    students = list(
+        db.scalars(
+            select(User)
+            .where(User.tenant_id == tenant_id, User.role == UserRole.student, User.is_active.is_(True))
+            .order_by(User.id)
+        )
+    )
+    metrics = bulk_metrics(db, tenant_id, None)
+    profiles = profiles_for(db, tenant_id, None)
+    depts = departments_for(db, tenant_id, students)
+    placed_ids = placed_student_ids(db, tenant_id)
+    out = []
+    for st in students:
+        ok, _r = evaluate(ctx, metrics.get(st.id) or empty_metrics(), profiles.get(st.id), depts[st.id], st.id in placed_ids)
+        if ok:
+            out.append(st.id)
+    return out
+
+
+def notify_drive_published(db: Session, actor: User, drive: Drive) -> int:
+    """First publish of a draft: one in-app notice per eligible student
+    (bounded; same transaction as the lifecycle change). Returns the count."""
+    ids = eligible_student_ids(db, drive_context(db, drive))[:MAX_PUBLISH_NOTIFICATIONS]
+    for sid in ids:
+        notify(
+            db,
+            tenant_id=drive.tenant_id,
+            user_id=sid,
+            type=NotificationType.drive_published.value,
+            title=f"New placement drive: {drive.company_name}",
+            body=f"{drive.role_title} - you are eligible to apply.",
+            link="/dashboard/placement-hub",
+            actor_id=actor.id,
+        )
+    return len(ids)

@@ -95,6 +95,7 @@ from app.models.placement_management import (
     PlacementDriveSettings,
     StudentPlacementProfile,
 )
+from app.models.placement_campaigns import PlacementCampaign, PlacementCampaignStudent
 
 __all__ = [
     "Base",
@@ -162,6 +163,8 @@ __all__ = [
     "AIUsageEvent",
     "AIFeatureControl",
     "StudentPlacementProfile",
+    "PlacementCampaign",
+    "PlacementCampaignStudent",
     "PlacementDriveSettings",
     "PlacementDriveDepartment",
     "PlacementApplicationEvent",

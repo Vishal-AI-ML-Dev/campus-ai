@@ -8,13 +8,17 @@ are 404. Spec: docs/mock-interview/specs/phase-9-placement-institute-management.
 Roles: TPO writes drives/settings/lifecycle/status; TPO and admin read and
 write student placement profiles; students read their own profile and
 eligibility, apply, and read their own application history. Teachers have no
-access in 9.1.
+access to anything here except the status probe (Phase 9.3 adds campaigns).
+
+Phase 9.2 adds: status probe, staff drive list, v2 applicant list, bulk status
+(dry-run preview + per-record compare-and-set), student withdrawal (P9-D8),
+student opportunities and applications, academic spreadsheet import.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import exists, or_, select
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -49,7 +53,19 @@ from app.schemas.placement_management import (
     StudentProfileIn,
     StudentProfileOut,
     VerifiedMetricsOut,
+    ApplicantV2Out,
+    BulkStatusIn,
+    BulkStatusOut,
+    ImportCommitOut,
+    ImportPreviewOut,
+    ImportRowOut,
+    MyApplicationV2Out,
+    PlacementStatusOut,
+    StaffDriveListItemOut,
+    StudentDriveOut,
+    WithdrawIn,
 )
+from app.services import placement_import as importer
 from app.services import placement_management as svc
 from pagination import Pagination, paginate_list, paginate_rows, pagination_params
 
@@ -505,3 +521,362 @@ def application_history(
         )
         for e in svc.application_history(db, application)
     ]
+
+
+# =============================================================================
+# Phase 9.2
+# =============================================================================
+@router.get("/status", response_model=PlacementStatusOut)
+def placement_status(user: User = Depends(get_current_user)) -> PlacementStatusOut:
+    """Frontend probe. Reaching it means the gate is open for this institute."""
+    return PlacementStatusOut(enabled=True, role=user.role.value)
+
+
+_STATUS_RANK = {
+    ApplicationStatus.selected: 0,
+    ApplicationStatus.shortlisted: 1,
+    ApplicationStatus.applied: 2,
+    ApplicationStatus.rejected: 3,
+    ApplicationStatus.withdrawn: 4,
+}
+
+
+@router.get("/drives", response_model=list[StaffDriveListItemOut])
+def list_drives_v2(
+    response: Response,
+    lifecycle: str | None = Query(default=None, pattern="^(draft|published|closed|completed|cancelled)$"),
+    academic_year: str | None = Query(default=None, max_length=9),
+    q: str | None = Query(default=None, max_length=100),
+    db: Session = Depends(get_db),
+    staff: User = Depends(staff_only),
+    page: Pagination = Depends(pagination_params),
+) -> list[StaffDriveListItemOut]:
+    """All drives of the institute with lifecycle and application counts."""
+    tenant_id = staff.tenant_id
+    stmt = select(Drive).where(Drive.tenant_id == tenant_id)
+    if q and q.strip():
+        pattern = f"%{svc.escape_like(q.strip().lower())}%"
+        stmt = stmt.where(
+            or_(Drive.company_name.ilike(pattern, escape="\\"), Drive.role_title.ilike(pattern, escape="\\"))
+        )
+    drives = list(db.scalars(stmt.order_by(Drive.created_at.desc(), Drive.id.desc())))
+    ctxs = svc.drive_contexts(db, drives)
+    if lifecycle is not None:
+        drives = [d for d in drives if svc.effective_lifecycle(d, ctxs[d.id].cfg) == lifecycle]
+    if academic_year:
+        drives = [d for d in drives if ctxs[d.id].cfg is not None and ctxs[d.id].cfg.academic_year == academic_year]
+    counts: dict[int, dict[str, int]] = {d.id: {} for d in drives}
+    if drives:
+        for drive_id, st, n in db.execute(
+            select(Application.drive_id, Application.status, func.count(Application.id))
+            .where(Application.tenant_id == tenant_id, Application.drive_id.in_([d.id for d in drives]))
+            .group_by(Application.drive_id, Application.status)
+        ).all():
+            counts[drive_id][st.value] = n
+    rows = []
+    for d in drives:
+        cfg = ctxs[d.id].cfg
+        rows.append(
+            StaffDriveListItemOut(
+                id=d.id,
+                company_name=d.company_name,
+                role_title=d.role_title,
+                location=d.location,
+                package_lpa=d.package_lpa,
+                is_open=d.is_open,
+                deadline=d.deadline,
+                created_at=d.created_at,
+                lifecycle=svc.effective_lifecycle(d, cfg),
+                configured=cfg is not None,
+                academic_year=cfg.academic_year if cfg else None,
+                applications_open_at=svc._aware(cfg.applications_open_at) if cfg else None,
+                applications_close_at=svc._aware(cfg.applications_close_at) if cfg else None,
+                window=svc.window_state(cfg),
+                applications_total=sum(counts[d.id].values()),
+                status_counts=counts[d.id],
+            )
+        )
+    return paginate_list(response, rows, page)
+
+
+@router.get("/drives/{drive_id}/applicants", response_model=list[ApplicantV2Out])
+def drive_applicants_v2(
+    drive_id: int,
+    response: Response,
+    status_filter: ApplicationStatus | None = Query(default=None, alias="status"),
+    eligible: bool | None = None,
+    q: str | None = Query(default=None, max_length=100),
+    db: Session = Depends(get_db),
+    staff: User = Depends(staff_only),
+    page: Pagination = Depends(pagination_params),
+) -> list[ApplicantV2Out]:
+    """Applicants with CURRENT eligibility v2 (batched; constant queries).
+
+    ``X-Status-Counts`` = JSON-free "status:n" pairs for the whole drive."""
+    tenant_id = staff.tenant_id
+    drive = svc.require_drive(db, drive_id, tenant_id)
+    ctx = svc.drive_context(db, drive)
+    rows = db.execute(
+        select(Application, User)
+        .join(User, Application.student_id == User.id)
+        .where(
+            Application.tenant_id == tenant_id,
+            Application.drive_id == drive.id,
+            User.tenant_id == tenant_id,
+        )
+    ).all()
+    all_counts: dict[str, int] = {}
+    for a, _u in rows:
+        all_counts[a.status.value] = all_counts.get(a.status.value, 0) + 1
+    ids = [u.id for _a, u in rows]
+    metrics = svc.bulk_metrics(db, tenant_id, ids)
+    profiles = svc.profiles_for(db, tenant_id, ids)
+    depts = svc.departments_for(db, tenant_id, [u for _a, u in rows])
+    placed_ids = svc.placed_student_ids(db, tenant_id, ids)
+    offers = svc.offer_statuses(db, tenant_id, [a.id for a, _u in rows])
+    needle = q.strip().lower() if q and q.strip() else None
+    out: list[ApplicantV2Out] = []
+    for a, u in rows:
+        if status_filter is not None and a.status != status_filter:
+            continue
+        profile = profiles.get(u.id)
+        if needle and not (
+            needle in u.full_name.lower()
+            or needle in u.email.lower()
+            or (profile is not None and profile.roll_number and needle in profile.roll_number.lower())
+        ):
+            continue
+        m = metrics.get(u.id) or svc.empty_metrics()
+        ok, reasons = svc.evaluate(ctx, m, profile, depts[u.id], u.id in placed_ids)
+        if eligible is not None and ok != eligible:
+            continue
+        out.append(
+            ApplicantV2Out(
+                application_id=a.id,
+                student_id=u.id,
+                full_name=u.full_name,
+                roll_number=profile.roll_number if profile else None,
+                department_name=depts[u.id][1],
+                graduation_year=profile.graduation_year if profile else None,
+                status=a.status,
+                eligible=ok,
+                failed_criteria=svc.failed_criteria(reasons),
+                cgpa=m["cgpa"],
+                attendance=m["attendance"],
+                verified_skills=len(m["verified_skills"]),
+                verified_projects=m["verified_projects"],
+                placed=u.id in placed_ids,
+                note=a.note,
+                offer_status=offers.get(a.id),
+                contact_revealed=a.contact_revealed,
+                applied_at=a.created_at,
+                decided_at=a.decided_at,
+            )
+        )
+    out.sort(key=lambda r: (_STATUS_RANK.get(r.status, 9), -r.cgpa, r.application_id))
+    response.headers["X-Status-Counts"] = ",".join(f"{k}:{v}" for k, v in sorted(all_counts.items()))
+    return paginate_list(response, out, page)
+
+
+@router.post("/drives/{drive_id}/applications/bulk-status", response_model=BulkStatusOut)
+def bulk_status(
+    drive_id: int,
+    payload: BulkStatusIn,
+    db: Session = Depends(get_db),
+    tpo: User = Depends(tpo_only),
+) -> BulkStatusOut:
+    """Bulk shortlist / reject (<= 200). ``dry_run`` (default true) previews."""
+    drive = svc.require_drive(db, drive_id, tpo.tenant_id)
+    to_status = ApplicationStatus(payload.to_status)
+    results = svc.bulk_change_status(
+        db,
+        tpo,
+        drive,
+        to_status,
+        [(i.application_id, i.expected_status) for i in payload.items],
+        payload.note,
+        payload.dry_run,
+    )
+    ok = sum(1 for r in results if r["ok"])
+    return BulkStatusOut(
+        dry_run=payload.dry_run, to_status=to_status, succeeded=ok, failed=len(results) - ok, results=results
+    )
+
+
+@router.post("/applications/{application_id}/withdraw", response_model=ApplicationOut)
+def withdraw(
+    application_id: int,
+    payload: WithdrawIn | None = None,
+    db: Session = Depends(get_db),
+    student: User = Depends(student_only),
+) -> Application:
+    """P9-D8: withdraw your own application (only applied/shortlisted; final)."""
+    return svc.withdraw_application(
+        db, student, application_id, payload.expected_status if payload is not None else None
+    )
+
+
+def _student_visible(drive: Drive, cfg) -> bool:
+    return svc.effective_lifecycle(drive, cfg) != "draft"
+
+
+@router.get("/me/drives", response_model=list[StudentDriveOut])
+def my_drives(
+    response: Response,
+    scope: str = Query(default="open", pattern="^(open|all)$"),
+    db: Session = Depends(get_db),
+    student: User = Depends(student_only),
+    page: Pagination = Depends(pagination_params),
+) -> list[StudentDriveOut]:
+    """Opportunities for the student with their own eligibility per drive.
+
+    ``open`` = published drives; ``all`` = every non-draft drive."""
+    tenant_id = student.tenant_id
+    drives = list(
+        db.scalars(select(Drive).where(Drive.tenant_id == tenant_id).order_by(Drive.created_at.desc(), Drive.id.desc()))
+    )
+    ctxs = svc.drive_contexts(db, drives)
+    visible = [
+        d
+        for d in drives
+        if _student_visible(d, ctxs[d.id].cfg)
+        and (scope == "all" or svc.effective_lifecycle(d, ctxs[d.id].cfg) == "published")
+    ]
+    metrics = svc.bulk_metrics(db, tenant_id, [student.id]).get(student.id, svc.empty_metrics())
+    profile = svc.get_profile(db, tenant_id, student.id)
+    dept = svc.departments_for(db, tenant_id, [student])[student.id]
+    placed = student.id in svc.placed_student_ids(db, tenant_id, [student.id])
+    mine = {
+        drive_id: st
+        for drive_id, st in db.execute(
+            select(Application.drive_id, Application.status).where(
+                Application.tenant_id == tenant_id, Application.student_id == student.id
+            )
+        ).all()
+    }
+    out: list[StudentDriveOut] = []
+    for d in visible:
+        ctx = ctxs[d.id]
+        ok, reasons = svc.evaluate(ctx, metrics, profile, dept, placed)
+        applied = d.id in mine
+        cfg = ctx.cfg
+        out.append(
+            StudentDriveOut(
+                id=d.id,
+                company_name=d.company_name,
+                role_title=d.role_title,
+                description=d.description,
+                location=d.location,
+                package_lpa=d.package_lpa,
+                required_skills=d.required_skills,
+                lifecycle=svc.effective_lifecycle(d, cfg),
+                window=svc.window_state(cfg),
+                applications_open_at=svc._aware(cfg.applications_open_at) if cfg else None,
+                applications_close_at=svc._aware(cfg.applications_close_at) if cfg else None,
+                eligible=ok,
+                failed_criteria=svc.failed_criteria(reasons),
+                already_applied=applied,
+                application_status=mine.get(d.id),
+                can_apply=ok and not applied and not svc.apply_blockers(ctx),
+            )
+        )
+    return paginate_list(response, out, page)
+
+
+@router.get("/me/applications", response_model=list[MyApplicationV2Out])
+def my_applications_v2(
+    response: Response,
+    db: Session = Depends(get_db),
+    student: User = Depends(student_only),
+    page: Pagination = Depends(pagination_params),
+) -> list[MyApplicationV2Out]:
+    """The student's own applications with withdraw eligibility."""
+    tenant_id = student.tenant_id
+    rows = db.execute(
+        select(Application, Drive)
+        .join(Drive, Application.drive_id == Drive.id)
+        .where(
+            Application.tenant_id == tenant_id,
+            Drive.tenant_id == tenant_id,
+            Application.student_id == student.id,
+        )
+        .order_by(Application.created_at.desc(), Application.id.desc())
+    ).all()
+    ctxs = svc.drive_contexts(db, [d for _a, d in rows])
+    offers = svc.offer_statuses(db, tenant_id, [a.id for a, _d in rows])
+    placed = student.id in svc.placed_student_ids(db, tenant_id, [student.id])
+    out = []
+    for a, d in rows:
+        lifecycle = svc.effective_lifecycle(d, ctxs[d.id].cfg)
+        blocker = svc.withdraw_blocker(a, offers.get(a.id), placed, lifecycle)
+        out.append(
+            MyApplicationV2Out(
+                application_id=a.id,
+                drive_id=d.id,
+                company_name=d.company_name,
+                role_title=d.role_title,
+                lifecycle=lifecycle,
+                status=a.status,
+                note=a.note,
+                offer_status=offers.get(a.id),
+                applied_at=a.created_at,
+                decided_at=a.decided_at,
+                can_withdraw=blocker is None,
+                withdraw_blocker=blocker,
+            )
+        )
+    return paginate_list(response, out, page)
+
+
+# --- Academic spreadsheet import (TPO/admin) ------------------------------------
+@router.get("/import/template")
+def import_template(_staff: User = Depends(staff_only)) -> Response:
+    return Response(
+        content=importer.TEMPLATE_CSV,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=placement_academic_template.csv"},
+    )
+
+
+def _preview_out(plan) -> ImportPreviewOut:
+    return ImportPreviewOut(
+        file_sha256=plan.file_sha256,
+        file_type=plan.file_type,
+        total_rows=len(plan.rows),
+        valid_rows=len(plan.rows) - plan.count("error"),
+        invalid_rows=plan.count("error"),
+        to_create=plan.count("create"),
+        to_update=plan.count("update"),
+        unchanged=plan.count("unchanged"),
+        ignored_columns=plan.ignored_columns,
+        rows=[ImportRowOut(**r.__dict__) for r in plan.rows],
+    )
+
+
+@router.post("/import/preview", response_model=ImportPreviewOut)
+async def import_preview(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    staff: User = Depends(staff_only),
+) -> ImportPreviewOut:
+    """Parse and validate; nothing is written."""
+    data, kind = await importer.read_upload(file)
+    return _preview_out(importer.build_plan(db, staff.tenant_id, data, kind))
+
+
+@router.post("/import/commit", response_model=ImportCommitOut)
+async def import_commit(
+    file: UploadFile = File(...),
+    file_sha256: str = Form(..., min_length=64, max_length=64, pattern="^[0-9a-f]{64}$"),
+    db: Session = Depends(get_db),
+    staff: User = Depends(staff_only),
+) -> ImportCommitOut:
+    """Re-validate the previewed file and save every valid row at once."""
+    data, kind = await importer.read_upload(file)
+    if importer.sha256(data) != file_sha256:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This file is not the one you previewed. Preview it again before importing.",
+        )
+    plan = importer.build_plan(db, staff.tenant_id, data, kind)
+    return ImportCommitOut(**importer.commit_plan(db, staff, plan))

@@ -1,7 +1,16 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-24 (Phase 9.0 planning written — `specs/phase-9-placement-institute-management.md`; Batch 9.1
-implemented, finally verified, uncommitted and unstaged (spec §10–§11); P9-D7/D8 approved; 9.2 authorized, not started.
+_Last updated: 2026-11-24 (Phase 9 Batches 9.2–9.5 implemented and verified, **uncommitted** (spec §12–§15): full
+backend 725 passed / 34 skipped / 0 failed; frontend 200/200, tsc, lint, build; browser smoke; synthetic load;
+**PostgreSQL gate PASSED** on a disposable PostgreSQL 16.16 container (61-migration chain empty → `e1a3c5b7d9f4`,
+up/down/up; RLS suites 34 passed / 0 failed; full `tests_pg_api` 237 passed / 2 skipped (Redis) / 0 failed; ad-hoc
+Phase 9 API check 5 passed) — spec §16. All Phase 9 acceptance gates passed; 50 files staged (not committed).
+Final review fixes M1 (legacy analytics exclude withdrawn) and L1 (shared per-student lock for offer / acceptance /
+selection / withdrawal) implemented and verified, **unstaged** — full backend 737 passed / 34 skipped / 0 failed;
+real PostgreSQL lock tests 2 passed — spec §17.
+Phase 8 G2 status unchanged (NOT passed).
+Before that: Phase 9.0 planning written — `specs/phase-9-placement-institute-management.md`; Batch 9.1
+implemented, verified and **committed locally as `2ccc8b9`** (not pushed; spec §10–§11); P9-D7/D8 approved.
 Phase 8 G2 still NOT passed. Before that: Phase 8 Batch 3 — 8.5a private hidden test pack + 8.5b `code-runner/` foundation:
 implemented, tested and **committed locally as `7d4147c`** (not pushed); G2 decisions approved but **G2 NOT passed** (escape suite on gVisor
 and CI not yet run); see spec §18. Before that: Batch 2 — 8.3 AI coding review (review-only) + 8.4 company profiles:
@@ -34,7 +43,7 @@ block wins.
 | **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented. 6.3 video lobby, room and lifecycle implemented, `VIDEO_UI_READY = true`. 6.4 wiring (done in 6.3) audited, one fix, automated gaps closed, real-device matrix written. 6.5 done in 6.3, audited in 6.5 (report parity proven by tests). 6.6 automated hardening done (accessibility, responsive, privacy guards, full regression). **Phase 6 NOT complete: real-device checklist (24 rows) pending** | 6.1 `1ad5628`, 6.2 `17247e2`, 6.3 `aef2999`, 6.4 `0262f97` |
 | **7** | **Production operations and monitoring** (`specs/phase-7-production-operations.md`, runbooks in `runbooks/`) | **7.0–7.10 implementation complete.** 7.2 worker usage/latency, 7.3 usage ledger + metrics, 7.4 cost framework (**numeric pricing pending: no approved price table**), 7.5 circuit breaker + alerts, 7.6 institute controls + quotas, 7.7 admin API, 7.8 admin UI, 7.9 protected `/metrics`, 7.10 runbooks + retention script. Live drills and real-device tests are Phase 10 | 7.0 `ee48610`; 7.1 `863a8aa`; 7.2–7.10 `869d42b` |
 | **8** | **Advanced AI interview intelligence**, incl. coding round (old 7) and company/full simulation (old 8) (`specs/phase-8-advanced-ai-intelligence.md`) | **8.0 planning done (spec r2). G1 (narrower, Batch 1) approved 2026-11-23: P8-D1…D6, D8, D14…D17, B1-a/b/c Accepted. Batch 1 (8.1 + 8.2, review-only coding round) implementation complete and tested (spec §16); nothing is executed. All 24 problems are drafts pending human review (production serves none). P8-D7 (coding rubric) APPROVED 2026-11-23 with scoring semantics U1–U4 approved the same day (spec §7.1, §14.5): zero basic tests ⇒ ≤ 12.0/100; all three test groups required to publish; no session score if any problem is unverified; candidate timeouts ≠ runner faults (incomplete, never best). P8-D9…D11 (company profiles, sources, context) APPROVED 2026-11-23 (spec §7.5–§7.8, §14.6). O1 = option A APPROVED 2026-11-23 (spec §14.7). **Batch 2 (8.3 AI coding review, review-only + 8.4 company profiles) implemented, verified and committed (`1d620e6`, 2026-11-24; spec §17)**; nothing is executed anywhere. **Batch 3 (8.5a private test pack: 24 problems, 320 hidden tests, 96 validated references; U2 publication rule; 8.5b standalone `code-runner/` with Docker + gVisor hardening, fail-closed self-check, synthetic escape suite and CI job) implemented and committed locally as `7d4147c` 2026-11-24, not pushed (spec §18); G2 decisions P8-S2/S3/S5/S6/S7 APPROVED, G2 NOT passed (escape suite and CI not run).** No student code executed anywhere; all 24 problems still drafts pending a named human reviewer. Still open: P8-D12/D13, P8-S1/S1b/S4 (G3), G2 evidence, G4, G5** | Batch 1: `c62b067`; Batch 2: `1d620e6`; Batch 3: `7d4147c` |
-| **9** | **Institute and placement management**, incl. faculty campaigns (old 9) (`specs/phase-9-placement-institute-management.md`) | **9.0 planning done 2026-11-24 (audit, gap matrix, batches 9.1–9.5, decisions P9-D1…D10). Batch 9.1 (placement core v2, backend, flag `PLACEMENT_MANAGEMENT_ENABLED` off) implemented and tested, uncommitted (spec §10); full suite 685 passed / 29 skipped / 0 failed; Postgres RLS test not run.** Owner decisions open: P9-D7 (before 9.3), P9-D8 (before 9.2 UI) | — |
+| **9** | **Institute and placement management**, incl. faculty campaigns (old 9) (`specs/phase-9-placement-institute-management.md`) | **9.0 planning done 2026-11-24 (audit, gap matrix, batches 9.1–9.5, decisions P9-D1…D10). Batch 9.1 (placement core v2, backend) committed `2ccc8b9`. Batches 9.2 (TPO/student Placement Hub UI, bulk shortlist/reject, withdrawal, academic CSV/XLSX import), 9.3 (faculty campaigns — completion status only — and TPO dashboard), 9.4 (filtered analytics, safe audited CSV export, AI Mock Interview preparation links) and 9.5 (security review, migrations, perf, browser smoke) implemented and verified, UNCOMMITTED (spec §12–§15): full backend 725 passed / 34 skipped / 0 failed; frontend unit 200/200, tsc, lint, build OK. Alembic head `e1a3c5b7d9f4`. All flags default off. PostgreSQL gate PASSED 2026-11-24 (disposable PostgreSQL 16.16: 61-migration chain, up/down/up; RLS 34/0; `tests_pg_api` 237 passed / 2 skipped (Redis) / 0 failed; ad-hoc Phase 9 API check 5 passed; spec §16). All Phase 9 acceptance gates passed; real devices / screen readers and production integration remain Phase 10. Review fixes M1 + L1 verified (full backend 737 / 34 / 0; PostgreSQL lock tests 2 passed; spec §17), unstaged.** P9-D7/D8 approved; P9-D10 deferred | 9.1 `2ccc8b9`; 9.2–9.5 staged (50 files), M1/L1 unstaged; nothing committed |
 | 10 | Enterprise integrations, platform-level security, final acceptance (full regression + all real-device tests) | Not started | — |
 
 Roadmap re-numbered 2026-11-20 (P7-D1); old-to-new mapping: `IMPLEMENTATION_PLAN.md` §6a.
@@ -610,7 +619,7 @@ Batch 9.1 requirements §5, security §6, acceptance §7, tests §8, risks §9).
   faculty see mock-interview completion status only, enforced in the API (9.3); P9-D8 — student withdrawal
   (`withdrawn` status) in 9.2. P9-D10 deferred.
 
-### Phase 9 Batch 9.1 — placement core v2, backend (2026-11-24; implemented, uncommitted)
+### Phase 9 Batch 9.1 — placement core v2, backend (2026-11-24; committed locally `2ccc8b9`, not pushed)
 
 Full record: spec §10.
 - **Flags (default off):** `PLACEMENT_MANAGEMENT_ENABLED`, `PLACEMENT_MANAGEMENT_TENANT_IDS` (empty = no institute).
@@ -627,13 +636,88 @@ Full record: spec §10.
   up/down/up on scratch SQLite OK (one head `c8e2a4f6b1d9`); `git diff --check` clean. Two tests added (flag defaults
   off; teacher gets no student mock-interview data with every flag on). **PostgreSQL RLS suite: BLOCKED / NOT RUN**
   (no local Postgres; starting one needs owner approval). Concurrency proven by simulated interleavings on SQLite only.
+  *(Update 2026-11-24: the PostgreSQL suites were later run and passed on a disposable container — see
+  "Phase 9 PostgreSQL verification" below and spec §16.)*
 - **Flag behaviour:** default OFF; empty/invalid institute list = nobody. OFF ⇒ v2 routes 404, legacy unchanged
   (except the two hardening fixes, which apply to everyone). ON ⇒ lifecycle, window, criteria, transitions, history
   and audit on v2 and legacy routes.
 - **Known limitations:** legacy TPO applicant list still shows the legacy "eligible" flag; applications created before
   an institute is enabled start their history at their next status change.
-- **Next:** owner approval to stage and commit 9.1 (nothing staged). Then Batch 9.2 (authorized, **not started**):
+- **Committed:** `2ccc8b9` "feat(placement): add institute placement management core" (15 files, parent `7d4147c`),
+  2026-11-24. Nothing pushed, merged or deployed.
+- **Next:** Batch 9.2 (authorized, **not started**):
   TPO + student screens, bulk shortlisting, academic spreadsheet upload, student withdrawal.
+
+### Phase 9 Batches 9.2–9.5 — Placement Hub, campaigns, analytics, acceptance checks (2026-11-24; uncommitted)
+
+Full record, decisions, API tables, evidence table and limitations: spec §12–§15.
+- **Flags (unchanged names, default off):** backend `PLACEMENT_MANAGEMENT_ENABLED` + `PLACEMENT_MANAGEMENT_TENANT_IDS`
+  (empty = nobody) now also gate campaigns, dashboard, analytics, export and preparation; new frontend build flag
+  `NEXT_PUBLIC_PLACEMENT_MANAGEMENT_ENABLED` (off ⇒ no request, no nav entry, legacy pages unchanged).
+- **DB:** `d9f1a3c5e7b2` (status `withdrawn`: Postgres enum value + widened history CHECKs; downgrade refuses while
+  withdrawn data exists) and `e1a3c5b7d9f4` (`placement_campaigns`, `placement_campaign_students`, RLS). Head `e1a3c5b7d9f4`.
+- **API:** 9.2 status probe, staff drive list, v2 applicants, bulk status, withdraw, student drives/applications,
+  import template/preview/commit; 9.3 campaigns CRUD/status/candidates/assign/unassign/progress, `me/campaigns`,
+  dashboard; 9.4 analytics, options, export, drive preparation. Legacy: applicant list uses v2 eligibility for flagged
+  institutes; `withdrawn` never settable/leavable by staff. CORS exposes the count/pagination/request-id headers.
+- **Frontend:** `/dashboard/placement-hub` (home per role, drives, drive detail, students, import, campaigns,
+  analytics, student opportunity detail); `InterviewSetupForm` pre-fill from `prep_*` link parameters (flag-gated).
+- **Evidence:** spec §15.1 (full backend 725/34/0; affected reruns 78/0 after the CORS change; migration up/down/up;
+  frontend 200/200, tsc, lint 0 errors, build; browser smoke 84/94 with all 10 failures pre-existing; perf at 2 000 students).
+- **PostgreSQL:** run and passed afterwards (see the next section; spec §16). Browser-smoke detail: all 12
+  placement flow/keyboard checks passed; the 10 smoke failures are pre-existing and were NOT fixed (legacy
+  `/dashboard/applications` unlabeled selects + 8 px; 3 px `AppShell` header at 320 px).
+- **Not run:** real devices / screen readers (Phase 10).
+- **Known limitations:** spec §15.6 — notably the pre-existing fixed `AppShell` sidebar: Placement Hub content fits at
+  320 px, but the sidebar causes horizontal scrolling on every dashboard page below 768 px (Phase 10 decision).
+- **Next:** owner approval to stage + commit 9.2–9.5 (manifest in `PHASE_9_MASTER_HANDOFF.md`).
+
+### Phase 9 PostgreSQL verification (2026-11-24; owner-approved disposable container; no repository file changed)
+
+Full record: spec §16.
+- **Environment:** one disposable local container from the already-present `postgres:16` image — PostgreSQL 16.16,
+  `--rm`, data on tmpfs (memory), no volumes or mounts, bound to `127.0.0.1` only, random test-only credentials kept
+  out of all output and deleted afterwards. Migrations as the owner role; tests as `app_user` (NOSUPERUSER, NOBYPASSRLS,
+  NOCREATEROLE, NOCREATEDB, owns no tables), created per `backend/scripts/app_role.template.sql`.
+- **Migrations:** full chain on an empty database — 61 migrations to `e1a3c5b7d9f4` (exit 0); upgrade → `downgrade -2`
+  → re-upgrade passed (incl. the `withdrawn` enum migration); single head.
+- **RLS suites (as `app_user`):** 34 passed, 0 failed, 0 skipped (`test_placement_management_rls_postgres.py`,
+  `test_placement_phase9_rls_postgres.py`, `test_rls_postgres.py`, three mock-interview RLS files). All six Phase 9
+  tables have RLS enabled and forced with the standard `tenant_isolation` policy.
+- **Full `tests_pg_api` (as `app_user`):** 237 passed, 2 skipped, 0 failed. The 2 skips are the existing Redis queue
+  tests (`RQ_TEST_REDIS_URL` not set; isolated Redis required) — not run, not passed.
+- **Ad-hoc Phase 9 API check (scratchpad file, NOT a committed repository test):** 5 passed — flag gating, v2
+  lifecycle/apply, cross-institute 404s, withdrawal, campaign completion-only progress, import/analytics/export/dashboard
+  isolation, and truly parallel requests: 8 duplicate applications ⇒ 1 success + 7 rejections; simultaneous bulk
+  shortlist vs withdrawal ⇒ exactly one winner and one recorded history event.
+- **Safety:** temporary container removed by its exact ID (`9828efa9727e`); all 16 pre-existing Docker containers
+  unchanged (IDs, names, statuses); no volume/image/network changes; no production database, credentials or settings
+  touched.
+- **Observed, pre-existing (not Phase 9):** `users`, `leads`, `feedback`, `refresh_tokens`, `tenant_invites` are not
+  RLS-forced (`users` intentionally; app-layer guards).
+
+### Phase 9 final review fixes M1 and L1 (2026-11-24; owner-approved; verified; UNSTAGED)
+
+Full record: spec §17. The 50 staged Phase 9 files are unchanged; these five files are unstaged:
+`backend/app/routers/placement_analytics.py`, `backend/app/routers/recruiters.py`,
+`backend/app/services/placement_management.py` (modified), `backend/tests/test_placement_review_fixes.py`,
+`backend/tests_pg_api/test_placement_offer_withdraw_lock_pg.py` (new).
+- **M1:** legacy `/placement/analytics/overview` excludes `withdrawn` applications from totals, unique applicants,
+  per-drive totals and selection-rate denominators; response shape unchanged. 2 dedicated mixed-status tests passed.
+- **L1:** shared per-student database lock (`lock_student_for_placement`, `FOR UPDATE` on the student's users row)
+  taken first by every conflicting writer — recruiter offer extension, student offer acceptance, TPO selection, student
+  withdrawal — with state re-checked after the lock. No application can end withdrawn while holding an open or
+  accepted offer; history/audit verified (one event + one audit row for the winner, none for the refused side).
+  9 dedicated SQLite L1 tests passed (+1 regression test: a concurrent staff decision is never overridden).
+- **Real PostgreSQL:** 2 lock tests passed, 0 skipped, on a disposable PostgreSQL 16.16 container (removed by exact
+  ID; 16 pre-existing containers unchanged); real blocking observed via `pg_stat_activity`.
+- **Final evidence:** full backend suite after the final fixes **737 passed, 34 skipped (PostgreSQL-specific), 0 failed,
+  0 errors**; affected suites 139 passed / 0 failed; new tests 12 passed; Ruff clean on changed source + PostgreSQL test;
+  compilation passed; `git diff --check` and `git diff --cached --check` clean.
+- **Limitations:** the 2 Redis queue tests of the earlier `tests_pg_api` run remain unrun; no real production traffic
+  tested; browser smoke 10 pre-existing failures (not fixed) and the fixed-sidebar mobile limitation stand; review
+  items L2–L5 recorded, not fixed. Phase 8 G2 remains NOT passed.
+- **Next:** owner approval to stage the five M1/L1 files, then to commit Phase 9.2–9.5.
 
 ### Next recommended action (approved sequence)
 1. Phases 6.1 (`1ad5628`), 6.2 (`17247e2`), 6.3 (`aef2999`), 6.4 (`0262f97`) and 6.5 (`75ed83c`) are committed. Phase

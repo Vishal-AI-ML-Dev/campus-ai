@@ -113,6 +113,8 @@ from app.routers.people import router as people_router
 from app.routers.placement import router as placement_router
 from app.routers.placement_analytics import router as placement_analytics_router
 from app.routers.placement_management import router as placement_management_router
+from app.routers.placement_campaigns import router as placement_campaigns_router
+from app.routers.placement_insights import router as placement_insights_router
 from app.routers.projects import router as projects_router
 from app.routers.recruiters import router as recruiters_router
 from app.routers.resume import router as resume_router
@@ -248,6 +250,16 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Phase 9.2: let a cross-origin frontend read the pagination / count /
+    # request-id headers (same-origin proxy deployments already can). Additive:
+    # no response body or status changes.
+    expose_headers=[
+        "X-Total-Count",
+        "X-Request-ID",
+        "X-Status-Counts",
+        "X-Eligible-Count",
+        "X-Completion-Counts",
+    ],
 )
 
 # Feature routers, mounted under BOTH the canonical versioned prefix (/v1,
@@ -298,6 +310,10 @@ FEATURE_ROUTERS = [
     # Phase 9.1: placement management v2 (PLACEMENT_MANAGEMENT_ENABLED +
     # PLACEMENT_MANAGEMENT_TENANT_IDS; 404 when off).
     placement_management_router,
+    # Phase 9.3/9.4: campaigns, TPO dashboard, analytics, exports and
+    # interview preparation (same flag and gate as placement management).
+    placement_campaigns_router,
+    placement_insights_router,
 ]
 
 for _feature_router in FEATURE_ROUTERS:

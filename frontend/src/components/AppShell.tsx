@@ -19,6 +19,7 @@ import NotificationBell from "@/components/notifications/NotificationBell"
 import { useMockInterviewNavItem } from "@/components/mock-interview/mockInterviewFlags"
 import { useInterviewOpsNavItem } from "@/components/interview-operations/opsApi"
 import { useCompanyProfilesNavItem } from "@/components/interview-company-profiles/companyProfilesApi"
+import { usePlacementHubNavItem } from "@/components/placement-hub/placementApi"
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
 	const router = useRouter()
@@ -30,6 +31,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 	const interviewOpsNavItem = useInterviewOpsNavItem(user?.role)
 	// Phase 8.4: Company Profiles for admins/TPOs; only when the server has them on.
 	const companyProfilesNavItem = useCompanyProfilesNavItem(user?.role)
+	// Phase 9.2: Placement Hub; null (no request) unless its build flag is on.
+	const placementHubNavItem = usePlacementHubNavItem(user?.role)
 
 	// While the provider is loading (or redirecting), show a simple splash.
 	if (loading || !user) {
@@ -41,7 +44,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 	}
 
 	const baseNav = NAV_BY_ROLE[user.role] ?? []
-	const nav = [...baseNav, mockInterviewNavItem, interviewOpsNavItem, companyProfilesNavItem].filter(
+	const nav = [...baseNav, placementHubNavItem, mockInterviewNavItem, interviewOpsNavItem, companyProfilesNavItem].filter(
 		(item): item is NonNullable<typeof item> => item !== null,
 	)
 
