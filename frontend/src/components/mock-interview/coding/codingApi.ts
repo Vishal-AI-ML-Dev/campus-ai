@@ -43,6 +43,14 @@ export type CodingProblem = {
 	hints_revealed: string[]
 }
 
+/** Phase 8.3: a typed explanation question after "Done" (answered via /answer). */
+export type CodingExplanationTurn = {
+	turn_seq: number
+	question: string
+	answer_text: string | null
+	answered_at: string | null
+}
+
 export type CodingAttempt = {
 	seq: number
 	status: "pending" | "working" | "explaining" | "auto_submitted" | "closed" | "abandoned"
@@ -54,6 +62,7 @@ export type CodingAttempt = {
 	submissions_used: number
 	submissions_remaining: number
 	problem: CodingProblem
+	explanation?: CodingExplanationTurn[]
 }
 
 export type CodingState = {
@@ -64,6 +73,52 @@ export type CodingState = {
 	remaining_seconds: number | null
 	graded_submissions_per_problem: number
 	attempts: CodingAttempt[]
+	/** Phase 8.3: AI hints, explanation questions and AI-estimate feedback are on. */
+	ai_enabled?: boolean
+}
+
+// --- Phase 8.3: review-only feedback (no score of any kind) -------------------
+export type CodingEvidence = { line: number | null; quote: string }
+
+export type CodingEstimate = {
+	key: "code_quality" | "reasoning" | "testing"
+	label: string
+	weight_percent: number
+	kind: "ai_estimate"
+	score: number | null
+	assessed: boolean
+	evidence: CodingEvidence[]
+	rationale: string
+	/** Why this individual AI estimate is uncertain (always present). */
+	uncertainty: string
+}
+
+export type CodingProblemFeedback = {
+	attempt_seq: number
+	problem_title: string
+	language: string | null
+	status: "ai_estimated" | "not_submitted"
+	verification: "not_verified"
+	objective: { key: string; label: string; weight_percent: number; status: "not_verified" }[]
+	estimates: CodingEstimate[]
+	complexity: { time: string; space: string; justification: string; quote: CodingEvidence | null } | null
+	observations: { line: number | null; text: string }[]
+	consider_cases: string[]
+	testing_notes: string[]
+	hints_used: number
+	explanation_answers: number
+}
+
+export type CodingFeedback = {
+	session_id: number
+	rubric_version: "coding-v1-unverified"
+	review_only: true
+	verification: "not_verified"
+	uncertainty_note: string
+	disclaimer: string
+	provider: string | null
+	created_at: string
+	problems: CodingProblemFeedback[]
 }
 
 export type CodingSubmission = {
@@ -84,6 +139,8 @@ export type CodingHint = {
 	hint: string
 	hints_used: number
 	hints_available: number
+	/** Phase 8.3: "ai" hints are tailored to the current code and shown once. */
+	source?: "authored" | "ai"
 }
 
 export type CodingCreateChoices = { languages: string[]; topics: string[]; problem_key?: string }
@@ -109,4 +166,7 @@ export const codingApi = {
 		api.get<CodingSubmission[]>(`${sessions}/${id}/coding/attempts/${seq}/submissions`),
 	hint: (id: number, seq: number) => api.post<CodingHint>(`${sessions}/${id}/coding/attempts/${seq}/hints`),
 	done: (id: number, seq: number) => api.post<CodingState>(`${sessions}/${id}/coding/attempts/${seq}/done`),
+	// Phase 8.3: review-only feedback (404 until generated; POST generates once).
+	feedback: (id: number) => api.get<CodingFeedback>(`${sessions}/${id}/coding/feedback`),
+	generateFeedback: (id: number) => api.post<CodingFeedback>(`${sessions}/${id}/coding/feedback`),
 }

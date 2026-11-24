@@ -30,7 +30,19 @@ function Pre({ text, label }: { text: string; label: string }) {
 	)
 }
 
-export default function ProblemPanel({ problem, headingId }: { problem: CodingProblem; headingId: string }) {
+export default function ProblemPanel({
+	problem,
+	headingId,
+	aiHints = [],
+	hiddenAiHints = 0,
+}: {
+	problem: CodingProblem
+	headingId: string
+	/** Phase 8.3: personalised AI hints opened in this visit (shown once, not stored). */
+	aiHints?: string[]
+	/** Phase 8.3: AI hints opened earlier that cannot be shown again. */
+	hiddenAiHints?: number
+}) {
 	return (
 		<article aria-labelledby={headingId} className="space-y-4 text-sm text-slate-700 dark:text-slate-200">
 			<header>
@@ -90,6 +102,26 @@ export default function ProblemPanel({ problem, headingId }: { problem: CodingPr
 						))}
 					</ol>
 				</Block>
+			) : null}
+			{aiHints.length ? (
+				<Block title="Personalised AI hints">
+					<ol className="list-decimal space-y-1 pl-5">
+						{aiHints.map((h, i) => (
+							<li key={i} className="whitespace-pre-wrap">
+								{h}
+							</li>
+						))}
+					</ol>
+					<p className="text-xs text-slate-500 dark:text-slate-400">
+						AI hints are based on your current code and are shown only once. They never lower anything.
+					</p>
+				</Block>
+			) : null}
+			{hiddenAiHints > 0 ? (
+				<p className="text-xs text-slate-500 dark:text-slate-400">
+					You opened {hiddenAiHints} personalised AI {hiddenAiHints === 1 ? "hint" : "hints"} earlier. AI hints
+					are shown only once and are not saved.
+				</p>
 			) : null}
 		</article>
 	)

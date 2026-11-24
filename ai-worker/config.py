@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     # /interview/* routes are not mounted at all (404). Must be switched on
     # together with the backend's AI_MOCK_INTERVIEW_ENABLED.
     MOCK_INTERVIEW_ENABLED: bool = False
+    # Phase 8.3: AI coding review routes (/interview/coding/hint, /review,
+    # /followup). Mounted only when this AND MOCK_INTERVIEW_ENABLED are true.
+    # They read code as data and never execute it.
+    MOCK_INTERVIEW_CODING_ENABLED: bool = False
+    # Phase 8.4: company context (/interview/jd/skills + the company-claim
+    # filter on generated questions). Mounted only with MOCK_INTERVIEW_ENABLED.
+    MOCK_INTERVIEW_COMPANY_ENABLED: bool = False
 
     # --- Observability ----------------------------------------------------
     # Deploy environment label + optional Sentry error tracking.

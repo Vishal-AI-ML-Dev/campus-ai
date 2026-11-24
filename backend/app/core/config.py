@@ -180,6 +180,20 @@ class Settings(BaseSettings):
     # "draft" (not yet human-reviewed). Ignored when ENVIRONMENT=production,
     # so production only ever serves "published" problems.
     AI_MOCK_INTERVIEW_CODING_ALLOW_DRAFT_PROBLEMS: bool = False
+    # Phase 8.3 sub-flag: AI help in coding rounds (review-only, decision
+    # P8-D7 "coding-v1-unverified"): AI-tailored hints after the authored ones,
+    # typed explanation questions after "Done", and the AI-estimate coding
+    # feedback (/sessions/{id}/coding/feedback). Needs the coding gate too and
+    # the worker's MOCK_INTERVIEW_CODING_ENABLED. Off = Batch 1 behaviour
+    # (authored hints only, no explanation turns, no coding feedback). Nothing
+    # is ever executed either way.
+    AI_MOCK_INTERVIEW_CODING_AI_ENABLED: bool = False
+    # Phase 8.4 sub-flag: institute company profiles (admin/TPO authoring,
+    # students pick a published profile of their own institute) and
+    # company-context question generation (decisions P8-D9..D11). Needs the
+    # master switch and allow-list. Off = the company routes 404 and create
+    # rejects a company profile. Evaluation is never affected.
+    AI_MOCK_INTERVIEW_COMPANY_ENABLED: bool = False
 
     # --- AI Mock Interview: production operations (Phase 7) --------------
     # Institute operations: admin/TPO usage + controls API, institute quotas,

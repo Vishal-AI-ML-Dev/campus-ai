@@ -16,9 +16,13 @@ Sessions are created, started, finished and abandoned through the existing
     GET  /sessions/{id}/coding/submissions/{sid}             one submission
     POST /sessions/{id}/coding/attempts/{seq}/hints          next authored hint
     POST /sessions/{id}/coding/attempts/{seq}/done           close one problem
+    GET  /sessions/{id}/coding/feedback                      stored feedback (8.3)
+    POST /sessions/{id}/coding/feedback                      generate once (8.3)
 
 No code is executed (decision P8-D8; Run arrives with 8.6). Only public
-problem material is returned. Source code is never logged.
+problem material is returned. Source code is never logged. Phase 8.3 AI help
+(AI hints, explanation turns, AI-estimate feedback) needs
+``AI_MOCK_INTERVIEW_CODING_AI_ENABLED`` as well.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -38,6 +42,7 @@ from app.schemas.mock_interview_coding import (
     CodingCatalogOut,
     CodingDraftIn,
     CodingDraftOut,
+    CodingFeedbackOut,
     CodingHintOut,
     CodingStateOut,
     CodingSubmissionOut,
@@ -45,6 +50,8 @@ from app.schemas.mock_interview_coding import (
 )
 from app.services import mock_interview as svc
 from app.services import mock_interview_coding as coding
+from app.services import mock_interview_coding_ai as coding_ai
+from app.services import mock_interview_coding_report as coding_report
 
 router = APIRouter(
     prefix="/mock-interview",
@@ -189,7 +196,54 @@ def finish_coding_problem(
     db: Session = Depends(get_db),
     user: User = Depends(require_coding_student),
 ) -> dict:
-    """Close one problem (its saved code stays). Idempotent."""
+    """Close one problem (its saved code stays). Idempotent.
+
+    Phase 8.3 (AI help on): a problem with submitted code moves to
+    ``explaining`` and gets a typed explanation question instead (answered via
+    ``POST /sessions/{id}/answer``); it closes after 1-2 questions.
+    """
     s = _coding_session(db, session_id, user)
-    coding.mark_done(db, s, seq)
+    if coding.ai_enabled():
+        coding_ai.done(db, s, seq)
+    else:
+        coding.mark_done(db, s, seq)
     return coding.state(db, svc._reload(db, s.id))
+
+
+# ---------------------------------------------------------------------------
+# Phase 8.3: review-only coding feedback (decision O1 = option A)
+# ---------------------------------------------------------------------------
+
+# Each problem's review is one LLM call; feedback is generated once.
+_FEEDBACK_LIMIT = "5/minute"
+
+
+@router.get("/sessions/{session_id}/coding/feedback", response_model=CodingFeedbackOut)
+def get_coding_feedback(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_coding_student),
+) -> dict:
+    """My stored coding feedback (404 if not mine, or not generated yet).
+
+    AI estimates only; objective categories are "not verified" and there is
+    no score of any kind (review-only, P8-D7).
+    """
+    return coding_report.get_feedback(db, _coding_session(db, session_id, user))
+
+
+@router.post("/sessions/{session_id}/coding/feedback", response_model=CodingFeedbackOut)
+@limiter.limit(_FEEDBACK_LIMIT, key_func=_caller_key)
+def generate_coding_feedback(
+    request: Request,
+    response: Response,
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_coding_student),
+) -> dict:
+    """Generate my feedback for a completed coding round, or return the stored one.
+
+    Idempotent and final. 409 while AI help is off, for cancelled or unfinished
+    rounds; 503 when the AI is unavailable (nothing is stored; try again).
+    """
+    return coding_report.generate(db, _coding_session(db, session_id, user))

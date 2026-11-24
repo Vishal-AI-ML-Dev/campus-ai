@@ -17,6 +17,7 @@ from typing import Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from interview import policy, prompts
+from interview.company import filter_claims
 from interview.llm_io import LLMUnavailable, invoke_structured
 from interview.safety import clean_text, is_similar, quote_in, single_line
 from interview.schemas import (
@@ -58,6 +59,7 @@ class PlanState(TypedDict, total=False):
     jd_text: str
     jd_analysis: JDAnalysis | None
     plan: InterviewPlan
+    company: Any  # Phase 8.4: CompanyContext | None (generation only)
 
 
 def profile_loader(state: PlanState) -> dict:
@@ -162,6 +164,7 @@ def planner(state: PlanState) -> dict:
                 jd_text=jd_text,
                 library=library,
                 topic_count=topic_count - 1,
+                company=state.get("company"),
             ),
             step="plan",
         )
@@ -215,6 +218,7 @@ class TurnState(TypedDict, total=False):
     jd_text: str
     transcript: list[TranscriptTurn]
     remaining_seconds: int
+    company: Any  # Phase 8.4: CompanyContext | None (generation only)
     # computed
     phase: str  # opening | answer
     level: str
@@ -356,6 +360,7 @@ def question_generator(state: TurnState) -> dict:
     remaining_minutes = max(0, state["remaining_seconds"] // 60)
 
     avoid = list(previous)
+    company = state.get("company")
     chosen: tuple[str, str] | None = None
     for _attempt in range(2):
         try:
@@ -373,6 +378,7 @@ def question_generator(state: TurnState) -> dict:
                     follow_up_angle=angle,
                     avoid=avoid,
                     remaining_minutes=remaining_minutes,
+                    company=company,
                 ),
                 step="question",
             )
@@ -380,6 +386,10 @@ def question_generator(state: TurnState) -> dict:
             raise QuestionGenerationFailed(str(exc)) from exc
         question = clean_text(raw.question, MAX_QUESTION_CHARS)
         preamble = clean_text(raw.preamble, 400)
+        if company is not None:
+            # Phase 8.4 mandatory claim filter: no "Company X asks ..." text.
+            question = filter_claims(question, company.name)
+            preamble = filter_claims(preamble, company.name)
         if not question:
             continue
         chosen = (preamble, question)

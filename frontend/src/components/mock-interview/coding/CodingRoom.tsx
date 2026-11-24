@@ -20,6 +20,7 @@ import EndInterviewControl from "../EndInterviewControl"
 import { Countdown } from "../InterviewRoom"
 import { describeError, mockInterviewApi, type InterviewSession } from "../mockInterviewApi"
 import CodeEditor from "./CodeEditor"
+import ExplanationPanel from "./ExplanationPanel"
 import ProblemPanel from "./ProblemPanel"
 import ReviewOnlyNotice from "./ReviewOnlyNotice"
 import SubmissionHistory from "./SubmissionHistory"
@@ -29,7 +30,9 @@ import {
 	LANGUAGE_LABELS,
 	attemptOpen,
 	codeAfterLanguageSwitch,
+	hiddenAiHints,
 	newIdempotencyKey,
+	pendingExplanation,
 	sizeLabel,
 	submitBlockedReason,
 	submittedAnnouncement,
@@ -38,7 +41,7 @@ import {
 
 const MAX_BYTES = 64 * 1024
 type Draft = { code: string; language: string; rev: number; dirty: boolean }
-type Busy = null | "submit" | "hint" | "done" | "finish"
+type Busy = null | "submit" | "hint" | "done" | "finish" | "explain"
 type SaveState = "saved" | "saving" | "unsaved" | "stale" | "error"
 type Tab = "problem" | "code" | "submissions"
 const TABS: { id: Tab; label: string }[] = [
@@ -69,6 +72,9 @@ export default function CodingRoom({
 	const [announce, setAnnounce] = useState("")
 	const [error, setError] = useState<string | null>(null)
 	const [subs, setSubs] = useState<Record<number, CodingSubmission[]>>({})
+	// Phase 8.3: personalised AI hints are shown once (the server does not store
+	// their text), so they live only in this view.
+	const [aiHints, setAiHints] = useState<Record<number, string[]>>({})
 	// Drafts: the ref is the source of truth for async saving; `draftView` is
 	// the copy React renders, published after every change.
 	const drafts = useRef<Record<number, Draft>>({})
@@ -248,9 +254,16 @@ export default function CodingRoom({
 		setBusy("hint")
 		setError(null)
 		try {
+			await save(active) // an AI hint reads the saved code: never a stale draft
 			const h = await codingApi.hint(sessionId, active)
+			if (h.source === "ai") {
+				const seq = active
+				setAiHints((m) => ({ ...m, [seq]: [...(m[seq] ?? []), h.hint] }))
+			}
 			applyState(await codingApi.state(sessionId))
-			setAnnounce(`Hint ${h.hint_number} of ${h.hints_available} opened. It is shown under the problem.`)
+			setAnnounce(
+				`${h.source === "ai" ? "Personalised AI hint" : "Hint"} ${h.hint_number} of ${h.hints_available} opened. It is shown under the problem.`,
+			)
 		} catch (err) {
 			await refreshAfter(err, "Could not open a hint.")
 		} finally {
@@ -264,10 +277,40 @@ export default function CodingRoom({
 		setError(null)
 		try {
 			await save(active)
-			applyState(await codingApi.done(sessionId, active))
-			setAnnounce("Problem closed. Your saved code is kept.")
+			const next = await codingApi.done(sessionId, active)
+			applyState(next)
+			const after = next.attempts.find((a) => a.seq === active)
+			setAnnounce(
+				after && pendingExplanation(after)
+					? "Please explain your solution: a question is shown below the editor."
+					: "Problem closed. Your saved code is kept.",
+			)
 		} catch (err) {
 			await refreshAfter(err, "Could not close this problem.")
+		} finally {
+			setBusy(null)
+		}
+	}
+
+	// Phase 8.3: a typed explanation answer (text only, B1-a) via the existing /answer route.
+	async function explain(turnSeq: number, text: string): Promise<boolean> {
+		if (busy) return false
+		setBusy("explain")
+		setError(null)
+		try {
+			await mockInterviewApi.answer(sessionId, turnSeq, text)
+			const next = await codingApi.state(sessionId)
+			applyState(next)
+			const after = next.attempts.find((a) => a.seq === active)
+			setAnnounce(
+				after && pendingExplanation(after)
+					? "Answer saved. Another question is shown."
+					: "Answer saved. This problem is closed.",
+			)
+			return true
+		} catch (err) {
+			await refreshAfter(err, "Could not save your answer. Please try again.")
+			return false
 		} finally {
 			setBusy(null)
 		}
@@ -361,7 +404,7 @@ export default function CodingRoom({
 							}`}
 						>
 							Problem {a.seq}: {a.problem.title}
-							{attemptOpen(a) ? "" : " (closed)"}
+							{attemptOpen(a) ? "" : a.status === "explaining" ? " (explaining)" : " (closed)"}
 						</button>
 					))}
 				</div>
@@ -388,7 +431,12 @@ export default function CodingRoom({
 
 			<div className="grid gap-6 lg:grid-cols-2">
 				<div id="coding-panel-problem" role="tabpanel" aria-labelledby="coding-tab-problem" className={`${panelClass("problem")} min-w-0`}>
-					<ProblemPanel problem={attempt.problem} headingId={`coding-problem-${attempt.seq}`} />
+					<ProblemPanel
+						problem={attempt.problem}
+						headingId={`coding-problem-${attempt.seq}`}
+						aiHints={aiHints[attempt.seq] ?? []}
+						hiddenAiHints={hiddenAiHints(attempt, (aiHints[attempt.seq] ?? []).length)}
+					/>
 				</div>
 
 				<div className="min-w-0 space-y-4">
@@ -503,6 +551,9 @@ export default function CodingRoom({
 						<p id="coding-submit-why" className="text-xs text-slate-500 dark:text-slate-400">
 							{blocked ?? `You can submit up to ${state.graded_submissions_per_problem} times per problem.`}
 						</p>
+						{attempt.explanation?.length ? (
+							<ExplanationPanel attempt={attempt} busy={busy !== null} onAnswer={explain} />
+						) : null}
 					</div>
 
 					<div id="coding-panel-submissions" role="tabpanel" aria-labelledby="coding-tab-submissions" className={`${panelClass("submissions")} space-y-2`}>

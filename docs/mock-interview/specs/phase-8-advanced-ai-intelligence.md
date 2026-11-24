@@ -1,9 +1,12 @@
 # Phase 8 — Advanced AI Interview Intelligence
 
-Status: **8.0 planning, revision 2 (2026-11-23). Design NOT approved. No Phase 8 code, migration, dependency,
-configuration or infrastructure exists.** Every decision in §14 has the status **Recommended — awaiting user
-approval**; none is Accepted or Rejected yet. Approval gates are listed in §15. Base: `feature/ai-mock-interview` @
-`869d42b` (Phase 7). Overall status: `../PROJECT_STATE.md`. Roadmap: `../IMPLEMENTATION_PLAN.md` §6a.
+Status (updated 2026-11-23, Batch 2): **the §14 decision register is the authoritative approval record.**
+Approved so far: P8-D1…D11, D14…D17, B1-a/b/c, U1–U4 and **O1 = option A** (§14.7). Still awaiting approval:
+P8-D12/D13 and every sandbox decision (P8-S1…S7, S1b); gates G2–G5 are **not** passed (§15). Built: Batch 1 =
+8.1 + 8.2 (commit `c62b067`, §16) and Batch 2 = 8.3 + 8.4 (implemented and tested, uncommitted, §17). **No code is
+executed anywhere: actual code execution stays deferred until the sandbox gates G2–G4 pass.** Originally written as
+8.0 planning, revision 2 (base `869d42b`, Phase 7). Overall status: `../PROJECT_STATE.md`. Roadmap:
+`../IMPLEMENTATION_PLAN.md` §6a.
 
 Scope (from P7-D1): **coding interview round**, **secure code-execution sandbox**, **advanced coding evaluation**,
 **company-specific interviews**, and a **full multi-round simulation** that combines them with the existing text,
@@ -29,7 +32,7 @@ Labels: **[exists]** = verified in the code at `869d42b`; **[new]** = proposed h
 | Session types | `INTERVIEW_TYPE_VALUES = (hr, technical, coding, company, full)`; the CHECK constraint already allows `coding`, `company`, `full` | `backend/app/models/mock_interview.py` | `coding` sessions need **no** change to the sessions table. `company`/`full` stay reserved (§6.7) |
 | Create API | `MockInterviewSessionCreate.interview_type: Literal["hr","technical"]`; `/catalog` lists all five; `/options` offers hr/technical | `schemas/mock_interview.py`, `routers/mock_interview.py` | Add `coding` to the Literal and `/options` only behind the coding flag (additive) |
 | Company + JD inputs | `company_name` (≤150) and `job_description` (≤10,000) on sessions; worker `jd_analyzer` grounds plan topics in JD text | `services/mock_interview.py` `_config`, `ai-worker/interview/graph.py` | Company profiles and JD skill mapping build on these; nothing new on the session row |
-| Institute company data | `placement_drives`: `company_name`, `role_title`, `description`, `required_skills`, `is_open`, `deadline` (tenant-scoped) | `models/placement.py` | An approved source (§7.5) |
+| Institute company data | `drives` (model `Drive`): `company_name`, `role_title`, `description`, `required_skills`, `is_open`, `deadline` (tenant-scoped) | `models/placement.py` | An approved source (§7.5) |
 | Verified student data | Skills, projects, CGPA sent as a "verified only" profile | `services/mock_interview.py` `_profile` | Skill-gap mapping (§7.7) |
 | Engine | Stateless LangGraph plan → turn → report; structured output + fallbacks; evidence-quote validation | `ai-worker/interview/*` | Explanation turns reuse the turn engine; coding AI steps are new endpoints |
 | Reports | One final report per session; the backend re-validates and recomputes every aggregate; rubric mirrored in the backend with a contract test | `services/mock_interview_report.py`, `ai-worker/interview/rubric.py` | `coding-v1` follows the same pattern; `hr-v1`/`technical-v1` unchanged |
@@ -110,7 +113,7 @@ Two artefacts, joined by `problem_key@version` and a test-set digest.
 | `expected_complexity` | rubric reference for the AI review |
 | `hidden_test_set` | `{id, version, digest_sha256, groups: {basic: n, edge: n, performance: n}}` — counts and digest only |
 | `source` | `original` + author + reviewer + review date; **no problems copied from LeetCode, HackerRank, GFG, past papers** |
-| `status` | `draft` \| `published` \| `disabled` — only `published` problems are selectable |
+| `status` | `draft` \| `published` \| `disabled` — only `published` problems are selectable. Publication validation rejects a problem unless its hidden test set has **≥ 1 `basic`, ≥ 1 `edge` and ≥ 1 `performance` test** (P8-D7 U2) |
 
 **Private test pack — runner-private storage** (P8-S7): hidden inputs, hidden expected outputs, reference solutions in
 every language, calibration data (reference timings) and private scoring metadata. Proposed home: a **separate
@@ -528,17 +531,33 @@ session is referenced, dialect-neutral types (SQLite + Postgres), allowed values
 | `retry_count` | int default 0 | automatic retries of `error` |
 | `created_at`, `started_at`, `completed_at` | timestamptz | indexes `(tenant_id, created_at)`, `(attempt_id, created_at)`, `(status, created_at)` |
 
-Coding report data uses the **existing** `mock_interview_reports` row (rubric `coding-v1` or `coding-v1-unverified`;
-`category_scores_json` gains a `coding` key). Explanation Q&A uses the existing `mock_interview_turns` (topic
-`coding:<seq>:explain`).
+~~Coding report data uses the existing `mock_interview_reports` row.~~ **Corrected 2026-11-23 (O1 = option A,
+§14.7):** coding feedback does **not** use `mock_interview_reports` — its `overall_score` is `Float NOT NULL` (CHECK
+0–100), and review-only feedback must never carry a score (P8-D7 rules 6–8). Coding feedback is stored in its own
+additive table `mock_interview_code_reviews` (§6.1a, migration `a5c7e9b1d3f2`) and served by
+`GET/POST /sessions/{id}/coding/feedback`; the existing report routes keep answering coding rounds with their
+documented 409. The same table carries a nullable `problem_score` reserved for verified `coding-v1` (8.6).
+Explanation Q&A uses the existing `mock_interview_turns` (topic `coding:<seq>:explain`).
+
+### 6.1a Migration a5c7e9b1d3f2 (8.3): coding feedback (O1 = option A)
+
+**`mock_interview_code_reviews`** — one row per attempt (unique `attempt_id`): `tenant_id`; composite FKs
+`(session_id, tenant_id)` → sessions and `(attempt_id, tenant_id)` → attempts (CASCADE); `submission_id` (reviewed
+graded/auto submission, app-validated); `rubric_version` (`coding-v1-unverified` | `coding-v1`); `status`
+(`ai_estimated` | `not_submitted`); `verification` (`not_verified` | `verified`); `language`; `code_quality_score`,
+`reasoning_score`, `testing_score` (0–5, NULL = not assessed); `problem_score` (Float, NULL); `estimates_json`
+(evidence + rationale per AI category); `feedback_json` (complexity estimate, observations, cases to consider,
+testing notes, hints used, explanation answers); `provider`; `created_at`. CHECKs: allowed values; scores 0–5;
+**`rubric_version = 'coding-v1-unverified'` ⇒ `verification = 'not_verified'` AND `problem_score IS NULL`**;
+`problem_score` only when verified and 0–100. `ENABLE + FORCE ROW LEVEL SECURITY` + `tenant_isolation`.
 
 ### 6.2 Migration B (8.4): company profiles
 
 **`mock_interview_company_profiles`**: `id`, `tenant_id`; `name` str(150); `role_title` str(150);
-`role_template_key` str(60); `drive_id` int nullable (FK `placement_drives`, SET NULL; same tenant checked in the app);
+`role_template_key` str(60); `drive_id` int nullable (FK `drives`, SET NULL; same tenant checked in the app);
 `summary` Text ≤ 2,000; `job_description` Text ≤ 10,000; `focus_skills_json` (≤ 20 `{name, weight 1–3}`);
 `competencies_json` (≤ 8 labels); `rounds_json` (1–4 `{type: coding|technical|hr, difficulty, duration_minutes,
-weight}`); `sources_json` (≥ 1 to publish: `{kind: drive|institute_profile|jd|institute_note|public_url, label, url?,
+weight}`); `sources_json` (≥ 1 to publish: `{kind: drive|jd|institute_note|public_url, label, url?,
 recorded_by, recorded_at}`); `status` (`draft, published, archived`); `created_by_id`, `updated_by_id` (SET NULL);
 `created_at`, `updated_at`.
 
@@ -598,50 +617,84 @@ company context, and a full simulation is the parent of ordinary sessions.
 
 ## 7. C — Coding evaluation and D — company-specific interviews
 
-### 7.1 Coding rubric `coding-v1` (P8-D7 — proposed weights, awaiting approval)
+### 7.1 Coding rubric `coding-v1` (P8-D7 — **APPROVED 2026-11-23**; details §14.5)
 
 | Category | Weight | Kind | Score 0–5 |
 |---|---:|---|---|
-| `correctness` — functional correctness and objective test results | 40 % | objective | `5 × basic_passed / basic_total` (best graded submission) |
-| `robustness` — edge-case handling and robustness | 20 % | objective | `5 × edge_passed / edge_total` |
+| `correctness` — objective correctness | 40 % | objective | `5 × basic_passed / basic_total` (best graded submission) |
+| `robustness` — robustness / edge cases | 20 % | objective | `5 × edge_passed / edge_total` |
 | `efficiency` — time and space | 10 % | objective | `5 × perf_passed / perf_total`; 0 when `correctness < 2.5` |
-| `code_quality` — quality and maintainability | 15 % | AI estimate | each non-zero score needs ≥ 1 verbatim code quote with its line number |
-| `reasoning` — reasoning and explanation | 10 % | AI estimate | evidence quotes from the explanation answers (Phase 4 rules) |
+| `code_quality` — code quality | 15 % | AI estimate | each non-zero score needs ≥ 1 verbatim code quote with its line number |
+| `reasoning` — reasoning | 10 % | AI estimate | evidence quotes from the explanation answers (Phase 4 rules) |
 | `testing` — testing approach | 5 % | AI estimate | evidence from the explanation or the student's own custom inputs (never hidden data) |
 | **Total** | **100 %** | | |
 
-**Deterministic calculation (backend):**
-1. Objective scores are computed by the backend from `group_results_json` of the best graded submission. The worker
-   never receives or returns them (schema-enforced); AI output containing objective keys is rejected.
-2. AI scores are integers 0–5, clamped; each non-zero score needs valid evidence (re-validated as in Phase 4); missing
-   evidence → 0 with "not assessed".
-3. Problem score = Σ (weight × score / 5) × 100, rounded half-up to 0.1. Session score = mean over assigned problems
-   (unattempted = 0, "Not attempted").
-4. **Basic-failure cap:** if `basic_passed = 0`, the AI categories are capped at 2/5, so the problem score is at most
-   12/100.
+**Rubric versions** (stored in `mock_interview_reports.rubric_version`, `String(20)`): `coding-v1` (objectively
+verified) and `coding-v1-unverified` (review-only; exactly 20 characters).
+
+**Deterministic calculation (backend, `coding-v1`):**
+1. Objective scores are computed by the backend from `group_results_json` of the best graded submission (§6.4). The
+   worker never receives or returns them (schema-enforced); AI output containing objective keys is rejected. AI
+   assessments can never override, raise or lower objective results (approved rule 3).
+2. AI scores are integers 0–5, clamped; each non-zero score needs valid evidence from the submitted code or the
+   candidate's explanation (re-validated as in Phase 4); missing evidence → 0 with "not assessed" (approved rule 2).
+3. Arithmetic uses exact decimals: contribution = weight × (score / 5) × 100; raw problem score = Σ contributions;
+   problem score = raw rounded half-up to 0.1. Objective scores are not rounded before summing. Session score = mean
+   of the assigned problems' rounded scores, rounded half-up to 0.1 — produced **only when no assigned problem is
+   `not_verified`** (U3). An unattempted problem (no code saved or submitted) scores 0 "Not attempted" and counts in
+   the mean; it is not `not_verified`, because there is nothing to verify. If any assigned problem is `not_verified`,
+   **no session score is calculated or displayed** (no partial mean); each verified problem shows its own score and
+   the others are marked `not_verified`. Every published problem has all three test groups (U2), so no weight is
+   ever redistributed.
+4. **Basic-failure cap (approved rule 4, U1 approved 2026-11-23):** when the best graded submission passes **zero**
+   tests in the `basic` group, the problem score is `min(problem score, 12.0)`. This is the approved meaning of the
+   cap; it is **not** "passes only basic tests". The cap applies to the **total** (after rounding), not only to the AI
+   categories (capping only the AI categories at 2/5 would not guarantee ≤ 12, because `robustness` can still score).
+   With `basic_passed = 0`, `efficiency` is already 0 by the gate in the table.
 5. **Complexity-claim rule:** if the student's stated complexity is contradicted by `time_limit` failures in the
    `performance` group, `reasoning` is capped at 3/5 and the report says why.
-6. **Hints:** no score effect. `hints_used` is reported for information and kept as an analytics signal.
-7. **Versioning:** weights, caps, ordering key and rounding are frozen per version string. A stored report is never
-   recomputed under a newer version. The backend mirrors the worker rubric with a contract test.
-8. **`not_verified`:** when the best graded submission is missing or not executed, objective categories are stored
-   as `null` with status `not_verified` and no overall coding score is produced (rubric `coding-v1-unverified`,
-   P8-D8). AI estimates are still shown, labelled "AI estimate". No execution result is ever simulated or predicted.
+6. **Hints:** no score effect; `hints_used` is recorded for analytics and shown for information (approved rule 1).
+7. **Versioning:** weights, caps, gates, ordering key and rounding are frozen per version string; a stored report is
+   never recomputed under a newer version; the backend mirrors the worker rubric with a contract test (approved
+   rule 5).
+8. **`not_verified` (approved rules 6–8, P8-D8):** an objective category is `not_verified` (stored as `null`) unless
+   the best graded submission was executed by the approved runner and judged against the private hidden test set.
+   Review-only rounds use `coding-v1-unverified`: all three objective categories are `not_verified`, **no problem or
+   session score is produced** (no overall, no AI-only subtotal), and the three AI categories are shown individually as
+   0–5 "AI estimate" with their evidence and an uncertainty note. Nothing is simulated, predicted or inferred from code
+   reading: no test result, execution result, correctness or score is ever fabricated (approved rule 7).
+9. **Timeouts vs runner faults (U4, approved 2026-11-23):** if the candidate's code reaches the overall execution
+   time limit (§4.4), the tests that did not run are counted as `time_limit` failures; the submission is `completed`
+   with an objective result. If an infrastructure or runner fault interrupts evaluation, the submission is
+   **incomplete** (status `error`, verdict class `sandbox_error`, error class recorded) and **cannot be selected as the
+   best graded submission** (§6.4 considers only `completed` submissions). The two are kept distinct in stored status
+   and in every report and UI text: a timeout is the candidate's result; a runner fault is never counted against the
+   candidate and never turned into a score.
 
 ### 7.2 AI review inputs and guards
 
-The worker receives the statement, `expected_complexity`, constraints, the best graded (or latest) code, the language,
-**visible** test results, hidden **group counts and first-failure class**, the student's custom inputs and the
-explanation answers. It returns a complexity estimate with a justification quoting the code, ≤ 3 quality observations
+**Review-only mode (8.3, corrected 2026-11-23):** no code is executed, so **no runner results of any kind exist and
+none are sent or invented**. The worker receives only public problem material (title, statement, formats,
+constraints, examples, `expected_complexity` as the rubric reference), the latest graded/automatic submission's code
+and language, the typed explanation answers and the hint count. Output: AI estimates for `code_quality`,
+`reasoning`, `testing` only (evidence re-validated by the backend; unknown keys such as objective categories or
+totals reject the whole answer), a complexity estimate quoting a code line, ≤ 3 observations, ≤ 3 "Consider …"
+cases (never "missed"), ≤ 3 testing notes; sentences claiming test results or correctness are removed.
+
+**Verified mode (8.6, after G4 — not built):** the worker additionally receives the best graded submission's
+**visible** test results, hidden **group counts and first-failure class**, and the student's custom inputs. It returns a complexity estimate with a justification quoting the code, ≤ 3 quality observations
 with line numbers, ≤ 3 "consider these cases" notes (phrased as "missed" only when the `edge` group has failures),
 testing observations and suggestions. Code and JD text are passed as delimited untrusted data; injection fixtures
 (§11.3) must not raise scores above a no-comment baseline.
 
 ### 7.3 Explanation turns
 
-After "Done" or auto-submit, 1–2 questions (approach, complexity, edge cases, how the student tested) are generated by
-`/interview/coding/followup` and answered through the existing `/answer` path (typed, or `stt` in voice/video mode),
-with the existing evaluation and evidence rules.
+After "Done" (for a problem with a graded submission), 1–2 questions (approach, complexity, edge cases, how the
+student tested) are generated by `/interview/coding/followup` and answered through the existing `/answer` path.
+**Corrected 2026-11-23: explanation turns are typed only — decision B1-a stays in force** (coding rounds are
+text-only; `stt` → 422). Spoken explanation turns in voice/video mode need a separate explicit approval. A fixed
+question is used when the worker is down; a failed second question closes the problem. Problems closed by time-up
+get no explanation turns (their automatic submission is still reviewed).
 
 ### 7.4 Role templates (code data, no table)
 
@@ -649,24 +702,39 @@ with the existing evaluation and evidence rules.
 `data_analyst`, `qa_sdet`, `business_analyst` — topic weights, default round mix, coding topics, HR competencies.
 Generic and written by us; no company content.
 
-### 7.5 Approved company sources (P8-D10)
+### 7.5 Approved company sources (P8-D10 — **APPROVED 2026-11-23**)
 
-Only: (1) the institute's **placement drives**; (2) **verified institute profile data** already in Campus AI;
-(3) **admin/TPO-authored company profiles with source records** (`sources_json`, ≥ 1 to publish); (4) a **JD the
-student supplies**; (5) generic role knowledge (role templates). **Never:** "Company X asks …", leaked or remembered
-question lists, interview-experience sites, or invented facts about culture, salary, process or selection rates. The
-system never fetches URLs (a `public_url` source is a citation the author read, not a fetch target). Enforcement:
-prompt rules; a worker claim filter that removes company-claim sentences; a mandatory disclaimer on every company round
-and report ("Questions are generated in the style of the role and the information your institute provided. They are
-not actual questions from <company>."); sentinel tests.
+Only: (1) the institute's **open placement drives** (`is_open`; closed drives are not eligible) — this is the only
+"institute data" source; (2) **admin/TPO-authored company profiles with source records** (`sources_json`, ≥ 1 to
+publish; kinds `drive`, `jd`, `institute_note`, `public_url`); (3) a **JD the student supplies**; (4) generic role
+knowledge (role templates). The earlier separate "verified institute profile data" category is **removed** (no such
+data exists in Campus AI; qualifying institute data is drive data). **Excluded:** recruiter-owned company `about`
+text (`recruiters.about`) and anything a recruiter writes. **Never:** "Company X asks …", leaked or
+remembered question lists, interview-experience sites, or invented facts about culture, salary, process or selection
+rates.
 
-### 7.6 Profile management (P8-D9)
+**Public URLs are never fetched or scraped.** A `public_url` source is a citation the author read; it is shown to
+students as **plain text (label and domain only), never as a clickable link**.
 
-Admin and TPO of the same institute create, edit, publish and archive profiles; teachers and recruiters have no
-access in Phase 8 (403); another institute → 404. Every write is audited
-(`mock_interview.company_profile_{create,update,publish,archive}`, content-free summary). "Create from drive"
-pre-fills from an open drive of the same institute. Students see published profiles and open drives of their own
-institute.
+**Attribution:** institute-authored content (profile summary, competencies, notes) is shown with the explicit label
+**"From your institute"** and is never presented as independently verified company fact. The claim filter applies to
+AI-generated text; attributed institute text is displayed as written.
+
+Enforcement (unchanged): source records on every profile; prompt rules; job descriptions and profile text passed to
+the AI as delimited untrusted data (prompt-injection protection); a mandatory worker claim filter that removes
+company-claim sentences; a mandatory disclaimer on every company round and report ("Questions are generated in the
+style of the role and the information your institute provided. They are not actual questions from <company>."); no
+JD or profile text in logs, metrics, the usage ledger, Sentry or Langfuse (R1/R2/R5); sentinel tests.
+
+### 7.6 Profile management (P8-D9 — **APPROVED 2026-11-23**)
+
+Company profiles are **institute-owned**. Admin and TPO of the same institute create, edit, publish and archive them
+(either role may publish; no second-person review). Teachers and recruiters have **no profile access** in Phase 8
+(403, read and write); another institute → 404. Admin and TPO may **create a profile from an open placement drive of
+their own institute** ("Create from drive" pre-fills role, JD and skills; a closed drive or another institute's drive
+→ 404). Every write is audited (`mock_interview.company_profile_{create,update,publish,archive}`) with a **content-free
+summary**. Profiles are archived, never deleted. Students see **only published profiles of their own institute**
+(drafts and archived profiles → 404) and the open drives of their own institute.
 
 ### 7.7 JD ingestion and skill mapping
 
@@ -675,13 +743,23 @@ without a verbatim JD quote is dropped. The backend maps skills to the student's
 table → `matched`, `missing`, `focus_order`, passed to the existing plan request as an additive optional
 `focus_skills` field and used for coding-topic choice. The setup page shows the mapping before start.
 
-### 7.8 Question strategy, difficulty and transparency (P8-D11)
+### 7.8 Question strategy, difficulty and transparency (P8-D11 — **APPROVED 2026-11-23**)
 
-Technical: topic weights from focus skills ∪ role template, with the existing adaptive level. HR: profile competencies
-drive behavioural questions. Coding: problems whose topics intersect the focus skills. HR and technical rounds keep
-`hr-v1` / `technical-v1`; **no "company fit" score**. Before start the student sees the rounds, durations, rubric
-categories and weights, which parts are objective and which are AI estimates, the profile's sources and the
-disclaimer; the report repeats them.
+**Company context influences question generation only.** Technical: topic weights from focus skills ∪ role template,
+with the existing adaptive level. HR: profile competencies drive behavioural questions. Coding: problems whose topics
+intersect the focus skills.
+
+**Evaluation is unchanged:** the evaluator receives the same payload as a generic interview (transcript and the
+existing config) and uses the existing `hr-v1` / `technical-v1` rubrics unchanged. There is **no company-fit score
+and no competency score**. The Phase 6.5 report-parity tests are extended to prove the evaluation payload and stored
+report are identical with and without a company profile.
+
+**Storage:** the profile reference (`company_profile_id`) and a **frozen copy** of the profile used are stored in the
+session's `plan_json`; no session column is added. Later profile edits never change a past session.
+
+**Transparency:** before start the student sees the rounds, durations, rubric categories and weights, which parts are
+objective and which are AI estimates, the profile's sources (plain text) with "From your institute" attribution, and
+the disclaimer; the report repeats them.
 
 ## 8. E — Full interview simulation
 
@@ -745,6 +823,7 @@ predict selection, and company style is not the actual company process.
 |---|---|---|
 | Backend | `AI_MOCK_INTERVIEW_CODING_ENABLED` | coding hidden; coding routes 404; create `coding` → 422 |
 | Backend | `AI_MOCK_INTERVIEW_CODING_TENANT_IDS` | **fail-closed**: empty = no institute |
+| Backend | `AI_MOCK_INTERVIEW_CODING_AI_ENABLED` (added 8.3) | no AI hints, no explanation turns, coding feedback POST 409 (Batch 1 behaviour) |
 | Backend | `AI_MOCK_INTERVIEW_CODE_EXECUTION_ENABLED` | review-only (no runner call) |
 | Backend | `CODE_RUNNER_URL`, `CODE_RUNNER_TOKEN` | empty URL = review-only; production refuses a URL without a ≥ 32-char token |
 | Backend | `AI_MOCK_INTERVIEW_COMPANY_ENABLED` | company routes 404 |
@@ -1010,11 +1089,11 @@ S1b) remain **Recommended — awaiting user approval**. Nothing has been rejecte
 | P8-D4 | Flags | §9.1, all default OFF; the environment is the upper bound; institutes only narrow; coding allow-list fail-closed | **Accepted (G1, 2026-11-23)** |
 | P8-D5 | Editor | CodeMirror 6, exact pins, minimal packages, lazy-loaded on coding pages only, keyboard-accessible, textarea fallback | **Accepted (G1, 2026-11-23)** |
 | P8-D6 | Limits | 30 runs, 3 graded submissions, 2–3 hints per problem; 30/45/60-min rounds; atomic server enforcement, rate limits, per-session/student/institute safeguards, race protection, bounded resources, exhausted-limit behaviour (§3.8) | **Accepted (G1, 2026-11-23)** |
-| P8-D7 | Rubric `coding-v1` | 40 / 20 / 10 objective + 15 / 10 / 5 AI estimates; deterministic and versioned; basic-failure cap; no hint penalty; `not_verified` when unexecuted (§7.1) — **proposed weights** | Recommended — awaiting user approval |
+| P8-D7 | Rubric `coding-v1` | 40 / 20 / 10 objective + 15 / 10 / 5 AI estimates; deterministic and versioned (`coding-v1`, `coding-v1-unverified`); 12/100 cap; no hint penalty; evidence for AI scores; AI never overrides objective results; `not_verified` when unexecuted (§7.1, §14.5) | **APPROVED (2026-11-23)**; semantics U1–U4 approved 2026-11-23 (§14.5) |
 | P8-D8 | Review-only mode | editor available; "AI estimate" labels; no overall score; test categories "not verified"; no simulated execution | **Accepted (G1, 2026-11-23)** |
-| P8-D9 | Profile authoring | admin + TPO, own institute, every write audited; teachers and recruiters no access | Recommended — awaiting user approval |
-| P8-D10 | Approved company sources | drives, verified institute profile data, admin/TPO profiles with source records, student JDs, generic role templates; no URL fetching; claim filter + disclaimer mandatory | Recommended — awaiting user approval |
-| P8-D11 | Company HR/technical rubrics | unchanged `hr-v1` / `technical-v1`; no "company fit" score | Recommended — awaiting user approval |
+| P8-D9 | Profile authoring | institute-owned profiles; admin + TPO create/edit/publish/archive, incl. from their own institute's open drives; every write audited with content-free summaries; teachers and recruiters no access; students see only their institute's published profiles (§7.6) | **APPROVED (2026-11-23)** |
+| P8-D10 | Approved company sources | open placement drives (the only institute-data source; separate "verified institute profile data" category removed), admin/TPO profiles with source records, student JDs, generic role templates; recruiter `about` text excluded; URLs never fetched, shown as plain-text label + domain; "From your institute" attribution; claim filter, disclaimer, prompt-injection and telemetry-privacy rules mandatory (§7.5) | **APPROVED (2026-11-23)** |
+| P8-D11 | Company context | question generation only; evaluation payload and `hr-v1` / `technical-v1` unchanged; no company-fit or competency score; profile reference + frozen copy in `plan_json`, no session column (§7.8) | **APPROVED (2026-11-23)** |
 | P8-D12 | Simulation quotas | one unit per round; atomic all-round reservation at creation; no partial reservation; concurrency-safe; later rounds exempt; release policy §8.3 | Recommended — awaiting user approval |
 | P8-D13 | Simulation expiry | 7 days; lazy expiry + manual sweep script; completed rounds kept; documented student status; content-free status history | Recommended — awaiting user approval |
 | P8-D14 | Which graded submission counts | the **best** objectively graded submission, deterministic ordering and tie-breaks (§6.4); all attempts kept; the chosen one shown | **Accepted (G1, 2026-11-23)** |
@@ -1043,6 +1122,75 @@ S1b) remain **Recommended — awaiting user approval**. Nothing has been rejecte
 | B1-b | Development-only setting `AI_MOCK_INTERVIEW_CODING_ALLOW_DRAFT_PROBLEMS` (default off) lets `draft` problems be selected; ignored (and logged) when `ENVIRONMENT=production`, so production only ever serves `published` problems | **Accepted (G1, 2026-11-23)** |
 | B1-c | No Run endpoint, runner client or fake runner in 8.1; execution (and the run limits) move to 8.6 | **Accepted (G1, 2026-11-23)** |
 
+### 14.5 P8-D7 approval record (2026-11-23)
+
+**Status: APPROVED** by the user, 2026-11-23 ("approved proceeding with the proposed P8-D7 scoring rubric").
+
+Approved weights: objective correctness 40 %, robustness / edge cases 20 %, efficiency 10 %, code quality 15 %,
+reasoning 10 %, testing approach 5 % (total 100 %).
+
+Approved rules (as given):
+1. No automatic score penalty for using hints; hint usage may be recorded for analytics only.
+2. AI-generated subjective assessments must include supporting evidence from the submitted solution or candidate
+   explanation.
+3. AI assessments must never override objective test results.
+4. "A solution that passes only basic tests must have a maximum score of 12/100." (see U1)
+5. Evaluation must be deterministic and versioned; the rubric version is recorded.
+6. When code has not been executed and objectively verified, status must be `not_verified`.
+7. Do not fabricate test results, execution results, correctness or scores.
+8. Before the secure runner and private hidden-test infrastructure are approved and available, no verified
+   correctness and no overall verified score are claimed; qualitative AI feedback may be given with appropriate
+   uncertainty.
+
+Also part of the approved proposal (§7.1): the efficiency gate (0 when `correctness < 2.5`), the complexity-claim cap
+(`reasoning` ≤ 3/5), session score = mean over assigned problems (unattempted = 0), missing AI evidence → 0 "not
+assessed", best-graded-submission selection (P8-D14), exact-decimal arithmetic and half-up rounding to 0.1.
+
+**Effect on Batch 2:** 8.3 implements only `coding-v1-unverified` (no score, AI estimates per category). The
+`coding-v1` total, the cap and the verification rules are implemented in 8.6; U2's publication check lands with the
+private test pack (8.5a).
+
+**Scoring semantics U1–U4 — RESOLVED and APPROVED by the user, 2026-11-23** (applied in §7.1 rules 3, 4, 9 and §3.2):
+
+| # | Approved decision |
+|---|---|
+| U1 | If **zero** basic tests pass, the problem score is capped at **12.0/100** (cap on the total). This is the approved interpretation of rule 4; it is not "passes only basic tests". |
+| U2 | Every published problem must contain at least one `basic`, one `edge` and one `performance` test. Publication validation rejects a problem missing any group. Weights are never redistributed. |
+| U3 | If any assigned problem in a session is unverified, no overall session score is produced. Verified problems show their individual scores; unverified problems are marked `not_verified`. No misleading partial session score is calculated or displayed. |
+| U4 | Candidate code reaching the overall execution time limit: tests that did not execute count as timeouts. An infrastructure or runner fault: the submission is marked incomplete and cannot be selected as the best graded submission. Candidate timeouts and infrastructure faults stay distinct in stored status and reporting. |
+
+Question history (as raised before approval, kept for the record):
+
+| # | Question | Why it matters | Recommendation made |
+|---|---|---|---|
+| U1 | Rule 4 says "passes **only** basic tests" → max 12/100. With the approved 40 % correctness weight, passing all basic tests alone already earns 40, so the literal reading contradicts the weights (it would also make passing basic tests score lower than the cap allows). The proposal the user approved said "passes **no** basic test" → max 12/100 | The cap's trigger changes who gets capped | Confirm the proposal's meaning: **no basic test passed ⇒ problem score ≤ 12.0**, applied to the total (§7.1 rule 4, working definition). If "only basic tests" was intended, a different cap value or weighting is needed, which would change the approved rubric |
+| U2 | A test group with 0 tests (e.g. a problem without `performance` tests) makes its criterion undefined | No weight redistribution was approved | Require ≥ 1 test in each of `basic`, `edge`, `performance` for every **published** problem (bank validator, 8.5a) so the case cannot occur; no renormalisation |
+| U3 | Partial verification inside a session: some problems verified, others `not_verified` (e.g. runner down) | A session mean would mix verified and unverified problems | No session score unless every assigned problem is verified or unattempted; show each verified problem's score and mark the rest `not_verified` |
+| U4 | Partial execution inside a submission (total wall-clock limit reached, remaining tests not run) | §4.4 counts them as `time_limit` failures | Keep §4.4: they are objective failures of that submission (the code exceeded the round's limits), not `not_verified`; a runner fault (`sandbox_error`) instead leaves the submission uncompleted, so it cannot be the best submission |
+
+### 14.6 P8-D9, P8-D10, P8-D11 approval record and Batch 2 scope (2026-11-23)
+
+**Status: APPROVED** by the user, 2026-11-23 (the recommended defaults of the decision brief, including sub-decisions
+9a option A, 9b no teacher access, 9c admin may create from drive, 10a source category removed, 10b recruiter text
+excluded, 10c plain-text URLs, 10d open drives only, 11a option A, 11b frozen copy in `plan_json`). Detailed rules:
+§7.5, §7.6, §7.8.
+
+**Batch 2 scope (approved):** **8.3** AI coding review (review-only, `coding-v1-unverified`) and **8.4** company
+profiles and company-context question generation (migration B). Unchanged gates and flags: all new flags default OFF
+(P8-D4), including backend `AI_MOCK_INTERVIEW_COMPANY_ENABLED` and worker `MOCK_INTERVIEW_CODING_ENABLED` /
+`MOCK_INTERVIEW_COMPANY_ENABLED`; nothing executes code (P8-D8); no sandbox work before G2–G4. **Batch 2
+implementation still needs its own explicit approval.**
+
+### 14.7 O1 approval record: review-only coding feedback storage (2026-11-23)
+
+**Status: APPROVED** by the user, 2026-11-23: **O1 = option A** — a separate additive coding-feedback table with its
+own dedicated API. Implemented in 8.3 as `mock_interview_code_reviews` (migration `a5c7e9b1d3f2`, §6.1a) and
+`GET/POST /mock-interview/sessions/{id}/coding/feedback`. `mock_interview_reports` (and its NOT NULL
+`overall_score`) is unchanged and never used for review-only feedback; no fabricated zero or other overall score is
+stored; a DB CHECK forbids a score or a "verified" status on `coding-v1-unverified` rows. The nullable
+`problem_score` column is the future path for verified `coding-v1` (8.6). Option B (feedback inside `plan_json`) was
+not chosen. **Actual code execution remains deferred until the sandbox gates G2–G4 pass.**
+
 ### 14.3 Changes from r1
 
 | # | r1 | r2 |
@@ -1054,7 +1202,7 @@ S1b) remain **Recommended — awaiting user approval**. Nothing has been rejecte
 | D6 | limits | + atomic server enforcement, race protection, per-session/student/institute caps, exhausted-limit codes |
 | D7 | 35/10/15 objective, 15/15 AI, 10 independence (hint penalty); cap 30/100 | 40/20/10 objective, 15/10/5 AI; **no hint penalty**; cap ≤ 12/100 when no basic test passes; deterministic and versioned |
 | D8 | review-only | + no simulated execution; Run disabled |
-| D9–D11 | as r1 | source list aligned (adds verified institute profile data) |
+| D9–D11 | as r1 | source list aligned (added verified institute profile data — later removed on approval, §14.6) |
 | D12 | check all rounds at creation | atomic reservation, no partial, concurrency-safe, release policy |
 | D13 | 7 days | + cleanup, student status, content-free history |
 | D14 | last submission | **best** submission, deterministic ordering |
@@ -1075,6 +1223,7 @@ S1b) remain **Recommended — awaiting user approval**. Nothing has been rejecte
 | **G0** | nothing (this document) | — |
 | **G1** | 8.1–8.4, 8.5a, 8.7 (no execution) | P8-D1…D4 and D6…D17 accepted (D5 before 8.2's editor work) |
 | **G1 (Batch 1, narrower scope — passed 2026-11-23)** | 8.1 + 8.2 only | P8-D1…D6, D8, D14…D17 and B1-a/b/c accepted. D7 and D9…D13 are still required before 8.3, 8.4 and 8.7 |
+| **Batch 2 decisions (recorded 2026-11-23)** | 8.3 + 8.4 | P8-D7 (+ U1–U4), P8-D9…D11 and O1 = A APPROVED; implementation authorized 2026-11-23 and done (§17; uncommitted). P8-D12/D13 still required before 8.7 |
 | **G2** | 8.5b runner code + Linux CI job (synthetic data, no production) | P8-S2, S3, S5, S6, S7 accepted |
 | **G3** | provisioning the VM and any spend | P8-S1 and P8-S4 accepted; provider, region and cost approved; backend egress/private-network approach chosen |
 | **G4** | 8.6 — **first execution of untrusted student code** | 8.5c evidence recorded: escape suite 100 % on the VM, load test within targets, firewall/egress verified, token rotation tested; your sign-off of sandbox security acceptance |
@@ -1167,5 +1316,147 @@ evidence; Git history tracks commit status.
 
 ### 16.5 Remaining before Batch 2
 
-P8-D7 (rubric) before 8.3; P8-D9…D11 before 8.4; P8-D12/D13 before 8.7; P8-S2/S3/S5/S6/S7 (G2) before runner code;
+P8-D7 approved 2026-11-23 with semantics U1–U4 approved the same day (§14.5); P8-D9…D11 approved 2026-11-23 (§14.6); Batch 2 = 8.3 + 8.4; P8-D12/D13 before 8.7; P8-S2/S3/S5/S6/S7 (G2) before runner code;
 human review of the 24 drafts.
+
+## 17. Batch 2 record: 8.3 AI coding review + 8.4 company profiles (2026-11-23; implemented, uncommitted)
+
+Approval: Batch 2 scope (§14.6) and implementation authorized 2026-11-23, with **O1 = option A** (§14.7). This
+document records implementation status and evidence; Git history tracks commit status. **No code is executed
+anywhere; no Run endpoint, fake runner, simulated result or verified score exists.**
+
+### 17.1 What was built
+
+**8.3 backend** (flag `AI_MOCK_INTERVIEW_CODING_AI_ENABLED`, default off, behind the coding gate):
+- Migration `a5c7e9b1d3f2` + model `MockInterviewCodeReview` (§6.1a): one row per problem, RLS forced, CHECKs that
+  forbid any score or "verified" status on `coding-v1-unverified` rows.
+- `services/mock_interview_coding_ai.py`: AI hints (only past the authored hints and within the P8-D6 cap; slot
+  reserved atomically and given back on failure; text re-filtered and **not stored**); explanation turns ("Done" with
+  a graded submission → `explaining` by compare-and-set; 1–2 typed questions in `mock_interview_turns`, topic
+  `coding:<seq>:explain`; fixed fallback question; answers via the existing `/answer`; `stt` → 422).
+- `services/mock_interview_coding_report.py`: feedback generated once under the session lease, all problems or
+  nothing; strict worker-output schema (unknown keys such as objective categories or totals → 503, nothing stored);
+  evidence re-validated (code quote within the 3 lines starting at the cited line; explanation quotes by the Phase 4
+  rule; quotes about
+  scores/instructions never count); correctness/test-result sentences removed; no score of any kind.
+- `services/mock_interview_coding_guards.py`: the backend copy of the text guards (≤ 3 code lines, claim filter,
+  evidence rules).
+- Routes `GET/POST /sessions/{id}/coding/feedback`; `/answer` for coding sessions (AI help on) → explanation answers;
+  `/next` and the report routes keep their documented 409. Ledger steps `code_hint`, `code_followup`, `code_review`
+  (new optional `step=` on the worker client; default unchanged).
+
+**8.3 worker** (flag `MOCK_INTERVIEW_CODING_ENABLED` + `MOCK_INTERVIEW_ENABLED`): `interview/coding/` (`router.py`
+`/hint` `/followup` `/review`, `schemas.py` strict model output, `prompts.py` numbered code as data, `filters.py`,
+`review.py`); every route `tracing_disabled()` + `usage_scope()`. New data tags in `safety.DATA_TAGS`.
+
+**8.3 frontend:** `ExplanationPanel` (typed only), `CodingFeedback` ("AI estimate" per category, "Not verified"
+objective categories, evidence with its source, uncertainty note, disclaimer, no score), AI hints shown once in
+`ProblemPanel`, `CodingRoom`/`CodingFinished` wiring, helpers in `codingFlow.ts`.
+
+**8.4 backend** (flag `AI_MOCK_INTERVIEW_COMPANY_ENABLED`, default off, behind the master switch and allow-list):
+- `services/role_templates.py` (6 generic templates); migration `b6d8f0a2c4e3` + model
+  `MockInterviewCompanyProfile` (§6.2 + `published_at`, `archived_at`; RLS forced; `drive_id` FK SET NULL).
+- `services/mock_interview_company.py` + `routers/mock_interview_company.py` (routes in `API.md` "Phase 8.4"):
+  RBAC (admin/TPO write, either may publish; teacher/recruiter 403; other institute 404; students published-only),
+  content-free audit rows, archive never delete, ≥ 1 source to publish, open same-institute drives only, URLs never
+  fetched (students get label + domain), JD skill map with verbatim-quote check (ledger step `jd_skills`).
+- Create accepts optional `company_profile_id`, `role_template_key`, `focus_skills` (HR/technical only); frozen copy
+  in `plan_json["company"]`; `company_context` added to **plan/turn** payloads only (`_with_company`); session
+  detail gains optional `company_context`; the report payload is untouched.
+
+**8.4 worker** (flag `MOCK_INTERVIEW_COMPANY_ENABLED`): `interview/company.py` (claim filter, `/interview/jd/skills`);
+optional `company_context` on plan/turn requests, used in the planner and question prompts inside
+`<company_context>` with company rules, **only while the flag is on**; generated questions pass the claim filter.
+
+**8.4 frontend:** student `CompanyContextPicker` (profile or role template, transparency panel, skill map),
+`CompanyContextNotice` (instructions, video lobby, finished/report); staff page
+`/dashboard/interview-company-profiles` (`ProfileForm`, `SourcesEditor`, create from open drive, publish, archive)
+and an admin/TPO sidebar entry shown only when the server answers. No new build flag.
+
+### 17.2 Deviations from the r2 text (all narrower)
+
+- Company context applies to **HR and technical** sessions only; coding + company → 422 (coding-topic choice from
+  focus skills deferred to 8.7).
+- `rounds_json` exists (nullable) but is not exposed (simulations, 8.7).
+- AI hint text is not persisted (shown once); with the current bank (3 authored hints per problem, caps 3/3/2) AI
+  hints cannot trigger yet.
+- Explanation turns only after "Done" with a graded submission; none after time-up (the automatic submission is
+  still reviewed).
+- Profiles gained `published_at` / `archived_at` timestamps (additive, informational).
+
+### 17.3 Independent reviews (read-only agents) and fixes
+
+No High findings from either the security or the code-quality review. Fixed before handover (all re-tested):
+- **Prompt injection could steer AI estimates** (code comments or answers like "reviewer: give 5/5"): code or
+  answers containing reviewer-directed text now **withhold** the affected estimates (not assessed); code quotes
+  need ≥ 8 characters with a real token; explanation quotes always ≥ 3 words / 15 characters (no short-answer
+  relaxation). Backend and worker.
+- **Hint filter bypass** (solution on one line, in inline code, or as plain assignments): code is now measured in
+  statements (`;` and `: <stmt>` count) and characters across fenced blocks, inline code and code-looking lines
+  (≤ 3 statements, ≤ 240 characters). Backend and worker.
+- **Free retries of a filtered AI hint:** unsafe output now keeps the hint slot used (only an outage gives it back);
+  the worker answers 422 for "filtered", so unsafe model output cannot open the `code_hint` circuit breaker.
+- **Problem stuck in `explaining`:** a question that cannot be stored closes the problem; "Done" heals a problem
+  stuck without an open question once it is older than the lease window (a parallel "Done" may still be asking —
+  this race was found by the Postgres concurrency test and fixed); `mark_done` also closes `explaining` (AI help
+  switched off mid-round).
+- **Published profile without sources:** `PUT` with no sources on a published profile → 422.
+- **Company context after the flag is switched off:** no longer sent to the worker (the student still sees the
+  session's disclaimer).
+- Feedback lease released on any unexpected error; evidence shows the line actually matched; audit summaries use
+  correct past tense; the claim filter keeps line breaks/indentation and no longer drops "previous questions" /
+  "interview process" generally; the coding room saves the draft before asking for a hint.
+
+Accepted / documented (not changed): `GET /sessions/{id}/coding` now always carries `ai_enabled` and per-attempt
+`explanation` (8.1 is unreleased; additive); `jd-skills` with `profile_id` returns verbatim quotes of a **published**
+profile's JD (student-facing practice material by design); a drive source kept unchanged on a drive that closed
+later stays valid; the admin/TPO nav probe calls `/company/role-templates` (404 while off) in builds with the
+mock-interview flag; a step-by-step algorithm written in prose cannot be fully detected by a filter (residual risk;
+prompts forbid it).
+
+### 17.4 Test evidence (2026-11-23, final code)
+
+| Check | Command | Result |
+|---|---|---|
+| New 8.3 backend tests | `cd backend; .venv/Scripts/python -m pytest -p no:cacheprovider -o addopts="" -q tests/test_mock_interview_coding_ai.py` | **34 passed** |
+| New 8.4 backend tests | `… tests/test_mock_interview_company.py` | **16 passed** |
+| Updated guard tests | `… tests/test_mock_interview_privacy.py tests/test_mock_interview_flags.py` | passed (table list + create-body fields + integer-id exemption for `company_profile_id` / `profile_id`) |
+| **Full backend SQLite regression** (run alone, 21:27–22:03) | `cd backend; .venv/Scripts/python -m pytest -p no:cacheprovider -o addopts="" -q` | **630 passed, 0 failed, 24 skipped**, exit 0 (35 min). The 24 skips are the Postgres-only RLS files (12 earlier + 6 coding + 6 Batch 2) — **skipped on SQLite, not passed there**; run on Postgres below |
+| Postgres 16 throwaway container (pinned digest, tmpfs, `--rm`, 127.0.0.1:15434; removed) — migrations | owner: `alembic upgrade head` (empty → `b6d8f0a2c4e3`), `downgrade -2`, `upgrade head`; `heads` | passed; single head; `app_user` NOSUPERUSER / NOBYPASSRLS; both new tables RLS enabled + forced |
+| Postgres RLS as `app_user` | `RLS_TEST_DATABASE_URL=… pytest tests/test_mock_interview_batch2_rls_postgres.py tests/test_mock_interview_coding_rls_postgres.py tests/test_mock_interview_rls_postgres.py tests/test_rls_postgres.py` | **24 passed** (6 new) |
+| Postgres API as `app_user` (mock-interview files) | `pytest --confcutdir=tests_pg_api tests_pg_api/test_mock_interview_batch2_pg.py …coding_pg …pg …ops_pg …reports_pg` | **21 passed** (3 new: parallel feedback → 1 review call + 1 row set; parallel "Done" → 1 question; company RBAC/audit/RLS/frozen copy) |
+| **Full `tests_pg_api` folder** as `app_user` | `pytest --confcutdir=tests_pg_api tests_pg_api` | **237 passed, 2 skipped**, exit 0 (skips: the known Redis queue tests, `RQ_TEST_REDIS_URL` not set) |
+| SQLite migrations | pre-Batch-2 schema from the ORM, `stamp e7a1c4d9b2f6` → `upgrade head` → `downgrade -2` → `upgrade head` | passed; columns of both tables match the ORM |
+| AI worker interview suites | `cd ai-worker; .venv/Scripts/python -m pytest -p no:cacheprovider -q tests/test_interview_{company,coding,engine,report,flag,no_langfuse,usage}.py tests/test_worker_security.py tests/test_sentry_{ai_integrations,privacy}.py tests/test_worker_{correlation,metrics_token}.py` | **116 passed** (25 new). `ai-worker/qdrant_data/` unchanged. Qdrant/face server tests and the whole folder not run |
+| ruff | backend `app/`, migrations, tests; worker `interview/`, tests | clean |
+| Frontend unit | `npm run test:unit` | **187/187** (166 + 21 new) |
+| TypeScript / lint | `npx tsc --noEmit` / `npm run lint` | exit 0 / 0 errors (2 pre-existing warnings in `e2e/smoke.spec.ts`) |
+| Production build | `npm run build` with mock-interview + coding build flags on, and with defaults (off) | exit 0 / exit 0 |
+| Real Chromium smoke, flags on (scratch backend on its own SQLite + scripted AI, `next dev`) | session scratch script | **38/38**: admin authoring (save, publish, source as plain text, no link, create from drive), teacher no access, student picker (From your institute, domain text, disclaimer, evaluation note, no links, skill map with quotes), instructions notice, picker hidden for coding, typed explanation turns (2 questions, closed), feedback (AI estimate labels, 3× Not verified, Not assessed, uncertainty note, no claim, no overall/percentage), no overflow at 320/390/768/1366 px (profiles list, setup form, feedback), 0 unexpected console errors |
+| Real Chromium smoke, Batch 2 flags off | same, backend `--flags-off` | **7/7**: no nav entry, page "not enabled", no picker, Done closes directly, no feedback button, not-available note, 0 console errors |
+| `git diff --check` | | clean (CRLF notices only; `core.autocrlf=true` normalizes) |
+
+**Not run / future acceptance (not reported as passed):** live LLM; real devices and screen readers (Phase 10);
+Redis queue path (2 skips); load tests; anything involving code execution (gates G2–G4 not passed).
+
+### 17.5 Pre-staging review (2026-11-24)
+
+**Scoring compliance — individual AI estimates are not scores.** Review-only feedback may carry an **individual
+0–5 AI estimate** for each of code quality, reasoning and testing approach. Each assessed estimate needs verified
+evidence and now carries its **own `uncertainty` text** (added in this review; additive field, rendered in the UI);
+a not-assessed category has `score: null` and an uncertainty text saying why. Correctness, robustness and efficiency
+are always `not_verified`. No overall, problem, session or AI-only score exists in the schemas, the service, the
+worker response or the UI. Database: the 0–5 CHECKs on the three estimate columns accept every approved value; the
+`unverified_unscored` CHECK forbids `problem_score` and `verification = 'verified'` on `coding-v1-unverified` rows;
+`problem_score` is allowed only with `verification = 'verified'` (future `coding-v1`). A `coding-v1` row that is
+`not_verified` without a score remains valid on purpose (U3). Submissions are only ever `not_executed`; nothing can
+store a test result.
+
+**AI hint fallback is dormant for the current bank.** All 24 problems have 3 authored hints and the caps are 3/3/2,
+so authored hints always cover the cap and the AI hint worker is never called (test). With a deterministic fixture
+(one authored hint per problem): the authored hint comes first with no AI call; hints 2–3 use the AI fallback; the cap
+stops further calls; unsafe AI output uses up its slot (no endless retries); without AI help the authored count caps
+hints. The hint payload carries public problem text, the student's code and the authored hints only (no hidden
+data, no rubric reference). Code-limit bypass cases (one-line solutions, inline code, plain assignment lines, an
+unterminated fence, mixed fenced + inline code, an over-long single statement) are rejected; exactly 3 statements
+are allowed.

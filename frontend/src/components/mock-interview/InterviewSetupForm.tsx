@@ -20,6 +20,8 @@ import RemainingQuota from "./RemainingQuota"
 import { visibleModes } from "./mockInterviewModes"
 import CodingSetupFields, { type CodingChoices } from "./coding/CodingSetupFields"
 import { visibleInterviewTypes } from "./coding/codingFlow"
+import CompanyContextPicker from "./company/CompanyContextPicker"
+import { NO_COMPANY, companyCreateFields, type CompanyChoice } from "./company/companyFlow"
 
 const inputClass =
 	"w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30 dark:border-white/10 dark:bg-slate-900"
@@ -100,6 +102,8 @@ export default function InterviewSetupForm({
 		problemKey: "",
 		duration: "45",
 	})
+	// Phase 8.4: optional company profile / role template (hidden while the server says 404).
+	const [companyChoice, setCompanyChoice] = useState<CompanyChoice>(NO_COMPANY)
 	const [submitting, setSubmitting] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 
@@ -164,6 +168,8 @@ export default function InterviewSetupForm({
 				job_description: jd.trim() || undefined,
 				language,
 				...(voice ? { mode: "voice" as const } : video ? { mode: "video" as const } : {}),
+				// Phase 8.4: nothing is added when no company focus was chosen.
+				...companyCreateFields(companyChoice),
 			})
 			onCreated(created)
 		} catch (err) {
@@ -310,6 +316,10 @@ export default function InterviewSetupForm({
 					{jd.length.toLocaleString()} / {jdMax.toLocaleString()}
 				</p>
 			</div>
+
+			{coding ? null : (
+				<CompanyContextPicker value={companyChoice} onChange={setCompanyChoice} jobDescription={jd} />
+			)}
 
 			{error ? (
 				<p id="setup-error" role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">

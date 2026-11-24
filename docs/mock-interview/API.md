@@ -320,3 +320,106 @@ Rate limits are per caller and per request path (slowapi), i.e. per problem for 
 
 Time: a round whose time is up ends on the next request (saved drafts become automatic submissions,
 `end_reason: "time_up"`). No AI call, no ledger row and no log line carries source code.
+
+## Phase 8.3: AI coding review, review-only (additive; default off)
+
+Needs the coding gate (Phase 8.1) **and** `AI_MOCK_INTERVIEW_CODING_AI_ENABLED` (backend) **and** the worker's
+`MOCK_INTERVIEW_CODING_ENABLED`. Nothing is ever executed. With the AI flag off every route below behaves exactly as
+in Batch 1.
+
+### Changes to existing routes (additive)
+
+- `GET /sessions/{id}/coding`: optional `ai_enabled` (bool) and, per attempt, `explanation`
+  (`[{turn_seq, question, answer_text, answered_at}]`).
+- `POST /sessions/{id}/coding/attempts/{seq}/hints`: optional `source` (`"authored"` | `"ai"`). An AI hint is served
+  only after the authored hints are used and only within the per-problem cap (easy/medium 3, hard 2); it is filtered
+  (≤ 3 code lines, no correctness claims) and **not stored** (shown once). AI unavailable or unsafe → **503**, the
+  hint count is given back.
+- `POST /sessions/{id}/coding/attempts/{seq}/done`: with AI help, a problem **with a graded submission** moves to
+  `explaining` and gets a typed explanation question (worker `/interview/coding/followup`; fixed fallback question
+  when the worker is down). Without a submission it closes as before. Idempotent; concurrent calls ask once.
+- `POST /sessions/{id}/answer` for a **coding** session (AI help on): answers an explanation question by `turn_seq`
+  (typed only — `source: "stt"` → **422**, decision B1-a). After the answer the server asks one more question
+  (max 2) or closes the problem. Same answer again = no-op; different answer → 409; not the current/explanation
+  question → 409; ended round → 409. With AI help off: the documented 409 "Coding rounds don't use interview
+  questions yet." is unchanged. `/next` and the report routes keep their documented 409 for coding rounds.
+
+### New routes (students; owner + institute; another student or institute → 404)
+
+| Method + path | Purpose | Limit |
+|---|---|---|
+| `GET /sessions/{id}/coding/feedback` | stored feedback, 404 until generated | — |
+| `POST /sessions/{id}/coding/feedback` | generate once (idempotent, final) | 5/min |
+
+POST errors: **409** AI help off ("Feedback for coding rounds is not available yet."), round not finished, cancelled
+round, nothing submitted, or another request is preparing it; **503** worker unavailable or unusable output (nothing
+stored; retry). One AI review per problem with a submission (ledger step `code_review`); all problems or nothing.
+
+`CodingFeedbackOut`:
+```json
+{"session_id": 12, "rubric_version": "coding-v1-unverified", "review_only": true, "verification": "not_verified",
+ "uncertainty_note": "These are AI estimates …", "disclaimer": "This is AI-generated practice feedback …",
+ "provider": "groq", "created_at": "…",
+ "problems": [{"attempt_seq": 1, "problem_title": "…", "language": "python313", "status": "ai_estimated",
+   "verification": "not_verified",
+   "objective": [{"key": "correctness", "label": "Correctness", "weight_percent": 40, "status": "not_verified"}, …],
+   "estimates": [{"key": "code_quality", "label": "Code quality", "weight_percent": 15, "kind": "ai_estimate",
+                  "score": 4, "assessed": true, "evidence": [{"line": 4, "quote": "total = sum(nums[1:])"}],
+                  "rationale": "…", "uncertainty": "AI estimate from reading your code. The code was not run, …"}, …],
+   "complexity": {"time": "O(n)", "space": "O(n)", "justification": "…", "quote": {"line": 4, "quote": "…"}},
+   "observations": [{"line": 4, "text": "…"}], "consider_cases": ["Consider …"], "testing_notes": ["…"],
+   "hints_used": 1, "explanation_answers": 2}]}
+```
+**Individual AI estimates vs scores:** each of the three AI categories may carry its own **individual 0–5 AI
+estimate** (`estimates[].score`), always with verified `evidence` and its own `uncertainty` text. These are never
+combined: there is **no overall, problem, session or AI-only score** in any response, and `weight_percent` is shown
+for rubric transparency only (P8-D7). Correctness, robustness and efficiency are always `not_verified`. `score: null`
+with `assessed: false` = not assessed (no verified evidence).
+
+**AI hint fallback is dormant for the current problem bank:** every one of the 24 problems has 3 authored hints and
+the caps are easy/medium 3, hard 2, so authored hints always cover the cap and the AI hint worker is never called.
+The fallback activates only for a problem with fewer authored hints than its cap (verified with a deterministic test
+fixture). `status: "not_submitted"` = nothing was submitted for that
+problem (not reviewed).
+
+### Worker routes (internal; `MOCK_INTERVIEW_ENABLED` + `MOCK_INTERVIEW_CODING_ENABLED`)
+
+`POST /interview/coding/hint` (`{problem, language, code, previous_hints, hint_number}` → `{hint}`; 502 when no safe
+hint), `POST /interview/coding/followup` (`{problem, language, code, explanation, max_questions}` →
+`{action: "ask"|"end", question, source}`; never fails on LLM errors), `POST /interview/coding/review`
+(`{problem, language, code, explanation, hints_used}` → AI estimates; 502 on failure). Requests carry public
+problem material only; model output with extra keys is rejected. Every response has the Phase 7.2 `usage` block.
+
+## Phase 8.4: company profiles and company-context questions (additive; default off)
+
+Needs the master switch + master allow-list + `AI_MOCK_INTERVIEW_COMPANY_ENABLED` (backend; else every route 404)
+and, for skill maps and the claim filter, the worker's `MOCK_INTERVIEW_COMPANY_ENABLED`.
+
+| Method + path | Who | Purpose |
+|---|---|---|
+| `GET /company/role-templates` | student, admin, TPO | generic role templates (no company content) |
+| `GET /company/profiles` | student | published profiles of my institute (brief) |
+| `GET /company/profiles/{id}` | student | one published profile; draft/archived/other institute → 404 |
+| `POST /company/jd-skills` | student (5/min) | `{job_description}` \| `{drive_id}` (open, own) \| `{profile_id}` (published, own) → skills, each with a verbatim JD quote; `matched`/`missing` vs verified skills; `focus_order`. 503 when the AI is down. Nothing stored |
+| `GET /company/profiles/admin` | admin, TPO | all my institute's profiles |
+| `POST /company/profiles/admin` | admin, TPO (20/min) | create a draft (audited) |
+| `PUT /company/profiles/{id}` | admin, TPO | replace; archived → 409 (audited) |
+| `POST /company/profiles/{id}/publish` | admin, TPO | needs ≥ 1 source (422 otherwise); idempotent (audited once) |
+| `POST /company/profiles/{id}/archive` | admin, TPO | archive (never delete); idempotent (audited once) |
+| `POST /company/profiles/from-drive/{drive_id}` | admin, TPO | draft pre-filled from an **open** drive of my institute; else 404 (audited) |
+
+Teachers and recruiters: **403** on every route. Another institute's profile or drive: **404**. Sources:
+`{kind: drive|jd|institute_note|public_url, label, url? (public_url only, http(s)), drive_id? (drive only)}`; URLs are
+**never fetched**; students get `{kind, label, domain}` only. Audit actions
+`mock_interview.company_profile_{create,update,publish,archive}`, summaries content-free (id, status, source count).
+
+### Changes to existing routes (additive, P8-D11)
+
+- `POST /sessions`: optional `company_profile_id` (published, own institute; else 422 "That company profile is not
+  available"), `role_template_key`, `focus_skills` (≤ 20 strings). HR/technical only (coding → 422). Company
+  feature off → 422 "Company profiles are not available". A frozen copy is stored in `plan_json["company"]`.
+- Session detail: optional `company_context` `{profile_id, name, role_title, role_template_label, sources,
+  attribution: "From your institute", disclaimer, evaluation: "standard_rubric"}` — only on such sessions.
+- Worker `/interview/plan` and `/interview/turn`: optional `company_context` (generation only). `/interview/report`
+  is unchanged: the evaluation payload is identical with and without a profile; no company-fit or competency score.
+- Worker `POST /interview/jd/skills` (`{job_description}` → `{skills: [{skill, category, importance, evidence}]}`).

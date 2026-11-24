@@ -87,6 +87,19 @@ class CodingSubmissionOut(BaseModel):
     created_at: datetime
 
 
+class CodingExplanationTurnOut(BaseModel):
+    """Phase 8.3: one typed explanation question after "Done" (B1-a: text only).
+
+    Answered through the existing ``POST /sessions/{id}/answer`` with
+    ``turn_seq``.
+    """
+
+    turn_seq: int
+    question: str
+    answer_text: str | None
+    answered_at: datetime | None
+
+
 class CodingAttemptOut(BaseModel):
     seq: int
     status: Literal["pending", "working", "explaining", "auto_submitted", "closed", "abandoned"]
@@ -98,6 +111,8 @@ class CodingAttemptOut(BaseModel):
     submissions_used: int
     submissions_remaining: int
     problem: CodingProblemOut
+    # Phase 8.3 (additive): explanation questions for this problem, oldest first.
+    explanation: list[CodingExplanationTurnOut] = Field(default_factory=list)
 
 
 class CodingStateOut(BaseModel):
@@ -108,6 +123,9 @@ class CodingStateOut(BaseModel):
     remaining_seconds: int | None
     graded_submissions_per_problem: int
     attempts: list[CodingAttemptOut]
+    # Phase 8.3 (additive): AI help is on (AI hints after the authored ones,
+    # explanation questions after "Done", AI-estimate feedback afterwards).
+    ai_enabled: bool = False
 
 
 class CodingDraftIn(BaseModel):
@@ -147,6 +165,85 @@ class CodingHintOut(BaseModel):
     hint: str
     hints_used: int
     hints_available: int
+    # Phase 8.3 (additive): "ai" = tailored to the current code after the
+    # authored hints ran out. AI hint text is not stored (shown once).
+    source: Literal["authored", "ai"] = "authored"
+
+
+# ---------------------------------------------------------------------------
+# Phase 8.3: review-only coding feedback (decision O1 = option A)
+# ---------------------------------------------------------------------------
+# No field here can carry an overall, problem, session or AI-only total score
+# (P8-D7 rules 6-8, U3): objective categories are "not_verified" and the three
+# AI categories are shown one by one as labelled "AI estimate" values.
+
+
+class CodingEvidenceOut(BaseModel):
+    # Code quotes cite a 1-based line; explanation quotes have line = null.
+    line: int | None = None
+    quote: str
+
+
+class CodingEstimateOut(BaseModel):
+    key: Literal["code_quality", "reasoning", "testing"]
+    label: str
+    weight_percent: int
+    kind: Literal["ai_estimate"] = "ai_estimate"
+    # 0-5; null = not assessed (no valid evidence).
+    score: int | None
+    assessed: bool
+    evidence: list[CodingEvidenceOut]
+    rationale: str
+    # Why this individual AI estimate is uncertain (always present).
+    uncertainty: str
+
+
+class CodingObjectiveOut(BaseModel):
+    key: Literal["correctness", "robustness", "efficiency"]
+    label: str
+    weight_percent: int
+    # Review-only: the code was not executed, so these are never scored.
+    status: Literal["not_verified"] = "not_verified"
+
+
+class CodingComplexityOut(BaseModel):
+    time: str
+    space: str
+    justification: str
+    quote: CodingEvidenceOut | None = None
+
+
+class CodingObservationOut(BaseModel):
+    line: int | None = None
+    text: str
+
+
+class CodingProblemFeedbackOut(BaseModel):
+    attempt_seq: int
+    problem_title: str
+    language: str | None
+    status: Literal["ai_estimated", "not_submitted"]
+    verification: Literal["not_verified"] = "not_verified"
+    objective: list[CodingObjectiveOut]
+    estimates: list[CodingEstimateOut]
+    complexity: CodingComplexityOut | None = None
+    observations: list[CodingObservationOut]
+    consider_cases: list[str]
+    testing_notes: list[str]
+    hints_used: int
+    explanation_answers: int
+
+
+class CodingFeedbackOut(BaseModel):
+    session_id: int
+    rubric_version: Literal["coding-v1-unverified"]
+    review_only: Literal[True] = True
+    verification: Literal["not_verified"] = "not_verified"
+    uncertainty_note: str
+    disclaimer: str
+    provider: str | None = None
+    created_at: datetime
+    problems: list[CodingProblemFeedbackOut]
 
 
 CodingCatalogOut.model_rebuild()

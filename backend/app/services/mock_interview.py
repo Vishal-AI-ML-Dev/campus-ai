@@ -346,6 +346,27 @@ def _config(s: MockInterviewSession) -> dict:
     }
 
 
+def _with_company(payload: dict, s: MockInterviewSession) -> dict:
+    """Phase 8.4: add the frozen company/role context to a PLAN or TURN payload.
+
+    Generation only (P8-D11): only sessions created with a profile/template get
+    the key (other payloads stay byte-identical), and the REPORT payload never
+    gets it, so evaluation is unchanged.
+    """
+    meta = _plan_meta(s)
+    snap = meta.get("company") if isinstance(meta.get("company"), dict) else None
+    if not snap:
+        return payload
+    from app.routers.mock_interview_company import company_enabled_for_tenant
+    from app.services import mock_interview_company as company
+
+    if not company_enabled_for_tenant(s.tenant_id):
+        # Feature switched off later: stop sending institute text to the AI.
+        return payload
+
+    return {**payload, "company_context": company.worker_context(snap)}
+
+
 def _profile(db: Session, user: User) -> dict:
     """Verified skills/projects/CGPA only, capped to the worker's limits."""
     full = _build_verified_profile(db, user.id)
@@ -473,6 +494,7 @@ def start_session(db: Session, user: User, s: MockInterviewSession) -> MockInter
     profile = _profile(db, user)
     resume_text = _resume_text(db, s, user)
     jd = s.job_description
+    company_payload = _with_company({}, s)  # Phase 8.4; {} for every other session
     token, meta = _claim(db, s)  # commits: no transaction held during AI calls
     plan = meta.get("plan")
 
@@ -480,7 +502,8 @@ def start_session(db: Session, user: User, s: MockInterviewSession) -> MockInter
         try:
             with _ai_scope(tenant_id, user.id, s_id):
                 planned = engine.plan_interview(
-                    {"config": config, "profile": profile, "resume_text": resume_text, "job_description": jd}
+                    {"config": config, "profile": profile, "resume_text": resume_text,
+                     "job_description": jd, **company_payload}
                 )
         except engine.InterviewEngineUnavailable:
             _release(db, s_id, tenant_id, token, meta)
@@ -499,6 +522,7 @@ def start_session(db: Session, user: User, s: MockInterviewSession) -> MockInter
                     "job_description": jd,
                     "transcript": [],
                     "remaining_seconds": int(config["duration_minutes"]) * 60,
+                    **company_payload,
                 }
             )
         question = opening.get("question")
@@ -605,6 +629,7 @@ def advance(db: Session, user: User, s: MockInterviewSession) -> MockInterviewSe
         "transcript": _transcript(turns[-HARD_MAX_TURNS:]),
         "remaining_seconds": max(-86_400, min(86_400, remaining_seconds(s) or 0)),
     }
+    payload = _with_company(payload, s)  # Phase 8.4; unchanged for other sessions
     if not isinstance(payload["plan"], dict):
         raise _engine_down(s_id, "plan-missing")
     token, meta = _claim(db, s)
@@ -744,4 +769,9 @@ def to_detail(db: Session, s: MockInterviewSession) -> dict:
         from app.services import mock_interview_coding as coding_svc
 
         detail["coding_summary"] = coding_svc.summary(db, s)
+    if isinstance(meta.get("company"), dict):
+        # Phase 8.4: only sessions created with company/role context carry this.
+        from app.services import mock_interview_company as company
+
+        detail["company_context"] = company.context_out(meta["company"])
     return detail

@@ -30,6 +30,7 @@ import { useCamera } from "./useCamera"
 import VideoInterviewRoom from "./VideoInterviewRoom"
 import { createActionGuard, releaseCameraIfEnded, videoStage } from "./videoInterviewFlow"
 import VideoLobby from "./VideoLobby"
+import CompanyContextNotice from "./company/CompanyContextNotice"
 
 export default function VideoInterviewWorkspace({
 	session,
@@ -106,6 +107,8 @@ function VideoLobbyStep({
 					the interview.
 				</p>
 			</div>
+			{/* Phase 8.4: company/role focus disclaimer (text only). */}
+			{session.company_context ? <CompanyContextNotice context={session.company_context} /> : null}
 			{error ? (
 				<p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 					{error}

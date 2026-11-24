@@ -7,6 +7,7 @@
 
 import { useEffect, useRef } from "react"
 import InterviewReportPanel from "./InterviewReport"
+import CompanyContextNotice from "./company/CompanyContextNotice"
 import type { InterviewSession } from "./mockInterviewApi"
 
 export default function InterviewFinished({
@@ -56,6 +57,8 @@ export default function InterviewFinished({
 					submitted.
 				</p>
 			) : null}
+
+			{session.company_context ? <CompanyContextNotice context={session.company_context} /> : null}
 
 			{hasReport ? <InterviewReportPanel sessionId={session.id} exists={reportExists} /> : null}
 

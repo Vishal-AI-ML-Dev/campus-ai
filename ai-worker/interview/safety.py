@@ -20,6 +20,13 @@ DATA_TAGS = (
     "candidate_answer",
     "verified_profile",
     "context_note",
+    # Phase 8.3 (coding review): problem text, the candidate's code and their
+    # typed explanation. Code is read as data and never executed.
+    "problem_statement",
+    "candidate_code",
+    "candidate_explanation",
+    # Phase 8.4: institute-authored company/role context (untrusted data).
+    "company_context",
 )
 _TAG_RE = re.compile(
     r"</?\s*(" + "|".join(DATA_TAGS) + r"|system|assistant|user|instructions?|data)\b[^>]*>?",

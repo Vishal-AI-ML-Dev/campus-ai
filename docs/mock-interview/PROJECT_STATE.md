@@ -1,7 +1,8 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-23 (Phase 8 Batch 1 — 8.1 coding foundations + 8.2 coding UI, review-only: implementation
-complete and tested; G1 narrower scope approved; see spec §16.
+_Last updated: 2026-11-23 (Phase 8 Batch 2 — 8.3 AI coding review (review-only) + 8.4 company profiles:
+implementation complete and tested, **uncommitted**; O1 = option A approved; see spec §17. Before that: Batch 1 —
+8.1 coding foundations + 8.2 coding UI, review-only: implementation complete and tested; G1 narrower scope approved; see spec §16.
 Earlier: Phase 8.0 planning, spec revision 2: `specs/phase-8-advanced-ai-intelligence.md`;
 every decision Recommended — awaiting user approval; design NOT approved, no code. Phase 7 committed as `869d42b`.
 Earlier 2026-11-23 (Phase 7 finalization: spec §15.10/§15.11 evidence and acceptance record written;
@@ -28,7 +29,7 @@ block wins.
 | **5** | **Voice interview (browser speech)** | **Implemented, committed; automated/simulated tests pass; real-device tests pending** | `34fd3a9` |
 | **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented. 6.3 video lobby, room and lifecycle implemented, `VIDEO_UI_READY = true`. 6.4 wiring (done in 6.3) audited, one fix, automated gaps closed, real-device matrix written. 6.5 done in 6.3, audited in 6.5 (report parity proven by tests). 6.6 automated hardening done (accessibility, responsive, privacy guards, full regression). **Phase 6 NOT complete: real-device checklist (24 rows) pending** | 6.1 `1ad5628`, 6.2 `17247e2`, 6.3 `aef2999`, 6.4 `0262f97` |
 | **7** | **Production operations and monitoring** (`specs/phase-7-production-operations.md`, runbooks in `runbooks/`) | **7.0–7.10 implementation complete.** 7.2 worker usage/latency, 7.3 usage ledger + metrics, 7.4 cost framework (**numeric pricing pending: no approved price table**), 7.5 circuit breaker + alerts, 7.6 institute controls + quotas, 7.7 admin API, 7.8 admin UI, 7.9 protected `/metrics`, 7.10 runbooks + retention script. Live drills and real-device tests are Phase 10 | 7.0 `ee48610`; 7.1 `863a8aa`; 7.2–7.10 `869d42b` |
-| **8** | **Advanced AI interview intelligence**, incl. coding round (old 7) and company/full simulation (old 8) (`specs/phase-8-advanced-ai-intelligence.md`) | **8.0 planning done (spec r2). G1 (narrower, Batch 1) approved 2026-11-23: P8-D1…D6, D8, D14…D17, B1-a/b/c Accepted. Batch 1 (8.1 + 8.2, review-only coding round) implementation complete and tested (spec §16); nothing is executed. All 24 problems are drafts pending human review (production serves none). Still open: P8-D7, D9…D13, all sandbox decisions (G2–G5)** | Batch 1: Git history |
+| **8** | **Advanced AI interview intelligence**, incl. coding round (old 7) and company/full simulation (old 8) (`specs/phase-8-advanced-ai-intelligence.md`) | **8.0 planning done (spec r2). G1 (narrower, Batch 1) approved 2026-11-23: P8-D1…D6, D8, D14…D17, B1-a/b/c Accepted. Batch 1 (8.1 + 8.2, review-only coding round) implementation complete and tested (spec §16); nothing is executed. All 24 problems are drafts pending human review (production serves none). P8-D7 (coding rubric) APPROVED 2026-11-23 with scoring semantics U1–U4 approved the same day (spec §7.1, §14.5): zero basic tests ⇒ ≤ 12.0/100; all three test groups required to publish; no session score if any problem is unverified; candidate timeouts ≠ runner faults (incomplete, never best). P8-D9…D11 (company profiles, sources, context) APPROVED 2026-11-23 (spec §7.5–§7.8, §14.6). O1 = option A APPROVED 2026-11-23 (spec §14.7). **Batch 2 (8.3 AI coding review, review-only + 8.4 company profiles) implemented and tested 2026-11-23, uncommitted (spec §17)**; nothing is executed anywhere. Still open: P8-D12/D13, all sandbox decisions (G2–G5)** | Batch 1: Git history; Batch 2: uncommitted |
 | 9 | Institute and placement management, incl. faculty campaigns (old 9) | Not started | — |
 | 10 | Enterprise integrations, platform-level security, final acceptance (full regression + all real-device tests) | Not started | — |
 
@@ -534,6 +535,30 @@ Full record, deviations and evidence: `specs/phase-8-advanced-ai-intelligence.md
   execution counters/quotas wait for 8.6; rate limits are per problem path.
 - **Next:** review the Batch 1 diff and staging list; approve P8-D7 for 8.3 and P8-D9…D11 for 8.4; arrange human
   review of the 24 draft problems; G2 decisions before any runner code.
+
+### Phase 8 Batch 2 — 8.3 AI coding review + 8.4 company profiles (2026-11-23; implementation complete, uncommitted)
+
+Full record, deviations, review fixes and test evidence: `specs/phase-8-advanced-ai-intelligence.md` §17. API:
+`API.md` "Phase 8.3" and "Phase 8.4".
+
+- **Decision O1 = option A (approved):** review-only coding feedback in the new table `mock_interview_code_reviews`
+  (migration `a5c7e9b1d3f2`) with `GET/POST /sessions/{id}/coding/feedback`; `mock_interview_reports` untouched; a
+  DB CHECK forbids any score / "verified" on `coding-v1-unverified` rows.
+- **8.3** (backend `AI_MOCK_INTERVIEW_CODING_AI_ENABLED`, worker `MOCK_INTERVIEW_CODING_ENABLED`, both off): AI
+  hints after the authored ones (within the cap, shown once, filtered), typed explanation turns after "Done"
+  (B1-a kept: text only), AI-estimate feedback (code quality / reasoning / testing with verified evidence;
+  objective categories "Not verified"; no score of any kind).
+- **8.4** (backend `AI_MOCK_INTERVIEW_COMPANY_ENABLED`, worker `MOCK_INTERVIEW_COMPANY_ENABLED`, both off):
+  migration `b6d8f0a2c4e3` (`mock_interview_company_profiles`), admin/TPO page `/dashboard/interview-company-profiles`
+  (audited, archive-only, ≥ 1 source to publish, open same-institute drives, URLs never fetched), student picker +
+  transparency panel + skill map, frozen copy in `plan_json["company"]`, context on plan/turn payloads only
+  (evaluation identical), worker claim filter.
+- **Alembic head:** `b6d8f0a2c4e3`.
+- **Tests:** spec §17.4 (actual commands and results).
+- **Not run / pending:** real devices and screen readers (Phase 10); live LLM; human review of the 24 draft
+  problems (production still serves none); anything involving code execution (G2–G4).
+- **Next:** review the Batch 2 change set; separate staging authorization, then separate commit authorization.
+  Later: confirm the Batch 3/4 split (8.5a–c, 8.6); P8-D12/D13 before 8.7; G2 decisions before any runner code.
 
 ### Next recommended action (approved sequence)
 1. Phases 6.1 (`1ad5628`), 6.2 (`17247e2`), 6.3 (`aef2999`), 6.4 (`0262f97`) and 6.5 (`75ed83c`) are committed. Phase

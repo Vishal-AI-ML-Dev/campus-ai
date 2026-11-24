@@ -70,6 +70,16 @@ CONTROL_FLAGS = {"video_allowed", "voice_allowed"}
 
 
 def _is_control_flag(spec, path, method, name):
+    if name in ("company_profile_id", "profile_id"):
+        # Phase 8.4: "profile" contains "file", but these are integer ids (P8-D11).
+        # Exempt ONLY on these two POST routes and ONLY while they are integers.
+        allowed = {"company_profile_id": "/mock-interview/sessions", "profile_id": "/mock-interview/company/jd-skills"}
+        if method != "post" or not path.endswith(allowed[name]):
+            return False
+        body = _resolve(spec, spec["paths"][path][method]["requestBody"]["content"]["application/json"]["schema"])
+        prop = _resolve(spec, body["properties"][name])
+        types = {s.get("type") for s in prop.get("anyOf", [prop])}
+        return types <= {"integer", "null"} and "integer" in types
     if method != "put" or not path.endswith("/mock-interview/admin/controls") or name not in CONTROL_FLAGS:
         return False
     body = _resolve(spec, spec["paths"][path][method]["requestBody"]["content"]["application/json"]["schema"])
@@ -92,7 +102,10 @@ def test_answer_and_create_bodies_have_exactly_the_documented_fields(client):
     create = set(_resolve(spec, schemas["MockInterviewSessionCreate"])["properties"])
     # Phase 8.1 (approved P8-D16): the optional "coding" choices object; it holds
     # only languages / topics / problem_key (see test_mock_interview_coding_privacy).
+    # Phase 8.4 (approved P8-D11): optional company profile id, role template key
+    # and the student's focus skills (generation only; text, no media).
     assert create == {
         "interview_type", "difficulty", "duration_minutes", "target_role", "company_name",
         "resume_id", "job_description", "language", "mode", "coding",
+        "company_profile_id", "role_template_key", "focus_skills",
     }

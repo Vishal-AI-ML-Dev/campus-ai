@@ -40,6 +40,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models import (
     MockInterviewCodeAttempt as Attempt,
     MockInterviewCodeSubmission as Submission,
@@ -114,10 +115,24 @@ def _too_large(source: str) -> bool:
     return len(source.encode("utf-8")) > SOURCE_MAX_BYTES
 
 
+def ai_enabled() -> bool:
+    """Phase 8.3 AI help (AI hints, explanation turns, AI-estimate feedback).
+
+    Only consulted behind the coding gate, so every coding switch applies too.
+    """
+    return bool(settings.AI_MOCK_INTERVIEW_CODING_AI_ENABLED)
+
+
 def hints_available(s: MockInterviewSession, problem: coding_bank.Problem | None) -> int:
+    """Hint cap per problem (P8-D6: easy/medium 3, hard 2).
+
+    Without AI help the authored hints also cap it; with AI help a tailored AI
+    hint may fill the gap when a problem has fewer authored hints than the cap.
+    """
     if problem is None:
         return 0
-    return min(HINTS_BY_DIFFICULTY.get(s.difficulty, 2), len(problem.hints))
+    cap = HINTS_BY_DIFFICULTY.get(s.difficulty, 2)
+    return cap if ai_enabled() else min(cap, len(problem.hints))
 
 
 # ---------------------------------------------------------------------------
@@ -553,25 +568,47 @@ def reveal_hint(db: Session, s: MockInterviewSession, seq: int) -> dict:
     db.commit()
     db.refresh(a)
     number = a.hints_used
+    source = "authored"
+    if number <= len(problem.hints):
+        hint = problem.hints[number - 1]
+    else:
+        # Phase 8.3: authored hints used up and AI help is on (the cap above
+        # only goes past the authored count then). Slot already reserved.
+        from app.services import mock_interview_coding_ai as coding_ai
+
+        hint = coding_ai.ai_hint(db, s, a, problem, number)
+        source = "ai"
     return {
         "seq": seq,
         "hint_number": number,
-        "hint": problem.hints[number - 1],
+        "hint": hint,
         "hints_used": number,
         "hints_available": available,
+        "source": source,
     }
 
 
 def mark_done(db: Session, s: MockInterviewSession, seq: int) -> None:
-    """Close one problem. Explanation turns ("explaining") arrive with 8.3."""
+    """Close one problem (no explanation turns: AI help off or nothing submitted).
+
+    Also closes a problem left in ``explaining`` (e.g. AI help switched off
+    mid-round), so it can never get stuck.
+    """
     a = attempt(db, s, seq)
     if a.status == "closed":
         return  # idempotent
-    _require_open(s, a)
+    if a.status != "explaining":
+        _require_open(s, a)
+    elif s.status != "in_progress":
+        raise _http(status.HTTP_409_CONFLICT, MSG_NOT_IN_PROGRESS)
     now = svc.utcnow()
     closed = db.execute(
         update(Attempt)
-        .where(Attempt.id == a.id, Attempt.tenant_id == s.tenant_id, Attempt.status.in_(OPEN_ATTEMPT))
+        .where(
+            Attempt.id == a.id,
+            Attempt.tenant_id == s.tenant_id,
+            Attempt.status.in_((*OPEN_ATTEMPT, "explaining")),
+        )
         .values(status="closed", closed_at=now, updated_at=now)
     )
     db.commit()
@@ -676,7 +713,8 @@ def end(db: Session, s: MockInterviewSession, *, abandon: bool, reason: str = "e
 
 
 def expire_if_overdue(db: Session, s: MockInterviewSession) -> MockInterviewSession:
-    """Time up: end the round at once (no AI step can be in flight in Batch 1)."""
+    """Time up: end the round at once. Explanation questions (8.3) are written
+    only while their problem is still ``explaining``, so a late one is dropped."""
     if s.status != "in_progress":
         return s
     remaining = svc.remaining_seconds(s)
@@ -751,6 +789,11 @@ def list_submissions(db: Session, s: MockInterviewSession, seq: int) -> list[dic
 def state(db: Session, s: MockInterviewSession) -> dict:
     cfg = config_of(s)
     out = []
+    explanation: dict[int, list[dict]] = {}
+    if ai_enabled():
+        from app.services import mock_interview_coding_ai as coding_ai
+
+        explanation = coding_ai.state_extras(db, s)
     for a in attempts(db, s):
         problem = _problem_for(a)
         available = hints_available(s, problem)
@@ -766,6 +809,7 @@ def state(db: Session, s: MockInterviewSession) -> dict:
                 "submissions_used": a.submissions_used,
                 "submissions_remaining": max(0, GRADED_PER_PROBLEM - a.submissions_used),
                 "problem": coding_bank.public_view(problem, a.hints_used),
+                "explanation": explanation.get(a.seq, []),
             }
         )
     remaining = svc.remaining_seconds(s) if s.status == "in_progress" else None
@@ -777,4 +821,5 @@ def state(db: Session, s: MockInterviewSession) -> dict:
         "remaining_seconds": max(0, remaining) if remaining is not None else None,
         "graded_submissions_per_problem": GRADED_PER_PROBLEM,
         "attempts": out,
+        "ai_enabled": ai_enabled(),
     }

@@ -32,6 +32,9 @@ Phase 8 (coding, review-only — no code is ever executed): backend `AI_MOCK_INT
 `AI_MOCK_INTERVIEW_CODING_TENANT_IDS` (empty = no institute), dev-only `AI_MOCK_INTERVIEW_CODING_ALLOW_DRAFT_PROBLEMS`
 (ignored in production); frontend `NEXT_PUBLIC_MOCK_INTERVIEW_CODING_ENABLED`. Hidden tests/reference solutions never
 go in this repo (`backend/app/coding_bank/` is public material only).
+Phase 8.3/8.4 (Batch 2): backend `AI_MOCK_INTERVIEW_CODING_AI_ENABLED` (AI hints, typed explanation turns,
+review-only feedback in `mock_interview_code_reviews` — never a score) and `AI_MOCK_INTERVIEW_COMPANY_ENABLED`
+(company profiles; generation only); worker `MOCK_INTERVIEW_CODING_ENABLED`, `MOCK_INTERVIEW_COMPANY_ENABLED`. All off.
 Phase 7 (operations): backend `AI_MOCK_INTERVIEW_OPS_ENABLED` (off), `AI_MOCK_INTERVIEW_TENANT_MONTHLY_SESSION_MAX` /
 `…_TOKEN_MAX` (empty = no cap), `AI_PRICE_TABLE` (empty = cost not configured; never invent prices), `METRICS_TOKEN`
 (backend + worker; empty = production `/metrics` 404), frontend `NEXT_PUBLIC_MOCK_INTERVIEW_OPS_ENABLED` (off).

@@ -14,6 +14,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from interview.safety import wrap
 from interview.schemas import (
     CandidateProfile,
+    CompanyContext,
     InterviewConfig,
     PlanTopic,
     TranscriptTurn,
@@ -105,6 +106,7 @@ def plan_messages(
     jd_text: str,
     library: dict[str, tuple[str, str]],
     topic_count: int,
+    company: CompanyContext | None = None,
 ) -> list[BaseMessage]:
     lib = "\n".join(f"- {area}: {name} ({focus})" for area, (name, focus) in library.items())
     kind = "HR / behavioural" if config.interview_type == "hr" else "technical"
@@ -128,6 +130,13 @@ def plan_messages(
         f"JOB DESCRIPTION SUMMARY: {jd_summary or '(none)'}\n"
         f"{wrap('job_description', jd_text)}"
     )
+    if company is not None:  # Phase 8.4: generation only; prefer the focus skills
+        from interview.company import context_block
+
+        human += (
+            "\n\nPrefer areas that cover the focus skills and competencies below.\n"
+            + context_block(company)
+        )
     return [SystemMessage(content=system), HumanMessage(content=human)]
 
 
@@ -178,6 +187,7 @@ def question_messages(
     follow_up_angle: str,
     avoid: list[str],
     remaining_minutes: int,
+    company: CompanyContext | None = None,
 ) -> list[BaseMessage]:
     system = (
         f"{_persona(config)}\n\n{LEVEL_RULES[level]}\nAsk exactly ONE question at a "
@@ -220,6 +230,13 @@ def question_messages(
         f"{wrap('verified_profile', format_profile(profile))}\n"
         f"{wrap('resume', resume_text)}\n{wrap('job_description', jd_text)}"
     )
+    if company is not None:  # Phase 8.4: generation only
+        from interview.company import context_block
+
+        human += (
+            "\n\nWhen choosing what to ask, prefer the focus skills (technical) or the "
+            "competencies (HR) below.\n" + context_block(company)
+        )
     return [SystemMessage(content=system), HumanMessage(content=human)]
 
 

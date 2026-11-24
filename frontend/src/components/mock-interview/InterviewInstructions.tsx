@@ -4,6 +4,7 @@
 
 import { useState } from "react"
 import { Spinner } from "@/components/ui/states"
+import CompanyContextNotice from "./company/CompanyContextNotice"
 import {
 	describeError,
 	DIFFICULTY_LABELS,
@@ -81,6 +82,7 @@ export default function InterviewInstructions({
 					</div>
 				))}
 			</dl>
+			{session.company_context ? <CompanyContextNotice context={session.company_context} /> : null}
 			<ul className="list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
 				<li>The interviewer asks one question at a time and may ask follow-ups on your answer.</li>
 				{session.mode === "voice" ? (

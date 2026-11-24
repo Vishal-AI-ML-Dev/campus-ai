@@ -107,6 +107,7 @@ from app.routers.mentor import router as mentor_router
 from app.routers.mock_interview import router as mock_interview_router
 from app.routers.mock_interview_admin import router as mock_interview_admin_router
 from app.routers.mock_interview_coding import router as mock_interview_coding_router
+from app.routers.mock_interview_company import router as mock_interview_company_router
 from app.routers.notifications import router as notifications_router
 from app.routers.people import router as people_router
 from app.routers.placement import router as placement_router
@@ -291,6 +292,8 @@ FEATURE_ROUTERS = [
     mock_interview_admin_router,
     # Phase 8.1: coding round (review-only; flag-gated, 404 when off).
     mock_interview_coding_router,
+    # Phase 8.4: company profiles (AI_MOCK_INTERVIEW_COMPANY_ENABLED; 404 when off).
+    mock_interview_company_router,
 ]
 
 for _feature_router in FEATURE_ROUTERS:

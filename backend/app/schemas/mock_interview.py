@@ -135,9 +135,35 @@ class MockInterviewSessionCreate(BaseModel):
     mode: Literal["text", "voice", "video"] = "text"
     # Phase 8.1: coding-round choices; only allowed with interview_type="coding".
     coding: MockInterviewCodingConfigIn | None = None
+    # Phase 8.4 (additive, optional; HR/technical only, and only while
+    # AI_MOCK_INTERVIEW_COMPANY_ENABLED admits the caller - 422 otherwise):
+    # a published company profile of the caller's institute and/or a generic
+    # role template, plus the student's own skill focus. Question generation
+    # only; evaluation never changes (P8-D11).
+    company_profile_id: int | None = Field(default=None, ge=1)
+    role_template_key: str | None = Field(default=None, min_length=1, max_length=60)
+    focus_skills: list[str] | None = Field(default=None, max_length=20)
+
+    @field_validator("focus_skills")
+    @classmethod
+    def _focus(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
+        out: list[str] = []
+        for item in v:
+            item = " ".join((_clean(item) or "").split())[:60]
+            if item and item.lower() not in {x.lower() for x in out}:
+                out.append(item)
+        return out or None
+
+    @property
+    def has_company_context(self) -> bool:
+        return bool(self.company_profile_id or self.role_template_key or self.focus_skills)
 
     @model_validator(mode="after")
     def _coding_rules(self) -> "MockInterviewSessionCreate":
+        if self.interview_type == "coding" and self.has_company_context:
+            raise ValueError("Company profiles apply to HR and technical interviews")
         if self.interview_type == "coding":
             if self.duration_minutes not in CODING_DURATIONS:
                 raise ValueError("Coding rounds last 30, 45 or 60 minutes")
@@ -225,6 +251,31 @@ class MockInterviewCodingSummaryOut(BaseModel):
     review_only: bool
 
 
+class CompanySourceStudentOut(BaseModel):
+    """Phase 8.4: a plain-text citation - label and (public sources) domain only."""
+
+    kind: Literal["drive", "jd", "institute_note", "public_url"]
+    label: str
+    domain: str | None = None
+
+
+class CompanyContextOut(BaseModel):
+    """Phase 8.4: the company/role context a session was created with (frozen).
+
+    Generation only (P8-D11): the session is evaluated with the standard
+    HR/technical rubric; there is no company-fit or competency score.
+    """
+
+    profile_id: int | None
+    name: str | None
+    role_title: str
+    role_template_label: str | None
+    sources: list[CompanySourceStudentOut]
+    attribution: str
+    disclaimer: str
+    evaluation: Literal["standard_rubric"] = "standard_rubric"
+
+
 class MockInterviewSessionOut(MockInterviewSessionSummaryOut):
     resume_id: int | None
     has_job_description: bool
@@ -239,6 +290,9 @@ class MockInterviewSessionOut(MockInterviewSessionSummaryOut):
     # Phase 8.1: present only for coding sessions (omitted from the JSON of
     # every other session, so existing responses are byte-identical).
     coding_summary: MockInterviewCodingSummaryOut | None = None
+    # Phase 8.4: present only for sessions created with a company profile or
+    # role template (omitted otherwise, so existing responses are unchanged).
+    company_context: CompanyContextOut | None = None
 
 
 # ---------------------------------------------------------------------------

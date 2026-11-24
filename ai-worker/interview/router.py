@@ -17,6 +17,7 @@ fallback flag) - numbers and ids only, never text.
 from fastapi import APIRouter, HTTPException, status
 
 from config import settings
+from interview.company import active as company_active
 from interview.graph import QuestionGenerationFailed, plan_graph, turn_graph
 from interview.no_tracing import tracing_disabled, untraced_config
 from interview.usage import usage_scope
@@ -50,6 +51,8 @@ def interview_plan(payload: PlanRequest) -> PlanResponse:
                 "profile": payload.profile,
                 "raw_resume": payload.resume_text,
                 "raw_jd": payload.job_description,
+                # Phase 8.4: only while MOCK_INTERVIEW_COMPANY_ENABLED is on.
+                "company": company_active(payload.company_context),
             },
             config=untraced_config(),
         )
@@ -87,6 +90,7 @@ def interview_turn(payload: TurnRequest) -> TurnResponse:
                     "jd_text": payload.job_description,
                     "transcript": payload.transcript,
                     "remaining_seconds": payload.remaining_seconds,
+                    "company": company_active(payload.company_context),
                 },
                 config=untraced_config(),
             )

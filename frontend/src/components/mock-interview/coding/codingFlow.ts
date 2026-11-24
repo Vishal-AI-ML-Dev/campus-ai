@@ -132,3 +132,49 @@ function defaultRandom(): string {
 
 /** Autosave after this much idle time (ms), and never more than once in flight. */
 export const AUTOSAVE_IDLE_MS = 10_000
+
+// ---------------------------------------------------------------------------
+// Phase 8.3: explanation turns and review-only feedback
+// ---------------------------------------------------------------------------
+
+type ExplanationTurnLike = { turn_seq: number; answer_text: string | null }
+
+/** The explanation question waiting for an answer, if any (oldest first). */
+export function pendingExplanation<T extends ExplanationTurnLike>(
+	attempt: { status: string; explanation?: T[] },
+): T | null {
+	if (attempt.status !== "explaining") return null
+	return (attempt.explanation ?? []).find((t) => t.answer_text === null) ?? null
+}
+
+/** Personalised AI hints are shown once and not stored: how many were opened
+ * earlier but cannot be shown again (after a refresh). */
+export function hiddenAiHints(
+	attempt: { hints_used: number; problem: { hints_revealed: string[] } },
+	shownThisVisit: number,
+): number {
+	return Math.max(0, attempt.hints_used - attempt.problem.hints_revealed.length - shownThisVisit)
+}
+
+/** Answer box limit (matches the server's answer schema). */
+export const EXPLANATION_MAX_CHARS = 5_000
+
+/**
+ * How one AI-estimate category is shown. Review-only feedback has NO overall,
+ * problem or session score (P8-D7): each category stands alone, labelled as an
+ * AI estimate, or "Not assessed" when there was no evidence.
+ */
+export function estimateLabel(e: { score: number | null; assessed: boolean }): string {
+	if (!e.assessed || e.score === null) return "Not assessed"
+	return `AI estimate: ${e.score} / 5`
+}
+
+/** Objective categories in review-only mode are never scored. */
+export function objectiveLabel(o: { status: string }): string {
+	return o.status === "not_verified" ? "Not verified (code was not run)" : "Not verified"
+}
+
+/** Where a piece of evidence comes from, for screen readers and sighted users. */
+export function evidenceSource(e: { line: number | null }): string {
+	return e.line === null ? "From your explanation" : `Your code, line ${e.line}`
+}

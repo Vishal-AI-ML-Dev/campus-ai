@@ -310,6 +310,15 @@ def create_mock_interview_session(
         if payload.mode != "text":
             raise HTTPException(status_code=422, detail=coding.MSG_TEXT_ONLY)  # decision B1-a
         initial_meta = {"coding": coding.validate_create(payload)}
+    if payload.has_company_context:
+        # Phase 8.4: company profile / role template (HR/technical only;
+        # generation only, P8-D11). Same 422 contract as other unavailable input.
+        from app.routers.mock_interview_company import company_enabled_for
+        from app.services import mock_interview_company as company
+
+        if not company_enabled_for(user):
+            raise HTTPException(status_code=422, detail="Company profiles are not available")
+        initial_meta = {"company": company.build_snapshot(db, user, payload)}
     if payload.mode == "voice" and not mock_interview_voice_enabled():
         raise HTTPException(
             status_code=422,  # literal: the constant name differs across Starlette versions
@@ -418,6 +427,13 @@ def answer_mock_interview_question(
     ``POST /next`` continues. Re-sending the same answer is a no-op.
     """
     s = svc.get_owned_session(db, session_id, user)
+    if coding.is_coding(s) and coding.ai_enabled() and mock_interview_coding_enabled_for(user):
+        # Phase 8.3: typed explanation answers in a coding round (B1-a).
+        from app.services import mock_interview_coding_ai as coding_ai
+
+        return svc.to_detail(
+            db, coding_ai.answer(db, s, payload.turn_seq, payload.answer, source=payload.source)
+        )
     _reject_coding(s, coding.CODING_STEP_UNSUPPORTED)
     return svc.to_detail(
         db,

@@ -1,13 +1,15 @@
 "use client"
 
 /**
- * Phase 8.2: an ended coding round. Review-only: there is no score and no
- * report yet (the HR/technical report routes answer coding rounds with 409
- * until 8.3), so this shows what was saved and submitted, never a result.
+ * Phase 8.2: an ended coding round. Review-only: there is no score, so this
+ * shows what was saved and submitted, never a result. Phase 8.3 adds the
+ * review-only AI feedback (AI estimates only; the HR/technical report routes
+ * still answer coding rounds with their documented 409).
  */
 
 import { useEffect, useRef } from "react"
 import type { InterviewSession } from "../mockInterviewApi"
+import CodingFeedback from "./CodingFeedback"
 
 export default function CodingFinished({
 	session,
@@ -56,10 +58,14 @@ export default function CodingFinished({
 					</div>
 				</dl>
 			) : null}
-			<p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-white/10 dark:bg-slate-800/50 dark:text-slate-300">
-				Your code was saved but not run, so there is no score. Feedback for coding rounds will be added in a
-				later update.
-			</p>
+			{cancelled ? (
+				<p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-white/10 dark:bg-slate-800/50 dark:text-slate-300">
+					Your code was saved but not run, so there is no score.
+				</p>
+			) : (
+				// Phase 8.3: review-only AI feedback (AI estimates only, never a score).
+				<CodingFeedback sessionId={session.id} completed={session.status === "completed"} />
+			)}
 			<button
 				type="button"
 				onClick={onNew}

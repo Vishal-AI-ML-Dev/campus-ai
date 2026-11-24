@@ -27,6 +27,7 @@ from sqlalchemy import (
     JSON,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -219,4 +220,105 @@ class MockInterviewCodeSubmission(Base):
         return (
             f"<MockInterviewCodeSubmission id={self.id} attempt={self.attempt_id} "
             f"kind={self.kind} status={self.status}>"
+        )
+
+
+# Phase 8.3 (migration a5c7e9b1d3f2, decision O1 = option A).
+REVIEW_RUBRIC_VALUES = ("coding-v1-unverified", "coding-v1")
+REVIEW_STATUS_VALUES = ("ai_estimated", "not_submitted")
+REVIEW_VERIFICATION_VALUES = ("not_verified", "verified")
+
+
+def _score_check(column: str) -> CheckConstraint:
+    return CheckConstraint(
+        f"{column} IS NULL OR ({column} >= 0 AND {column} <= 5)",
+        name=f"ck_mock_interview_code_reviews_{column}",
+    )
+
+
+class MockInterviewCodeReview(Base):
+    """Coding feedback for one problem of a coding session (Phase 8.3).
+
+    Kept apart from ``mock_interview_reports`` (whose ``overall_score`` is
+    NOT NULL): review-only feedback (``coding-v1-unverified``) carries AI
+    estimates only and can never hold a score - enforced by CHECK constraints.
+    ``problem_score`` is reserved for verified ``coding-v1`` results (8.6).
+    Score columns: 0-5, NULL = not assessed (no valid evidence).
+    Content-bearing (evidence quotes are student content); deleted with the
+    session.
+    """
+
+    __tablename__ = "mock_interview_code_reviews"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["session_id", "tenant_id"],
+            ["mock_interview_sessions.id", "mock_interview_sessions.tenant_id"],
+            ondelete="CASCADE",
+            name="fk_mock_interview_code_reviews_session_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["attempt_id", "tenant_id"],
+            ["mock_interview_code_attempts.id", "mock_interview_code_attempts.tenant_id"],
+            ondelete="CASCADE",
+            name="fk_mock_interview_code_reviews_attempt_tenant",
+        ),
+        UniqueConstraint("attempt_id", name="uq_mock_interview_code_reviews_attempt"),
+        CheckConstraint(
+            _in_list("rubric_version", REVIEW_RUBRIC_VALUES),
+            name="ck_mock_interview_code_reviews_rubric",
+        ),
+        CheckConstraint(
+            _in_list("status", REVIEW_STATUS_VALUES),
+            name="ck_mock_interview_code_reviews_status",
+        ),
+        CheckConstraint(
+            _in_list("verification", REVIEW_VERIFICATION_VALUES),
+            name="ck_mock_interview_code_reviews_verification",
+        ),
+        CheckConstraint(
+            "language IS NULL OR " + _in_list("language", CODE_LANGUAGE_VALUES),
+            name="ck_mock_interview_code_reviews_language",
+        ),
+        CheckConstraint(
+            "rubric_version <> 'coding-v1-unverified' OR "
+            "(verification = 'not_verified' AND problem_score IS NULL)",
+            name="ck_mock_interview_code_reviews_unverified_unscored",
+        ),
+        CheckConstraint(
+            "problem_score IS NULL OR (verification = 'verified' "
+            "AND problem_score >= 0 AND problem_score <= 100)",
+            name="ck_mock_interview_code_reviews_problem_score",
+        ),
+        _score_check("code_quality_score"),
+        _score_check("reasoning_score"),
+        _score_check("testing_score"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    session_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    attempt_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    # The graded/auto submission that was reviewed (app-validated, same session).
+    submission_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rubric_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    verification: Mapped[str] = mapped_column(String(20), nullable=False)
+    language: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    code_quality_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reasoning_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    testing_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    problem_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    estimates_json: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    feedback_json: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<MockInterviewCodeReview id={self.id} attempt={self.attempt_id} "
+            f"status={self.status} rubric={self.rubric_version}>"
         )

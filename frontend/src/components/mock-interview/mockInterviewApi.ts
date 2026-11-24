@@ -75,6 +75,8 @@ export type InterviewSession = {
 		graded_submissions: number
 		review_only: boolean
 	}
+	/** Phase 8.4: present only for sessions created with a company profile or role template. */
+	company_context?: import("./company/companyApi").CompanyContext
 }
 
 export type ReportCategory = {
@@ -182,6 +184,10 @@ export type CreateInterviewInput = {
 	mode?: "voice" | "video"
 	/** Phase 8.1: coding-round choices; sent only for interview_type "coding". */
 	coding?: { languages: string[]; topics: string[]; problem_key?: string }
+	/** Phase 8.4: optional company profile / role template (HR and technical only). */
+	company_profile_id?: number
+	role_template_key?: string
+	focus_skills?: string[]
 }
 
 const base = "/mock-interview/sessions"

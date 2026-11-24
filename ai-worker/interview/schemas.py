@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from interview.safety import safe_label
+from interview.safety import safe_label, single_line
 
 InterviewType = Literal["hr", "technical"]
 Difficulty = Literal["easy", "medium", "hard"]
@@ -89,11 +89,43 @@ class InterviewPlan(BaseModel):
     planner: Literal["llm", "fallback"] = "llm"
 
 
+class CompanyContext(BaseModel):
+    """Phase 8.4: institute-authored company / role context for question
+    GENERATION only (untrusted data; evaluation never sees it)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str | None = Field(default=None, max_length=150)
+    role_title: str = Field(default="", max_length=150)
+    role_template: str | None = Field(default=None, max_length=80)
+    summary: str | None = Field(default=None, max_length=2_000)
+    competencies: list[str] = Field(default_factory=list, max_length=8)
+    focus_skills: list[str] = Field(default_factory=list, max_length=20)
+    job_description: str | None = Field(default=None, max_length=3_000)
+
+    @field_validator("name", "role_template")
+    @classmethod
+    def _label(cls, v: str | None) -> str | None:
+        return safe_label(v, 150) or None if v else None
+
+    @field_validator("role_title")
+    @classmethod
+    def _role_title(cls, v: str) -> str:
+        return safe_label(v, 150)
+
+    @field_validator("competencies", "focus_skills")
+    @classmethod
+    def _items(cls, v: list[str]) -> list[str]:
+        return [x for x in (single_line(i, 80) for i in v) if x]
+
+
 class PlanRequest(BaseModel):
     config: InterviewConfig
     profile: CandidateProfile = Field(default_factory=CandidateProfile)
     resume_text: str | None = Field(default=None, max_length=50_000)
     job_description: str | None = Field(default=None, max_length=MAX_JD_CHARS)
+    # Phase 8.4 (additive, optional): used only with MOCK_INTERVIEW_COMPANY_ENABLED.
+    company_context: CompanyContext | None = None
 
 
 class StepUsage(BaseModel):
@@ -150,6 +182,8 @@ class TurnRequest(BaseModel):
     # Oldest first. Empty => opening. Otherwise the LAST turn must be answered.
     transcript: list[TranscriptTurn] = Field(default_factory=list, max_length=HARD_MAX_TURNS)
     remaining_seconds: int = Field(ge=-86_400, le=86_400)
+    # Phase 8.4 (additive, optional): used only with MOCK_INTERVIEW_COMPANY_ENABLED.
+    company_context: CompanyContext | None = None
 
 
 class NextQuestion(BaseModel):

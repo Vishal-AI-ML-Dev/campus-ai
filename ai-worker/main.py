@@ -143,6 +143,20 @@ if settings.MOCK_INTERVIEW_ENABLED:
 
     app.include_router(interview_router)
 
+    # Phase 8.3: AI coding review (review-only; reads code, never runs it).
+    # Mounted only when its own flag is on too (default off).
+    if settings.MOCK_INTERVIEW_CODING_ENABLED:
+        from interview.coding.router import router as coding_router
+
+        app.include_router(coding_router)
+
+    # Phase 8.4: company context (JD skill map; the claim filter runs in the
+    # interview engine whenever company context is used). Default off.
+    if settings.MOCK_INTERVIEW_COMPANY_ENABLED:
+        from interview.company import router as company_router
+
+        app.include_router(company_router)
+
 
 @app.get("/")
 def root() -> dict:

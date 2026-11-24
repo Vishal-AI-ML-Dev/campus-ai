@@ -100,14 +100,16 @@ def _post(
     payload: dict,
     timeout: httpx.Timeout = _INTERVIEW_TIMEOUT,
     check: Callable[[dict], bool] | None = None,
+    step: str | None = None,
 ) -> dict:
     """One worker call: circuit check, call, usage ledger, metrics (Phase 7.1-7.5).
 
     The retry policy, timeouts, payload and the data returned to the caller
     are unchanged; the worker's additive ``usage`` block is removed from the
-    data and recorded in the ledger instead.
+    data and recorded in the ledger instead. ``step`` (Phase 8.3) names the
+    ledger/breaker step; default = the last path segment, as before.
     """
-    step = path.rsplit("/", 1)[-1]
+    step = step or path.rsplit("/", 1)[-1]
     # Assigned BEFORE the call and outside the retry loop (Phase 7.1).
     invocation_id = new_correlation_id()
     token = invocation_id_ctx.set(invocation_id)
@@ -196,4 +198,49 @@ def generate_report(payload: dict) -> dict:
         payload,
         timeout=_REPORT_TIMEOUT,
         check=lambda d: isinstance(d.get("questions"), list),
+    )
+
+
+# --- Phase 8.3: coding review (review-only; code is read, never executed) ----
+# Ledger steps (spec 6.5): code_hint, code_review, code_followup.
+
+
+def coding_hint(payload: dict) -> dict:
+    """POST /interview/coding/hint -> {"hint": str}."""
+    return _post(
+        "/interview/coding/hint",
+        payload,
+        check=lambda d: isinstance(d.get("hint"), str) and bool(d["hint"].strip()),
+        step="code_hint",
+    )
+
+
+def coding_followup(payload: dict) -> dict:
+    """POST /interview/coding/followup -> {"action": "ask"|"end", "question"}."""
+    return _post(
+        "/interview/coding/followup",
+        payload,
+        check=lambda d: d.get("action") in ("ask", "end"),
+        step="code_followup",
+    )
+
+
+def jd_skills(payload: dict) -> dict:
+    """Phase 8.4: POST /interview/jd/skills -> {"skills": [...]} (ledger step jd_skills)."""
+    return _post(
+        "/interview/jd/skills",
+        payload,
+        check=lambda d: isinstance(d.get("skills"), list),
+        step="jd_skills",
+    )
+
+
+def coding_review(payload: dict) -> dict:
+    """POST /interview/coding/review -> AI estimates with evidence."""
+    return _post(
+        "/interview/coding/review",
+        payload,
+        timeout=_REPORT_TIMEOUT,
+        check=lambda d: d.get("rubric_version") == "coding-v1-unverified",
+        step="code_review",
     )

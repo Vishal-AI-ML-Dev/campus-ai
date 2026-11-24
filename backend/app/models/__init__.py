@@ -86,7 +86,9 @@ from app.models.ai_operations import AIFeatureControl, AIUsageEvent
 from app.models.mock_interview_coding import (
     MockInterviewCodeAttempt,
     MockInterviewCodeSubmission,
+    MockInterviewCodeReview,
 )
+from app.models.mock_interview_company import MockInterviewCompanyProfile
 
 __all__ = [
     "Base",
@@ -149,6 +151,8 @@ __all__ = [
     "MockInterviewReport",
     "MockInterviewCodeAttempt",
     "MockInterviewCodeSubmission",
+    "MockInterviewCodeReview",
+    "MockInterviewCompanyProfile",
     "AIUsageEvent",
     "AIFeatureControl",
 ]
