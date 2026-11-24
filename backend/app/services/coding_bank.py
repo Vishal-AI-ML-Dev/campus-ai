@@ -273,6 +273,11 @@ def parse_problem(data: Any, *, dir_name: str, templates: dict[str, str]) -> Pro
             raise BankError(f"{w}: a published problem needs source.reviewed_on (YYYY-MM-DD)")
         if digest is None:
             raise BankError(f"{w}: a published problem needs the hidden test set digest")
+        # U2 (P8-D7): every published problem needs at least one basic, one edge and one performance hidden test.
+        # Rubric weights are never redistributed, so an empty group is rejected instead of renormalised.
+        empty = [g for g in TEST_GROUPS if groups[g] < 1]
+        if empty:
+            raise BankError(f"{w}: a published problem needs at least one hidden test in each group; empty: {empty}")
     if "editorial" in d:
         _markdown(f"{w}.editorial", d["editorial"])
     if "editorial_public" in d and not isinstance(d["editorial_public"], bool):

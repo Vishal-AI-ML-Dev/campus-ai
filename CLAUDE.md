@@ -35,6 +35,10 @@ go in this repo (`backend/app/coding_bank/` is public material only).
 Phase 8.3/8.4 (Batch 2): backend `AI_MOCK_INTERVIEW_CODING_AI_ENABLED` (AI hints, typed explanation turns,
 review-only feedback in `mock_interview_code_reviews` — never a score) and `AI_MOCK_INTERVIEW_COMPANY_ENABLED`
 (company profiles; generation only); worker `MOCK_INTERVIEW_CODING_ENABLED`, `MOCK_INTERVIEW_COMPANY_ENABLED`. All off.
+Phase 8.5 (Batch 3): `code-runner/` is a standalone Docker + gVisor runner (not connected to the backend; no flag yet).
+Its hostile fixtures (`code-runner/tests/escape/`) run ONLY on a host that passes `sandbox.self_check` (pinned gVisor);
+never on plain Docker or a dev machine. Hidden tests/references live in a separate private test-pack repository.
+`code-runner/runner/packformat.py` must stay byte-identical to that repository's `tools/packformat.py`.
 Phase 7 (operations): backend `AI_MOCK_INTERVIEW_OPS_ENABLED` (off), `AI_MOCK_INTERVIEW_TENANT_MONTHLY_SESSION_MAX` /
 `…_TOKEN_MAX` (empty = no cap), `AI_PRICE_TABLE` (empty = cost not configured; never invent prices), `METRICS_TOKEN`
 (backend + worker; empty = production `/metrics` 404), frontend `NEXT_PUBLIC_MOCK_INTERVIEW_OPS_ENABLED` (off).

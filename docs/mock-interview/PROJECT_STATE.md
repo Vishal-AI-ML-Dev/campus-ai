@@ -1,7 +1,9 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-23 (Phase 8 Batch 2 — 8.3 AI coding review (review-only) + 8.4 company profiles:
-implementation complete and tested, **uncommitted**; O1 = option A approved; see spec §17. Before that: Batch 1 —
+_Last updated: 2026-11-24 (Phase 8 Batch 3 — 8.5a private hidden test pack + 8.5b `code-runner/` foundation:
+implemented locally and tested, **uncommitted**; G2 decisions approved but **G2 NOT passed** (escape suite on gVisor
+and CI not yet run); see spec §18. Before that: Batch 2 — 8.3 AI coding review (review-only) + 8.4 company profiles:
+implemented, verified and **committed as `1d620e6`**; O1 = option A approved; see spec §17. Before that: Batch 1 —
 8.1 coding foundations + 8.2 coding UI, review-only: implementation complete and tested; G1 narrower scope approved; see spec §16.
 Earlier: Phase 8.0 planning, spec revision 2: `specs/phase-8-advanced-ai-intelligence.md`;
 every decision Recommended — awaiting user approval; design NOT approved, no code. Phase 7 committed as `869d42b`.
@@ -29,7 +31,7 @@ block wins.
 | **5** | **Voice interview (browser speech)** | **Implemented, committed; automated/simulated tests pass; real-device tests pending** | `34fd3a9` |
 | **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented. 6.3 video lobby, room and lifecycle implemented, `VIDEO_UI_READY = true`. 6.4 wiring (done in 6.3) audited, one fix, automated gaps closed, real-device matrix written. 6.5 done in 6.3, audited in 6.5 (report parity proven by tests). 6.6 automated hardening done (accessibility, responsive, privacy guards, full regression). **Phase 6 NOT complete: real-device checklist (24 rows) pending** | 6.1 `1ad5628`, 6.2 `17247e2`, 6.3 `aef2999`, 6.4 `0262f97` |
 | **7** | **Production operations and monitoring** (`specs/phase-7-production-operations.md`, runbooks in `runbooks/`) | **7.0–7.10 implementation complete.** 7.2 worker usage/latency, 7.3 usage ledger + metrics, 7.4 cost framework (**numeric pricing pending: no approved price table**), 7.5 circuit breaker + alerts, 7.6 institute controls + quotas, 7.7 admin API, 7.8 admin UI, 7.9 protected `/metrics`, 7.10 runbooks + retention script. Live drills and real-device tests are Phase 10 | 7.0 `ee48610`; 7.1 `863a8aa`; 7.2–7.10 `869d42b` |
-| **8** | **Advanced AI interview intelligence**, incl. coding round (old 7) and company/full simulation (old 8) (`specs/phase-8-advanced-ai-intelligence.md`) | **8.0 planning done (spec r2). G1 (narrower, Batch 1) approved 2026-11-23: P8-D1…D6, D8, D14…D17, B1-a/b/c Accepted. Batch 1 (8.1 + 8.2, review-only coding round) implementation complete and tested (spec §16); nothing is executed. All 24 problems are drafts pending human review (production serves none). P8-D7 (coding rubric) APPROVED 2026-11-23 with scoring semantics U1–U4 approved the same day (spec §7.1, §14.5): zero basic tests ⇒ ≤ 12.0/100; all three test groups required to publish; no session score if any problem is unverified; candidate timeouts ≠ runner faults (incomplete, never best). P8-D9…D11 (company profiles, sources, context) APPROVED 2026-11-23 (spec §7.5–§7.8, §14.6). O1 = option A APPROVED 2026-11-23 (spec §14.7). **Batch 2 (8.3 AI coding review, review-only + 8.4 company profiles) implemented and tested 2026-11-23, uncommitted (spec §17)**; nothing is executed anywhere. Still open: P8-D12/D13, all sandbox decisions (G2–G5)** | Batch 1: Git history; Batch 2: uncommitted |
+| **8** | **Advanced AI interview intelligence**, incl. coding round (old 7) and company/full simulation (old 8) (`specs/phase-8-advanced-ai-intelligence.md`) | **8.0 planning done (spec r2). G1 (narrower, Batch 1) approved 2026-11-23: P8-D1…D6, D8, D14…D17, B1-a/b/c Accepted. Batch 1 (8.1 + 8.2, review-only coding round) implementation complete and tested (spec §16); nothing is executed. All 24 problems are drafts pending human review (production serves none). P8-D7 (coding rubric) APPROVED 2026-11-23 with scoring semantics U1–U4 approved the same day (spec §7.1, §14.5): zero basic tests ⇒ ≤ 12.0/100; all three test groups required to publish; no session score if any problem is unverified; candidate timeouts ≠ runner faults (incomplete, never best). P8-D9…D11 (company profiles, sources, context) APPROVED 2026-11-23 (spec §7.5–§7.8, §14.6). O1 = option A APPROVED 2026-11-23 (spec §14.7). **Batch 2 (8.3 AI coding review, review-only + 8.4 company profiles) implemented, verified and committed (`1d620e6`, 2026-11-24; spec §17)**; nothing is executed anywhere. **Batch 3 (8.5a private test pack: 24 problems, 320 hidden tests, 96 validated references; U2 publication rule; 8.5b standalone `code-runner/` with Docker + gVisor hardening, fail-closed self-check, synthetic escape suite and CI job) implemented locally 2026-11-24, uncommitted (spec §18); G2 decisions P8-S2/S3/S5/S6/S7 APPROVED, G2 NOT passed (escape suite and CI not run).** No student code executed anywhere; all 24 problems still drafts pending a named human reviewer. Still open: P8-D12/D13, P8-S1/S1b/S4 (G3), G2 evidence, G4, G5** | Batch 1: `c62b067`; Batch 2: `1d620e6`; Batch 3: uncommitted |
 | 9 | Institute and placement management, incl. faculty campaigns (old 9) | Not started | — |
 | 10 | Enterprise integrations, platform-level security, final acceptance (full regression + all real-device tests) | Not started | — |
 
@@ -536,7 +538,7 @@ Full record, deviations and evidence: `specs/phase-8-advanced-ai-intelligence.md
 - **Next:** review the Batch 1 diff and staging list; approve P8-D7 for 8.3 and P8-D9…D11 for 8.4; arrange human
   review of the 24 draft problems; G2 decisions before any runner code.
 
-### Phase 8 Batch 2 — 8.3 AI coding review + 8.4 company profiles (2026-11-23; implementation complete, uncommitted)
+### Phase 8 Batch 2 — 8.3 AI coding review + 8.4 company profiles (2026-11-23/24; implemented, verified, committed `1d620e6`)
 
 Full record, deviations, review fixes and test evidence: `specs/phase-8-advanced-ai-intelligence.md` §17. API:
 `API.md` "Phase 8.3" and "Phase 8.4".
@@ -557,8 +559,38 @@ Full record, deviations, review fixes and test evidence: `specs/phase-8-advanced
 - **Tests:** spec §17.4 (actual commands and results).
 - **Not run / pending:** real devices and screen readers (Phase 10); live LLM; human review of the 24 draft
   problems (production still serves none); anything involving code execution (G2–G4).
-- **Next:** review the Batch 2 change set; separate staging authorization, then separate commit authorization.
-  Later: confirm the Batch 3/4 split (8.5a–c, 8.6); P8-D12/D13 before 8.7; G2 decisions before any runner code.
+- **Committed:** `1d620e6` "feat(mock-interview): add AI coding review and company profiles" (71 files, parent
+  `c62b067`), 2026-11-24. Nothing pushed, merged or deployed.
+- **Next (then):** Batch 3 — done below.
+
+### Phase 8 Batch 3 — 8.5a hidden test pack + 8.5b secure runner foundation (2026-11-24; implemented locally, uncommitted)
+
+Full record, deviations and evidence: `specs/phase-8-advanced-ai-intelligence.md` §18 (decisions §14.8).
+
+- **Approvals:** G2 decisions P8-S2 (Docker + gVisor systrap, Judge0 removed), S3 (§4.4 ceilings, tighten-only), S5,
+  S6, S7 approved 2026-11-24. Session approvals: Docker Desktop + digest-pinned toolchain images for **trusted
+  reference solutions only**; local WSL2/gVisor install **declined** ("not now").
+- **8.5a:** private test pack in a separate local-only Git repository (no remote, nothing committed): format v1, one
+  digest process (golden vector shared with the runner), seeded generators with explicit schemas, 320 hidden tests
+  (counts match the public bundle; every group >= 1), 96 reference solutions accepted in all 4 languages (outputs
+  correct, <= 50 % of the CPU limit; timings **provisional, runc not gVisor**), 15 slow solutions fail performance,
+  reproducible archive (pack digest prefix `c13fded0`). Review records for all 24 problems: **Decision PENDING, no reviewer**.
+  Public bundle unchanged: no digest written, all problems `draft`.
+- **U2:** `services/coding_bank.py` rejects a published problem without a basic, edge and performance hidden test.
+- **8.5b:** `code-runner/` (standalone FastAPI service, not connected to the backend): constant-time rotating tokens,
+  strict schema (no execution settings), 96 KB body cap, bounded queue + 503, idempotent replays, allow-listed
+  hardened `docker run` (runsc, no network, cap-drop ALL, no-new-privileges, read-only, tmpfs, limits, digest images),
+  fail-closed self-check (pins: gVisor release-20261102.0, Docker 29.9.3, image digests), compile/run container split,
+  whole-container kill on any limit, U4 budget handling, `sandbox_error` distinct from candidate verdicts, hidden
+  results reduced to group counts, content-free logs, token-protected metrics, reaper + degraded state.
+- **CI:** `ci.yml` jobs `sandbox-scope` + `sandbox` (pinned Docker and gVisor with checksums, synthetic suite, no
+  secrets); private repo `validate.yml`. **Neither has run** (no push/PR approved; no private remote).
+- **Tests:** runner 183 passed / 2 skipped; private pack 52 passed; verify + 96/96 + 15/15; backend bank tests 36;
+  worker interview 91; frontend 187/187, tsc, lint, build; full backend SQLite 655 passed / 0 failed / 24 skipped (PG-only).
+- **Blocked / not run:** escape suite inside gVisor; both CI workflows; gVisor calibration; load test (8.5c).
+- **Next:** Batch 4 = 8.5c + 8.6 (spec §18.7): push/PR approval to run the `sandbox` CI job (completes G2), named
+  human reviewer + review of 24 problems, private GitHub repository, G3 decisions (P8-S1, S4, provider/region/cost,
+  egress), then VM work and G4 before any execution.
 
 ### Next recommended action (approved sequence)
 1. Phases 6.1 (`1ad5628`), 6.2 (`17247e2`), 6.3 (`aef2999`), 6.4 (`0262f97`) and 6.5 (`75ed83c`) are committed. Phase

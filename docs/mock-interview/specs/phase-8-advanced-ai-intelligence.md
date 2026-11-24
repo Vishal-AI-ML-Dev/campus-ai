@@ -1,10 +1,12 @@
 # Phase 8 — Advanced AI Interview Intelligence
 
-Status (updated 2026-11-23, Batch 2): **the §14 decision register is the authoritative approval record.**
-Approved so far: P8-D1…D11, D14…D17, B1-a/b/c, U1–U4 and **O1 = option A** (§14.7). Still awaiting approval:
-P8-D12/D13 and every sandbox decision (P8-S1…S7, S1b); gates G2–G5 are **not** passed (§15). Built: Batch 1 =
-8.1 + 8.2 (commit `c62b067`, §16) and Batch 2 = 8.3 + 8.4 (implemented and tested, uncommitted, §17). **No code is
-executed anywhere: actual code execution stays deferred until the sandbox gates G2–G4 pass.** Originally written as
+Status (updated 2026-11-24, Batch 3): **the §14 decision register is the authoritative approval record.**
+Approved so far: P8-D1…D11, D14…D17, B1-a/b/c, U1–U4, **O1 = option A** (§14.7) and the G2 sandbox decisions
+**P8-S2, S3, S5, S6, S7** (§14.8, 2026-11-24). Still awaiting approval: P8-D12/D13, P8-S1, S1b, S4. Gates G2–G5 are
+**not** passed (§15): G2's decisions are approved but its evidence (escape suite on gVisor, CI run) is missing.
+Built: Batch 1 = 8.1 + 8.2 (`c62b067`, §16), Batch 2 = 8.3 + 8.4 (`1d620e6`, §17), Batch 3 = 8.5a + 8.5b
+(implemented locally, uncommitted, §18). **No student code is executed anywhere: actual code execution stays
+deferred until G2–G4 pass.** Originally written as
 8.0 planning, revision 2 (base `869d42b`, Phase 7). Overall status: `../PROJECT_STATE.md`. Roadmap:
 `../IMPLEMENTATION_PLAN.md` §6a.
 
@@ -1107,12 +1109,12 @@ S1b) remain **Recommended — awaiting user approval**. Nothing has been rejecte
 |---|---|---|---|
 | P8-S1 | Infrastructure | dedicated Ubuntu 24.04 VM, 2 vCPU / 4 GB as a **pilot profile** (not proven capacity), 2 concurrent executions, load test and capacity review triggers (§4.7); no provisioning or spend without approval; no cost quoted until reliable current prices are collected | Recommended — awaiting user approval |
 | P8-S1b | Hosted execution API alternative | only with a separate privacy decision (student code and the hidden pack go to a third party) | Not recommended unless S1 is impossible — awaiting user decision |
-| P8-S2 | Runtime isolation | Docker + gVisor `runsc` only; hardening §4.3; trusted/untrusted separation §4.2; Judge0 ≥ 1.13.1 only as a fallback on the dedicated VM | Recommended — awaiting user approval |
-| P8-S3 | Limits | §4.4 per language (2 s CPU baseline, 256/512 MB profiles, 64 pids, 64 KB output, 30 s per submission, no network); process-tree kill | Recommended — awaiting user approval |
+| P8-S2 | Runtime isolation | Docker + gVisor `runsc` only; hardening §4.3; trusted/untrusted separation §4.2; Judge0 ≥ 1.13.1 only as a fallback on the dedicated VM | **APPROVED 2026-11-24 with Judge0 removed** (§14.8) |
+| P8-S3 | Limits | §4.4 per language (2 s CPU baseline, 256/512 MB profiles, 64 pids, 64 KB output, 30 s per submission, no network); process-tree kill | **APPROVED 2026-11-24** as ceilings; calibration may only tighten (§14.8) |
 | P8-S4 | Backend ↔ runner | HTTPS; ≥ 32-char token; constant-time compare; IP allow-list; private network or mTLS where practical; rotation procedure; no credentials in logs or errors; strict schema; identifiers instead of expected outputs | Recommended — awaiting user approval |
-| P8-S5 | Runner privacy and observability | content-free logs; no Sentry; protected `/metrics`; sanitized error classes; audited admin operations; no source retention on the runner | Recommended — awaiting user approval |
-| P8-S6 | Linux security CI | main-repository job (gVisor, isolation configuration, network/filesystem/limits/cleanup/truncation/hidden-data sentinels, escape attempts; synthetic only) + private-pack CI (reference solutions); no production credentials or user data; changes `.github/workflows/ci.yml` | Recommended — awaiting user approval |
-| P8-S7 | Private test-pack storage (new in r2) | a separate private Git repository (named maintainers) building digest-addressed packs, installed read-only on the runner VM by an operator; never in this repository | Recommended — awaiting user approval |
+| P8-S5 | Runner privacy and observability | content-free logs; no Sentry; protected `/metrics`; sanitized error classes; audited admin operations; no source retention on the runner | **APPROVED 2026-11-24** (§14.8) |
+| P8-S6 | Linux security CI | main-repository job (gVisor, isolation configuration, network/filesystem/limits/cleanup/truncation/hidden-data sentinels, escape attempts; synthetic only) + private-pack CI (reference solutions); no production credentials or user data; changes `.github/workflows/ci.yml` | **APPROVED 2026-11-24** (§14.8); job written, **not yet executed** (needs a push/PR approval) |
+| P8-S7 | Private test-pack storage (new in r2) | a separate private Git repository (named maintainers) building digest-addressed packs, installed read-only on the runner VM by an operator; never in this repository | **APPROVED 2026-11-24** (§14.8); local-only repository created, no remote |
 
 ### 14.4 Batch 1 decisions (accepted with G1, 2026-11-23)
 
@@ -1191,6 +1193,22 @@ stored; a DB CHECK forbids a score or a "verified" status on `coding-v1-unverifi
 `problem_score` column is the future path for verified `coding-v1` (8.6). Option B (feedback inside `plan_json`) was
 not chosen. **Actual code execution remains deferred until the sandbox gates G2–G4 pass.**
 
+### 14.8 G2 sandbox decisions approval record (2026-11-24)
+
+**Status: APPROVED** by the owner on 2026-11-24, in the Batch 3 implementation authorization ("use these defaults"):
+
+| # | Approved as |
+|---|---|
+| P8-S2 | Docker + gVisor `runsc`, **systrap** platform; plain Docker is never the security boundary; **Judge0 removed** from the design (never introduced silently); Docker, gVisor, runtime configuration and images pinned (images by digest); the runner refuses to execute when `runsc` or the approved runtime is missing, the runtime version or platform is wrong, any mandatory hardening setting is missing, or an image is not digest-pinned |
+| P8-S3 | §4.4 values are **starting ceilings**; calibration may tighten them and may never raise one without the owner's explicit approval; Java factors are measured, not invented |
+| P8-S5 | one content-free JSON log line per execution; sanitized error codes; no source, output, hidden data or token in logs or metrics; no Sentry or AI tracing; token-protected `/metrics`; source only in tmpfs/memory; admin actions over SSH with an audit record |
+| P8-S6 | dedicated job in the existing `ci.yml`, path-filtered, pinned gVisor with checksum, synthetic data only, no Actions secrets; plus private-repository CI for the reference solutions. **CI acceptance is claimed only after a real run**; no push, PR or merge is authorized yet |
+| P8-S7 | separate private repository; local-only at `D:\campus-ai-testpack` (no remote) until the owner creates the private GitHub repository (suggested `campus-ai-interview-testpack`: named maintainers, 2FA required, protected default branch, forks disabled, no unnecessary Actions secrets) |
+
+Batch 3 scope (approved the same day): **8.5a + 8.5b** exactly as recorded in §18. Batch 4 = 8.5c + 8.6. Not
+approved: P8-S1/S1b/S4 (G3), any provisioning, spend, push, PR, merge, deploy, publication of problems, or execution
+of student code.
+
 ### 14.3 Changes from r1
 
 | # | r1 | r2 |
@@ -1224,7 +1242,7 @@ not chosen. **Actual code execution remains deferred until the sandbox gates G2�
 | **G1** | 8.1–8.4, 8.5a, 8.7 (no execution) | P8-D1…D4 and D6…D17 accepted (D5 before 8.2's editor work) |
 | **G1 (Batch 1, narrower scope — passed 2026-11-23)** | 8.1 + 8.2 only | P8-D1…D6, D8, D14…D17 and B1-a/b/c accepted. D7 and D9…D13 are still required before 8.3, 8.4 and 8.7 |
 | **Batch 2 decisions (recorded 2026-11-23)** | 8.3 + 8.4 | P8-D7 (+ U1–U4), P8-D9…D11 and O1 = A APPROVED; implementation authorized 2026-11-23 and done (§17; uncommitted). P8-D12/D13 still required before 8.7 |
-| **G2** | 8.5b runner code + Linux CI job (synthetic data, no production) | P8-S2, S3, S5, S6, S7 accepted |
+| **G2** | 8.5b runner code + Linux CI job (synthetic data, no production) | P8-S2, S3, S5, S6, S7 accepted — **decisions APPROVED 2026-11-24 (§14.8); gate NOT passed: escape suite on gVisor and CI run outstanding (§18.6)** |
 | **G3** | provisioning the VM and any spend | P8-S1 and P8-S4 accepted; provider, region and cost approved; backend egress/private-network approach chosen |
 | **G4** | 8.6 — **first execution of untrusted student code** | 8.5c evidence recorded: escape suite 100 % on the VM, load test within targets, firewall/egress verified, token rotation tested; your sign-off of sandbox security acceptance |
 | **G5** | any pilot with real students | 8.8 acceptance, runbooks, pilot institute and flags chosen by you |
@@ -1460,3 +1478,125 @@ hints. The hint payload carries public problem text, the student's code and the 
 data, no rubric reference). Code-limit bypass cases (one-line solutions, inline code, plain assignment lines, an
 unterminated fence, mixed fenced + inline code, an over-long single statement) are rejected; exactly 3 statements
 are allowed.
+
+## 18. Batch 3 record: 8.5a hidden test pack + 8.5b secure runner foundation (2026-11-24; implemented locally, uncommitted)
+
+Approval: owner's Batch 3 implementation authorization, 2026-11-24 (G2 decisions §14.8; local implementation only:
+no staging, commit, push, PR, merge, deploy, provisioning, spend, system-software installation or student code).
+During the session the owner additionally approved, for this batch only: starting the already-installed Docker
+Desktop and pulling the three digest-pinned toolchain images to compile and run **our own reference solutions**
+(never student code, never hostile fixtures); and declined installing Ubuntu WSL2 + Docker Engine + gVisor locally
+("not now"), so the real escape suite stays blocked until a verified gVisor host exists.
+
+### 18.1 8.5a — private test pack (`D:\campus-ai-testpack`, local Git, no remote, nothing committed)
+
+- Format v1 (`tools/packformat.py`, byte-identical to `code-runner/runner/packformat.py`; shared golden vector):
+  `manifest.json`, `problems/<key>/problem.lock.json`, `tests/{visible,basic,edge,performance}/NN.{in,out}`; plus
+  non-runtime `generators/gen.py`, `reference/{python,cpp,java,c}/`, `slow/main.cpp`, `calibration.json`,
+  `labels.json`, `review-log/<key>.md`, `public/<key>.json` (snapshot of the bound public fields).
+- Digest process (one definition): file = SHA-256 of raw bytes (no line-ending conversion); group = SHA-256 over
+  ordered `NN, sha256(in), len(in), sha256(out), len(out)`; hidden test-set = SHA-256 over the canonical lock fields
+  (key, versions, checker, time_ms, memory profile) and the three hidden group digests (**the value for the public
+  `hidden_test_set.digest_sha256`**); visible-set and pack digests likewise; runtime archive = uncompressed ustar,
+  sorted entries, mtime 0, uid/gid 0, fixed modes, named by the pack digest, containing only runtime files.
+- Content: 24 problems; **320 hidden tests** (easy 6/4/1, medium 6/5/3, hard 6/5/4 per problem — exactly the
+  counts already declared in the public bundle; every group >= 1, U2); **96 reference solutions** (4 languages x 24);
+  **15 deliberately slow solutions** (C++, must fail `performance`; the other 9 problems have no slower common
+  approach to separate, recorded per problem). Seeded generators: fixed integer seeds, `random.Random` only, explicit
+  `check_input` schema, bounded sizes; expected outputs derived only by the generator oracle, cross-checked against an
+  independent brute force on small inputs, against the public visible outputs, and against all four references.
+- Ambiguities chosen and recorded for the reviewer (generator notes): reverse-word-order allows leading/trailing
+  spaces (the public visible tests already contain them); connect-all-hostels and shortest-delivery-route include
+  parallel edges, no self-loops; course-schedule-order uses no repeated rule and no `a == b`; tree-level-sums roots
+  may be any member, parents may be numbered after children.
+- Built pack (2026-11-24): pack digest `c13fded0` (first 8 hex characters; the full value is kept only in the private repository); runtime
+  archive 116,480,000 bytes, SHA-256 `618ce669` (first 8 hex characters); two clean
+  rebuilds reproduce the manifest and the archive byte for byte; the runner's own verifier loads the archive alone
+  (24 problems, same digest; no references, generators, labels or calibration inside).
+- Human review: **no reviewer named; all 24 records `Decision: PENDING`**; checklist covers originality, clarity,
+  ambiguity, constraints, coverage, performance separation, checker, hint safety and each reference. No digest has
+  been written to the public bundle; all 24 problems stay `draft`.
+- Private CI written (`.github/workflows/validate.yml`: build, verify, tests, validate all references) — **not run**
+  (no remote exists).
+
+### 18.2 8.5a — U2 in the public validator
+
+`services/coding_bank.py`: a `published` problem additionally needs >= 1 `basic`, `edge` and `performance` hidden
+test (rejected otherwise, weights never redistributed); drafts unchanged. Tests: one per missing group, a valid
+1/1/1 problem, drafts exempt, a bad published problem invalidates the whole bank, and the shipped bank still has no
+digest, no reviewer and every group >= 1.
+
+### 18.3 8.5b — `code-runner/` (standalone; not connected to the backend; nothing executed)
+
+Modules: `config` (fail-closed env), `auth` (constant-time, 1-3 rotating tokens), `schemas` (strict, extra=forbid,
+96 KB body, 64 KB source, 16 KB custom input), `pins` (verified pins), `languages` (fixed argv; `javac -proc:none`),
+`limits` (§4.4 ceilings, tighten-only factor), `sandbox` (allow-listed `docker run` arguments checked by
+`assert_hardened`, Docker CLI wrapper with capped streams and container-kill on any limit, fail-closed `self_check`),
+`executor` (compile container -> opaque build tar -> run container(s); per-limit container kill and recreation; U4;
+cleanup proof or discard; judging; reduction), `pack` (startup verification, read-only required), `service` (bounded
+queue, idempotent replays, reaper, degraded state), `observability` (one content-free JSON line per execution,
+token-protected Prometheus text), `app` (HTTP surface, generic errors, no docs/OpenAPI). Contract and operations:
+`code-runner/README.md`, `runbooks/code-runner.md`.
+
+Pins (verified 2026-11-24 at the publishers): gVisor `release-20261102.0` (archive SHA-512, `runsc` SHA-256
+`c5a5a7ba…5098`), runtime args `--platform=systrap --network=none`; Docker Engine 29.9.3 / containerd.io 2.4.2-3 for
+Ubuntu 24.04 (package SHA-256 from Docker's apt index; apt key fingerprint `9DC8 5822 9FC7 DD38 854A E2D8 8D81
+803C 0EBF CD88`); images `gcc:14.4.0` `sha256:a6f425a3…0765`, `python:3.13.17-slim-bookworm`
+`sha256:e32be0e5…8530`, `eclipse-temurin:21.0.12.1_1-jdk-noble` `sha256:57424b1d…7029` (Docker Hub tag API and
+registry `Docker-Content-Digest` agree).
+
+CI (P8-S6): `ci.yml` gains `sandbox-scope` (path detection) and `sandbox` (installs the pinned Docker with key and
+package checksums, the pinned gVisor with checksums, registers `runsc`, pulls pinned images, runs unit tests and the
+escape suite with `RUNNER_GVISOR_E2E=1`; no secrets). **Not executed** (needs a push/PR the owner has not approved).
+
+### 18.4 Deviations from the r2 text (all narrower or explicitly recorded)
+
+1. Graded requests carry `hidden_digest`; a mismatch with the installed pack is 409 (binds the run to the reviewed
+   test set).
+2. Compilation runs in its own container with compile limits; the build is moved to the run container as an opaque
+   tar (keeps compile memory separate from run memory, and lets a killed run container be replaced mid-submission).
+3. Containers' own processes run as uid 65533 (builder); programs run as uid 65534, which cannot signal them.
+4. Per-test CPU uses RLIMIT_CPU (whole seconds, rounded up, never above the ceiling); the runner's wall clock
+   (2.5 x CPU) is the backstop. Per-test memory is not measured in v1 (`memory_kb: null`).
+5. Problem `time_ms` is the problem factor (C/C++ x1, Java x2, Python x3, capped at 6 s).
+6. Performance test files are git-ignored build outputs pinned by the manifest (size), reproduced by `verify.py`.
+7. Judge0 removed from the design (§14.8).
+
+### 18.5 Test evidence (2026-11-24, this machine; raw outputs were in the session scratchpad)
+
+| Check | Result |
+|---|---|
+| Runner suite (`code-runner/tests`, Windows, scripted Docker, no execution) | **183 passed, 2 skipped** (symlink test is POSIX-only; escape suite skipped) |
+| Runner self-check against this machine's real Docker (read-only queries) | **refuses** (`runsc_runtime_missing`, `runsc_binary_missing`) |
+| Escape suite forced (`RUNNER_GVISOR_E2E=1`) on this non-gVisor machine | **refused to run** (fixture error), container count unchanged |
+| ruff (`code-runner`, private tools/tests/generators, changed backend files) | clean |
+| Private pack tests (`tests/`: determinism, schema, golden vector, pack vs public, negative control) | **52 passed** |
+| `tools/verify.py --archive` | manifest, public binding, two clean rebuilds, byte-identical archive: **pass** |
+| `tools/validate_refs.py` (all 24 x 4 languages; pinned images on Docker Desktop **runc**, no network, read-only, non-root) | **96/96 accepted** (all outputs correct; max CPU <= 50 % of limit: worst coin-combinations Python 1380/3000 ms = 46 %); **15/15 slow solutions fail performance** |
+| Backend `tests/test_mock_interview_coding_bank.py` | **36 passed** (7 new U2/publication tests) |
+| **Full backend SQLite suite** (run alone, `pytest -p no:cacheprovider -o addopts="" -q`) | **655 passed, 0 failed, 24 skipped** (Postgres-only RLS tests), exit 0, 38 min 35 s |
+| Worker interview suites (8 files: coding, company, engine, flag, no_langfuse, report, usage, metrics token) | **91 passed** (no worker change) |
+| Frontend unit / `tsc` / lint / production build (default flags) | **187/187**, exit 0, 0 errors (2 pre-existing warnings), exit 0 (no frontend change) |
+
+**Not run / blocked (not reported as passed):** the escape/abuse/conformance suite on gVisor (no verified gVisor
+host: local install declined; CI needs push approval); both CI workflows; gVisor timing calibration (all timings are
+**provisional runc** figures); Java factors under gVisor; load test (8.5c); Postgres suites (no schema, RLS or API
+change in Batch 3).
+
+### 18.6 G2 status: NOT PASSED
+
+Decisions approved (§14.8). Evidence present: pins verified, hardening enforced and tested, fail-closed self-check
+proven against a real non-gVisor daemon, content-free logs/metrics and sentinel tests, strict API, U2, reproducible
+digest-addressed pack, all references valid. **Missing:** a run of the full escape suite (§11.5) inside the pinned
+gVisor (100 % required), and an executed CI run. G2 passes only when the `sandbox` CI job (or the same suite on a
+verified gVisor host) has run green and the result is recorded here.
+
+### 18.7 Next: Batch 4 (8.5c + 8.6) prerequisites
+
+Push/PR approval so the `sandbox` CI job can run (completes G2); a named human reviewer and the review of all 24
+problems; the private GitHub repository (owner-created); G3 decisions (P8-S1 VM, P8-S4 transport, provider/region/
+cost, backend egress or tunnel); then 8.5c on the VM (hardening, pack install, escape suite 100 %, gVisor calibration
+incl. Java, 2x load test, firewall/egress, token rotation drill) and G4 sign-off before 8.6 connects the backend
+(`code_runner.py`, dispatch, sweep, breaker, ledger, quotas, verified `coding-v1`, best submission) behind
+`AI_MOCK_INTERVIEW_CODE_EXECUTION_ENABLED` (default off). Publication of any problem needs its approved review and a
+separate owner approval.

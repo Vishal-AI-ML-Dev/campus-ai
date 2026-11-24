@@ -84,3 +84,105 @@ jobs:
       # live in .gitleaksignore as exact fingerprints.
       - name: Scan git history
         run: '"$RUNNER_TEMP/gitleaks" git . --redact --no-banner --verbose'
+
+  # Phase 8.5b (P8-S6): the code-runner sandbox suite. Synthetic data only; no secrets; never production.
+  # It runs only when runner/sandbox paths change (computed below, so the other jobs keep running on every push).
+  sandbox-scope:
+    name: Runner sandbox scope
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.scope.outputs.changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Detect runner changes
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then range="origin/${BASE_REF}...HEAD"; else range="${BEFORE_SHA}..HEAD"; fi
+          # An unknown range (first push, force push) runs the suite rather than skipping it.
+          files=$(git diff --name-only "$range" 2>/dev/null) || files="code-runner/"
+          if printf '%s\n' "$files" | grep -Eq '^(code-runner/|backend/app/services/coding_bank\.py|backend/app/coding_bank/|\.github/workflows/ci\.yml)'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  sandbox:
+    name: Runner sandbox security suite (gVisor, synthetic)
+    needs: sandbox-scope
+    if: needs.sandbox-scope.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: code-runner
+    env:
+      # Must equal code-runner/runner/pins.py (checked by tests/test_ci_pins.py).
+      DOCKER_APT_KEY_FPR: "9DC858229FC7DD38854AE2D88D81803C0EBFCD88"
+      DOCKER_CE_VERSION: "5:29.9.3-1~ubuntu.24.04~noble"
+      DOCKER_CE_SHA256: "c546181f0bc5f1d19085d764a3219aa86069468dbee4743fae420ee8a31809a4"
+      DOCKER_CE_CLI_SHA256: "24f78a893cece8d345c4e90b5163907c047b996b747265f873743e8b0b0546d4"
+      CONTAINERD_VERSION: "2.4.2-3~ubuntu.24.04~noble"
+      CONTAINERD_SHA256: "f811ab57d1f4bb0cce19df7d526da8c711d8ebea0447cc83da1999188e664122"
+      GVISOR_URL: "https://storage.googleapis.com/gvisor/releases/release/20261102.0/x86_64/gvisor.tar.bz2"
+      GVISOR_SHA512: "2e6671bb2d033b871c5811ab57e16ac570988b0e0054c525f911cfaf191bab3ca4efb08e0a98daa4b9e7d248f9e5776ef2ef2f8a6b82d829646a42924c98bb05"
+      RUNSC_SHA256: "c5a5a7ba1209b605d08874fdd4429035f95afcb2d482bc95ed3fb13d31a25098"
+      SHIM_SHA256: "6187d6d34f4996e859353fbb4c56d5ed41fc35b5afa44bff766f4e4b424da5bb"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned Docker Engine (signing key and package checksums verified)
+        run: |
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o "$RUNNER_TEMP/docker.asc"
+          gpg --show-keys --with-colons "$RUNNER_TEMP/docker.asc" | grep -q "^fpr:::::::::${DOCKER_APT_KEY_FPR}:"
+          sudo install -m 0644 "$RUNNER_TEMP/docker.asc" /etc/apt/keyrings/docker-pinned.asc
+          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker-pinned.asc] https://download.docker.com/linux/ubuntu noble stable" \
+            | sudo tee /etc/apt/sources.list.d/docker-pinned.list > /dev/null
+          sudo apt-get update -q
+          cd "$RUNNER_TEMP"
+          apt-get download "docker-ce=${DOCKER_CE_VERSION}" "docker-ce-cli=${DOCKER_CE_VERSION}" "containerd.io=${CONTAINERD_VERSION}"
+          echo "${DOCKER_CE_SHA256}  $(ls docker-ce_*.deb)" | sha256sum --check --strict
+          echo "${DOCKER_CE_CLI_SHA256}  $(ls docker-ce-cli_*.deb)" | sha256sum --check --strict
+          echo "${CONTAINERD_SHA256}  $(ls containerd.io_*.deb)" | sha256sum --check --strict
+          sudo apt-get install -y --allow-downgrades ./docker-ce_*.deb ./docker-ce-cli_*.deb ./containerd.io_*.deb
+      - name: Install pinned gVisor (archive SHA-512 and binary SHA-256 verified)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/gvisor.tar.bz2" "$GVISOR_URL"
+          echo "${GVISOR_SHA512}  $RUNNER_TEMP/gvisor.tar.bz2" | sha512sum --check --strict
+          tar -xjf "$RUNNER_TEMP/gvisor.tar.bz2" -C "$RUNNER_TEMP" runsc containerd-shim-runsc-v1
+          echo "${RUNSC_SHA256}  $RUNNER_TEMP/runsc" | sha256sum --check --strict
+          echo "${SHIM_SHA256}  $RUNNER_TEMP/containerd-shim-runsc-v1" | sha256sum --check --strict
+          sudo install -m 0755 "$RUNNER_TEMP/runsc" "$RUNNER_TEMP/containerd-shim-runsc-v1" /usr/local/bin/
+      - name: Register runsc (systrap platform, gVisor networking off) and restart Docker
+        run: |
+          current=/etc/docker/daemon.json
+          [ -s "$current" ] || echo '{}' | sudo tee "$current" > /dev/null
+          sudo jq '.runtimes.runsc = {"path": "/usr/local/bin/runsc", "runtimeArgs": ["--platform=systrap", "--network=none"]}' \
+            "$current" | sudo tee "$RUNNER_TEMP/daemon.json" > /dev/null
+          sudo install -m 0644 "$RUNNER_TEMP/daemon.json" "$current"
+          sudo systemctl restart docker
+          docker version --format 'docker {{.Server.Version}}'
+          runsc --version | head -1
+      - name: Pull digest-pinned toolchain images
+        run: |
+          for image in $(python3 -c "import runner.pins as p; print(' '.join(p.ALL_IMAGES))"); do docker pull -q "$image"; done
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.8"
+      - name: Install dependencies (locked)
+        run: uv sync --frozen
+      - name: Runner unit, privacy and configuration tests
+        run: uv run pytest -m "not gvisor"
+      # Hostile synthetic fixtures run ONLY here, inside gVisor, after the runner's own self-check passes.
+      - name: Escape / abuse / conformance suite (gVisor)
+        env:
+          RUNNER_GVISOR_E2E: "1"
+        run: uv run pytest tests/escape -v

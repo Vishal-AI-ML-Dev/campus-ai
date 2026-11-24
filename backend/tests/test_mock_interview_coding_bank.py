@@ -114,6 +114,56 @@ def test_published_problem_needs_review_record_and_digest():
     assert _parse(doc).status == "published"
 
 
+def _reviewed(doc):
+    doc["status"] = "published"
+    doc["source"].update(reviewer="Synthetic Reviewer", reviewed_on="2026-11-30")
+    doc["hidden_test_set"]["digest_sha256"] = "b" * 64
+    return doc
+
+
+@pytest.mark.parametrize("group", ["basic", "edge", "performance"])
+def test_u2_published_problem_needs_every_hidden_group(group):
+    """U2 (P8-D7): >= 1 basic, edge and performance hidden test; weights are never redistributed."""
+    doc = _reviewed(copy.deepcopy(REAL))
+    doc["hidden_test_set"]["groups"][group] = 0
+    with pytest.raises(BankError, match="each group"):
+        _parse(doc)
+
+
+def test_u2_published_problem_with_one_test_per_group_is_accepted():
+    doc = _reviewed(copy.deepcopy(REAL))
+    doc["hidden_test_set"]["groups"] = {"basic": 1, "edge": 1, "performance": 1}
+    assert _parse(doc).hidden_groups == {"basic": 1, "edge": 1, "performance": 1}
+
+
+def test_u2_does_not_apply_to_drafts():
+    """Drafts are never served, so an incomplete draft stays loadable while its pack is being written."""
+    doc = copy.deepcopy(REAL)
+    doc["hidden_test_set"]["groups"]["performance"] = 0
+    assert _parse(doc).status == "draft"
+
+
+def test_u2_published_problem_without_a_group_invalidates_the_whole_bank(tmp_path):
+    bad = _reviewed(copy.deepcopy(REAL))
+    bad["hidden_test_set"]["groups"]["edge"] = 0
+    _write_bank(tmp_path, {REAL["key"]: bad})
+    bank = load_bank(tmp_path)
+    assert not bank.ok and bank.problems == {}
+    assert "each group" in bank.error
+
+
+def test_shipped_bank_has_no_digest_or_reviewer_before_human_review():
+    """Batch 3: hidden-test digests reach the public bundle only after human review and publication approval."""
+    for p in load_bank().problems.values():
+        assert p.status == "draft"
+        assert "reviewer" not in p.source and "reviewed_on" not in p.source
+    for path in BANK_DIR.rglob("problem.json"):
+        doc = json.loads(path.read_text("utf-8"))
+        assert doc["hidden_test_set"]["digest_sha256"] is None, path.parent.name
+        groups = doc["hidden_test_set"]["groups"]
+        assert all(groups[g] >= 1 for g in ("basic", "edge", "performance")), path.parent.name
+
+
 def test_comparison_signs_in_text_are_allowed():
     doc = copy.deepcopy(REAL)
     doc["constraints"] = "1 ≤ n ≤ 10 and a < b for every pair; x > 0."
