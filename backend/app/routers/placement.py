@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -199,6 +200,28 @@ def _evaluate(profile: dict, drive: Drive) -> tuple[bool, list[dict]]:
     return eligible, reasons
 
 
+def _v2(user: User):
+    """Phase 9.1 (decision P9-D6): the placement-management service when the
+    caller's institute has it enabled, else None (legacy behaviour).
+
+    Imported lazily: the service imports this module for ``_evaluate``.
+    """
+    from app.services import placement_management as pm
+
+    return pm if pm.enabled_for(user) else None
+
+
+def _hide_draft_from_student(db: Session, drive: Drive, user: User) -> None:
+    """Phase 9.1: a draft drive is invisible to students (flagged institutes)."""
+    pm = _v2(user)
+    if pm is None or user.role != UserRole.student:
+        return
+    if pm.effective_lifecycle(drive, pm.get_settings(db, drive)) == "draft":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Drive not found"
+        )
+
+
 def _require_drive(
     db: Session, drive_id: int, tenant_id: int | None = None
 ) -> Drive:
@@ -286,7 +309,9 @@ def get_drive(
     user: User = Depends(no_recruiters),
 ) -> Drive:
     """Fetch a single drive by id (only within your own institute)."""
-    return _require_drive(db, drive_id, user.tenant_id)
+    drive = _require_drive(db, drive_id, user.tenant_id)
+    _hide_draft_from_student(db, drive, user)
+    return drive
 
 
 @router.patch("/{drive_id}/status", response_model=DriveOut)
@@ -298,6 +323,12 @@ def set_drive_status(
 ) -> Drive:
     """Open or close a drive."""
     drive = _require_drive(db, drive_id, tpo.tenant_id)
+    pm = _v2(tpo)
+    if pm is not None:
+        # Flagged institute: open/close follows the drive lifecycle rules.
+        pm.legacy_open_close(db, tpo, drive, payload.is_open)
+        db.refresh(drive)
+        return drive
     drive.is_open = payload.is_open
     db.commit()
     db.refresh(drive)
@@ -317,6 +348,7 @@ def drive_eligibility(
     db: Session = Depends(get_db),
     tenant_id: int = Depends(get_current_tenant_id),
     page: Pagination = Depends(pagination_params),
+    current_user: User = Depends(get_current_user),
 ) -> list[StudentEligibilityOut]:
     """Run the eligibility engine across all active students for this drive.
 
@@ -325,6 +357,10 @@ def drive_eligibility(
     institute's students are evaluated.
     """
     drive = _require_drive(db, drive_id, tenant_id)
+    pm = _v2(current_user)
+    if pm is not None:
+        # Flagged institute: the same v2 verdicts the apply route enforces.
+        return paginate_list(response, _v2_eligibility(pm, db, drive, eligible_only), page)
     students = list(
         db.scalars(
             select(User).where(
@@ -356,6 +392,47 @@ def drive_eligibility(
     return paginate_list(response, results, page)
 
 
+def _v2_eligibility(pm, db: Session, drive: Drive, eligible_only: bool) -> list[StudentEligibilityOut]:
+    """Legacy response shape filled from eligibility v2 (batched queries)."""
+    tenant_id = drive.tenant_id
+    ctx = pm.drive_context(db, drive)
+    students = list(
+        db.scalars(
+            select(User).where(
+                User.role == UserRole.student,
+                User.is_active.is_(True),
+                User.tenant_id == tenant_id,
+            )
+        )
+    )
+    metrics = pm.bulk_metrics(db, tenant_id, None)
+    profiles = pm.profiles_for(db, tenant_id, None)
+    depts = pm.departments_for(db, tenant_id, students)
+    placed_ids = pm.placed_student_ids(db, tenant_id)
+    results: list[StudentEligibilityOut] = []
+    for student in students:
+        m = metrics.get(student.id) or pm.empty_metrics()
+        eligible, reasons = pm.evaluate(
+            ctx, m, profiles.get(student.id), depts[student.id], student.id in placed_ids
+        )
+        if eligible_only and not eligible:
+            continue
+        results.append(
+            StudentEligibilityOut(
+                student_id=student.id,
+                full_name=student.full_name,
+                eligible=eligible,
+                cgpa=m["cgpa"],
+                attendance=m["attendance"],
+                verified_skills=len(m["verified_skills"]),
+                verified_projects=m["verified_projects"],
+                reasons=reasons,
+            )
+        )
+    results.sort(key=lambda r: (not r.eligible, -r.cgpa))
+    return results
+
+
 @router.get("/{drive_id}/my-eligibility", response_model=MyEligibilityOut)
 def my_eligibility(
     drive_id: int,
@@ -364,6 +441,21 @@ def my_eligibility(
 ) -> MyEligibilityOut:
     """Check YOUR own eligibility for a drive, with per-criterion reasons."""
     drive = _require_drive(db, drive_id, current_user.tenant_id)
+    _hide_draft_from_student(db, drive, current_user)
+    pm = _v2(current_user)
+    if pm is not None:
+        eligible, reasons, m, _placed, _profile = pm.evaluate_student(
+            db, pm.drive_context(db, drive), current_user
+        )
+        return MyEligibilityOut(
+            drive_id=drive_id,
+            eligible=eligible,
+            cgpa=m["cgpa"],
+            attendance=m["attendance"],
+            verified_skills=len(m["verified_skills"]),
+            verified_projects=m["verified_projects"],
+            reasons=reasons,
+        )
     profile = _student_profile(db, current_user.id)
     eligible, reasons = _evaluate(profile, drive)
     return MyEligibilityOut(
@@ -393,6 +485,10 @@ def apply_to_drive(
     Eligibility is re-checked here against the student's VERIFIED data, so an
     application can only exist if the moat criteria are genuinely met.
     """
+    pm = _v2(current_user)
+    if pm is not None:
+        # Flagged institute (P9-D6): lifecycle, window and v2 criteria apply.
+        return pm.apply(db, current_user, drive_id)
     drive = _require_drive(db, drive_id, current_user.tenant_id)
     if not drive.is_open:
         raise HTTPException(
@@ -427,7 +523,16 @@ def apply_to_drive(
         tenant_id=drive.tenant_id,
     )
     db.add(application)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Phase 9.1 hardening: two concurrent applies race past the check
+        # above; the unique constraint wins and the loser gets 409, not 500.
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You have already applied to this drive.",
+        )
     db.refresh(application)
     return application
 
@@ -520,6 +625,12 @@ def set_application_status(
     tpo: User = Depends(tpo_only),
 ) -> Application:
     """TPO decision on an application: shortlist, select, or reject."""
+    pm = _v2(tpo)
+    if pm is not None:
+        # Flagged institute (P9-D6): transition rules, history and audit.
+        return pm.change_application_status(
+            db, tpo, application_id, payload.status, payload.note
+        )
     application = db.get(Application, application_id)
     if application is None:
         raise HTTPException(

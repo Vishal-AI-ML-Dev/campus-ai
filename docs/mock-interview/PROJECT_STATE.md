@@ -1,7 +1,9 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-24 (Phase 8 Batch 3 — 8.5a private hidden test pack + 8.5b `code-runner/` foundation:
-implemented locally and tested, **uncommitted**; G2 decisions approved but **G2 NOT passed** (escape suite on gVisor
+_Last updated: 2026-11-24 (Phase 9.0 planning written — `specs/phase-9-placement-institute-management.md`; Batch 9.1
+implemented, finally verified, uncommitted and unstaged (spec §10–§11); P9-D7/D8 approved; 9.2 authorized, not started.
+Phase 8 G2 still NOT passed. Before that: Phase 8 Batch 3 — 8.5a private hidden test pack + 8.5b `code-runner/` foundation:
+implemented, tested and **committed locally as `7d4147c`** (not pushed); G2 decisions approved but **G2 NOT passed** (escape suite on gVisor
 and CI not yet run); see spec §18. Before that: Batch 2 — 8.3 AI coding review (review-only) + 8.4 company profiles:
 implemented, verified and **committed as `1d620e6`**; O1 = option A approved; see spec §17. Before that: Batch 1 —
 8.1 coding foundations + 8.2 coding UI, review-only: implementation complete and tested; G1 narrower scope approved; see spec §16.
@@ -31,8 +33,8 @@ block wins.
 | **5** | **Voice interview (browser speech)** | **Implemented, committed; automated/simulated tests pass; real-device tests pending** | `34fd3a9` |
 | **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented. 6.3 video lobby, room and lifecycle implemented, `VIDEO_UI_READY = true`. 6.4 wiring (done in 6.3) audited, one fix, automated gaps closed, real-device matrix written. 6.5 done in 6.3, audited in 6.5 (report parity proven by tests). 6.6 automated hardening done (accessibility, responsive, privacy guards, full regression). **Phase 6 NOT complete: real-device checklist (24 rows) pending** | 6.1 `1ad5628`, 6.2 `17247e2`, 6.3 `aef2999`, 6.4 `0262f97` |
 | **7** | **Production operations and monitoring** (`specs/phase-7-production-operations.md`, runbooks in `runbooks/`) | **7.0–7.10 implementation complete.** 7.2 worker usage/latency, 7.3 usage ledger + metrics, 7.4 cost framework (**numeric pricing pending: no approved price table**), 7.5 circuit breaker + alerts, 7.6 institute controls + quotas, 7.7 admin API, 7.8 admin UI, 7.9 protected `/metrics`, 7.10 runbooks + retention script. Live drills and real-device tests are Phase 10 | 7.0 `ee48610`; 7.1 `863a8aa`; 7.2–7.10 `869d42b` |
-| **8** | **Advanced AI interview intelligence**, incl. coding round (old 7) and company/full simulation (old 8) (`specs/phase-8-advanced-ai-intelligence.md`) | **8.0 planning done (spec r2). G1 (narrower, Batch 1) approved 2026-11-23: P8-D1…D6, D8, D14…D17, B1-a/b/c Accepted. Batch 1 (8.1 + 8.2, review-only coding round) implementation complete and tested (spec §16); nothing is executed. All 24 problems are drafts pending human review (production serves none). P8-D7 (coding rubric) APPROVED 2026-11-23 with scoring semantics U1–U4 approved the same day (spec §7.1, §14.5): zero basic tests ⇒ ≤ 12.0/100; all three test groups required to publish; no session score if any problem is unverified; candidate timeouts ≠ runner faults (incomplete, never best). P8-D9…D11 (company profiles, sources, context) APPROVED 2026-11-23 (spec §7.5–§7.8, §14.6). O1 = option A APPROVED 2026-11-23 (spec §14.7). **Batch 2 (8.3 AI coding review, review-only + 8.4 company profiles) implemented, verified and committed (`1d620e6`, 2026-11-24; spec §17)**; nothing is executed anywhere. **Batch 3 (8.5a private test pack: 24 problems, 320 hidden tests, 96 validated references; U2 publication rule; 8.5b standalone `code-runner/` with Docker + gVisor hardening, fail-closed self-check, synthetic escape suite and CI job) implemented locally 2026-11-24, uncommitted (spec §18); G2 decisions P8-S2/S3/S5/S6/S7 APPROVED, G2 NOT passed (escape suite and CI not run).** No student code executed anywhere; all 24 problems still drafts pending a named human reviewer. Still open: P8-D12/D13, P8-S1/S1b/S4 (G3), G2 evidence, G4, G5** | Batch 1: `c62b067`; Batch 2: `1d620e6`; Batch 3: uncommitted |
-| 9 | Institute and placement management, incl. faculty campaigns (old 9) | Not started | — |
+| **8** | **Advanced AI interview intelligence**, incl. coding round (old 7) and company/full simulation (old 8) (`specs/phase-8-advanced-ai-intelligence.md`) | **8.0 planning done (spec r2). G1 (narrower, Batch 1) approved 2026-11-23: P8-D1…D6, D8, D14…D17, B1-a/b/c Accepted. Batch 1 (8.1 + 8.2, review-only coding round) implementation complete and tested (spec §16); nothing is executed. All 24 problems are drafts pending human review (production serves none). P8-D7 (coding rubric) APPROVED 2026-11-23 with scoring semantics U1–U4 approved the same day (spec §7.1, §14.5): zero basic tests ⇒ ≤ 12.0/100; all three test groups required to publish; no session score if any problem is unverified; candidate timeouts ≠ runner faults (incomplete, never best). P8-D9…D11 (company profiles, sources, context) APPROVED 2026-11-23 (spec §7.5–§7.8, §14.6). O1 = option A APPROVED 2026-11-23 (spec §14.7). **Batch 2 (8.3 AI coding review, review-only + 8.4 company profiles) implemented, verified and committed (`1d620e6`, 2026-11-24; spec §17)**; nothing is executed anywhere. **Batch 3 (8.5a private test pack: 24 problems, 320 hidden tests, 96 validated references; U2 publication rule; 8.5b standalone `code-runner/` with Docker + gVisor hardening, fail-closed self-check, synthetic escape suite and CI job) implemented and committed locally as `7d4147c` 2026-11-24, not pushed (spec §18); G2 decisions P8-S2/S3/S5/S6/S7 APPROVED, G2 NOT passed (escape suite and CI not run).** No student code executed anywhere; all 24 problems still drafts pending a named human reviewer. Still open: P8-D12/D13, P8-S1/S1b/S4 (G3), G2 evidence, G4, G5** | Batch 1: `c62b067`; Batch 2: `1d620e6`; Batch 3: `7d4147c` |
+| **9** | **Institute and placement management**, incl. faculty campaigns (old 9) (`specs/phase-9-placement-institute-management.md`) | **9.0 planning done 2026-11-24 (audit, gap matrix, batches 9.1–9.5, decisions P9-D1…D10). Batch 9.1 (placement core v2, backend, flag `PLACEMENT_MANAGEMENT_ENABLED` off) implemented and tested, uncommitted (spec §10); full suite 685 passed / 29 skipped / 0 failed; Postgres RLS test not run.** Owner decisions open: P9-D7 (before 9.3), P9-D8 (before 9.2 UI) | — |
 | 10 | Enterprise integrations, platform-level security, final acceptance (full regression + all real-device tests) | Not started | — |
 
 Roadmap re-numbered 2026-11-20 (P7-D1); old-to-new mapping: `IMPLEMENTATION_PLAN.md` §6a.
@@ -563,7 +565,7 @@ Full record, deviations, review fixes and test evidence: `specs/phase-8-advanced
   `c62b067`), 2026-11-24. Nothing pushed, merged or deployed.
 - **Next (then):** Batch 3 — done below.
 
-### Phase 8 Batch 3 — 8.5a hidden test pack + 8.5b secure runner foundation (2026-11-24; implemented locally, uncommitted)
+### Phase 8 Batch 3 — 8.5a hidden test pack + 8.5b secure runner foundation (2026-11-24; committed locally `7d4147c`, not pushed)
 
 Full record, deviations and evidence: `specs/phase-8-advanced-ai-intelligence.md` §18 (decisions §14.8).
 
@@ -588,9 +590,50 @@ Full record, deviations and evidence: `specs/phase-8-advanced-ai-intelligence.md
 - **Tests:** runner 183 passed / 2 skipped; private pack 52 passed; verify + 96/96 + 15/15; backend bank tests 36;
   worker interview 91; frontend 187/187, tsc, lint, build; full backend SQLite 655 passed / 0 failed / 24 skipped (PG-only).
 - **Blocked / not run:** escape suite inside gVisor; both CI workflows; gVisor calibration; load test (8.5c).
+- **Committed:** `7d4147c` "feat(mock-interview): add hidden test pack and secure runner foundation" (54 files, parent
+  `1d620e6`), 2026-11-24. Nothing pushed, merged or deployed. G2 still NOT passed; Batch 4 not started.
 - **Next:** Batch 4 = 8.5c + 8.6 (spec §18.7): push/PR approval to run the `sandbox` CI job (completes G2), named
   human reviewer + review of 24 problems, private GitHub repository, G3 decisions (P8-S1, S4, provider/region/cost,
   egress), then VM work and G4 before any execution.
+
+### Phase 9.0 — institute and placement management planning (2026-11-24; docs only)
+
+Spec: `specs/phase-9-placement-institute-management.md` (audit §1, gap matrix §2, batches §3, decisions §4,
+Batch 9.1 requirements §5, security §6, acceptance §7, tests §8, risks §9).
+- Owner paused the Phase 8 G2 verification and started Phase 9. **G2 stays NOT passed; runner disconnected; no code
+  executed; 24 problems remain drafts; Phase 8 Batch 4 deferred.**
+- Audit result: drives, verified-data eligibility, applications, shortlisting, recruiters, offers and a basic
+  analytics overview already exist; Phase 9 extends them (no duplicate tables or routes).
+- Batches: 9.1 placement core v2 (backend) · 9.2 management UI + bulk ops · 9.3 faculty campaigns + TPO dashboard ·
+  9.4 analytics v2 + interview integration · 9.5 hardening and acceptance.
+- Defaults taken (owner may change): P9-D1…D6, D9. **Owner decisions (approved 2026-11-24):** P9-D7 option A —
+  faculty see mock-interview completion status only, enforced in the API (9.3); P9-D8 — student withdrawal
+  (`withdrawn` status) in 9.2. P9-D10 deferred.
+
+### Phase 9 Batch 9.1 — placement core v2, backend (2026-11-24; implemented, uncommitted)
+
+Full record: spec §10.
+- **Flags (default off):** `PLACEMENT_MANAGEMENT_ENABLED`, `PLACEMENT_MANAGEMENT_TENANT_IDS` (empty = no institute).
+  Off ⇒ 14 new `/placement/*` routes 404 and legacy `/drives` routes behave as before.
+- **DB:** migration `c8e2a4f6b1d9` (revises `b6d8f0a2c4e3`): `student_placement_profiles`, `placement_drive_settings`,
+  `placement_drive_departments`, `placement_application_events`; RLS on all four; no existing table altered.
+- **API:** student directory/detail/profile (TPO/admin), own profile (student), draft drives, drive edit, settings,
+  lifecycle, eligibility v2 (batched, constant query count), my-eligibility, apply v2, status transitions
+  (compare-and-set) and history. Legacy apply/status/open-close/eligibility delegate to v2 for flagged institutes.
+- **Hardening (all institutes):** duplicate-apply race → 409 (was 500); placement analytics and section analytics
+  filter by institute in the app (unchanged on production Postgres).
+- **Final verification (latest code, spec §11):** full SQLite **687 passed / 29 skipped / 0 failed, exit 0**; focused
+  placement/analytics/isolation/mock-interview suites **102 passed / 5 skipped / 0 failed, exit 0**; migration
+  up/down/up on scratch SQLite OK (one head `c8e2a4f6b1d9`); `git diff --check` clean. Two tests added (flag defaults
+  off; teacher gets no student mock-interview data with every flag on). **PostgreSQL RLS suite: BLOCKED / NOT RUN**
+  (no local Postgres; starting one needs owner approval). Concurrency proven by simulated interleavings on SQLite only.
+- **Flag behaviour:** default OFF; empty/invalid institute list = nobody. OFF ⇒ v2 routes 404, legacy unchanged
+  (except the two hardening fixes, which apply to everyone). ON ⇒ lifecycle, window, criteria, transitions, history
+  and audit on v2 and legacy routes.
+- **Known limitations:** legacy TPO applicant list still shows the legacy "eligible" flag; applications created before
+  an institute is enabled start their history at their next status change.
+- **Next:** owner approval to stage and commit 9.1 (nothing staged). Then Batch 9.2 (authorized, **not started**):
+  TPO + student screens, bulk shortlisting, academic spreadsheet upload, student withdrawal.
 
 ### Next recommended action (approved sequence)
 1. Phases 6.1 (`1ad5628`), 6.2 (`17247e2`), 6.3 (`aef2999`), 6.4 (`0262f97`) and 6.5 (`75ed83c`) are committed. Phase

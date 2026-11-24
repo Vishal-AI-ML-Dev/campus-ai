@@ -89,6 +89,12 @@ from app.models.mock_interview_coding import (
     MockInterviewCodeReview,
 )
 from app.models.mock_interview_company import MockInterviewCompanyProfile
+from app.models.placement_management import (
+    PlacementApplicationEvent,
+    PlacementDriveDepartment,
+    PlacementDriveSettings,
+    StudentPlacementProfile,
+)
 
 __all__ = [
     "Base",
@@ -155,4 +161,8 @@ __all__ = [
     "MockInterviewCompanyProfile",
     "AIUsageEvent",
     "AIFeatureControl",
+    "StudentPlacementProfile",
+    "PlacementDriveSettings",
+    "PlacementDriveDepartment",
+    "PlacementApplicationEvent",
 ]

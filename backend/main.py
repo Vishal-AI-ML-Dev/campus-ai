@@ -112,6 +112,7 @@ from app.routers.notifications import router as notifications_router
 from app.routers.people import router as people_router
 from app.routers.placement import router as placement_router
 from app.routers.placement_analytics import router as placement_analytics_router
+from app.routers.placement_management import router as placement_management_router
 from app.routers.projects import router as projects_router
 from app.routers.recruiters import router as recruiters_router
 from app.routers.resume import router as resume_router
@@ -294,6 +295,9 @@ FEATURE_ROUTERS = [
     mock_interview_coding_router,
     # Phase 8.4: company profiles (AI_MOCK_INTERVIEW_COMPANY_ENABLED; 404 when off).
     mock_interview_company_router,
+    # Phase 9.1: placement management v2 (PLACEMENT_MANAGEMENT_ENABLED +
+    # PLACEMENT_MANAGEMENT_TENANT_IDS; 404 when off).
+    placement_management_router,
 ]
 
 for _feature_router in FEATURE_ROUTERS:

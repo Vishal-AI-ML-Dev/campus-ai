@@ -231,6 +231,16 @@ class Settings(BaseSettings):
     # /metrics stays unregistered (404) in production. Ignored elsewhere.
     METRICS_TOKEN: str = ""
 
+    # --- Placement management (Phase 9, feature flag, OFF by default) -----
+    # Placement core v2: student placement profiles, drive settings and
+    # lifecycle, eligibility v2, apply/status rules with history. Needs the
+    # institute in PLACEMENT_MANAGEMENT_TENANT_IDS too; an EMPTY or invalid
+    # list enables NO institute (fail closed). Off = every /placement/* v2
+    # route 404s and the legacy /drives routes behave exactly as before
+    # (decisions P9-D1, P9-D6; docs/mock-interview/specs/phase-9-...md).
+    PLACEMENT_MANAGEMENT_ENABLED: bool = False
+    PLACEMENT_MANAGEMENT_TENANT_IDS: str = ""
+
     @property
     def docs_enabled(self) -> bool:
         """Swagger UI, ReDoc and /openapi.json (Phase 7).

@@ -42,7 +42,7 @@ from app.models import (
     UserRole,
 )
 from app.schemas import ClassAnalyticsOut, RiskFactorOut, StudentRiskOut
-from app.core.security import get_current_user, require_roles
+from app.core.security import get_current_tenant_id, get_current_user, require_roles
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -273,10 +273,12 @@ def _avg(values: list[float]) -> float | None:
 def section_analytics(
     section_id: int,
     db: Session = Depends(get_db),
+    tenant_id: int = Depends(get_current_tenant_id),
 ) -> ClassAnalyticsOut:
     """Aggregate analytics + risk-band distribution for one section."""
     section = db.get(Section, section_id)
-    if section is None:
+    # Phase 9.1 hardening: another institute's section is 404 in the app too.
+    if section is None or section.tenant_id != tenant_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Section not found"
         )
@@ -320,13 +322,15 @@ def section_at_risk(
     band: str | None = None,
     db: Session = Depends(get_db),
     page: Pagination = Depends(pagination_params),
+    tenant_id: int = Depends(get_current_tenant_id),
 ) -> list[StudentRiskOut]:
     """Per-student at-risk list for a section (most-at-risk first).
 
     Optional ?band=high|medium|low filter.
     """
     section = db.get(Section, section_id)
-    if section is None:
+    # Phase 9.1 hardening: another institute's section is 404 in the app too.
+    if section is None or section.tenant_id != tenant_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Section not found"
         )
