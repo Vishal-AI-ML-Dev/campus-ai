@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import ClientErrorReporter from "@/components/observability/ClientErrorReporter";
+import { reportingEnabled } from "@/components/observability/clientErrors";
+
+// Phase 10.5: build-time flag (default off).
+const CLIENT_ERRORS_ON = reportingEnabled(
+  process.env.NEXT_PUBLIC_CLIENT_ERROR_REPORTING_ENABLED,
+);
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,6 +44,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={themeScript} />
       </head>
       <body className="min-h-full flex flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+        {CLIENT_ERRORS_ON ? <ClientErrorReporter /> : null}
         {children}
       </body>
     </html>
