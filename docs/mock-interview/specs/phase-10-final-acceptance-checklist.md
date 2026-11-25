@@ -1,6 +1,7 @@
 # Phase 10 — Final acceptance checklist (skeleton)
 
-Status: **skeleton created in Phase 7.10. Nothing below has been executed.** The comprehensive end-to-end
+Status: **skeleton created in Phase 7.10. Nothing below has been executed.** Batch 10.1 (2026-11-25, docs only)
+linked these rows to the Phase 10 gates G1–G17 in `phase-10-production-readiness.md` §7; see section F. The comprehensive end-to-end
 regression and all physical-device testing run once, as the Phase 10 final-acceptance milestone (testing
 strategy approved 2026-11-20). Each row gets a date, an environment, the person who ran it and the evidence.
 
@@ -42,6 +43,25 @@ strategy approved 2026-11-20). Each row gets a date, an environment, the person 
 | D1 | Sentinel scan of a live Sentry project, Langfuse project, logs and metrics after C1–C6 | pending |
 | D2 | Dependency review (Next.js patch decision from Phase 6 §12.4, sentry-sdk AI-integration list on upgrade) | pending |
 | D3 | Platform-operator role design (cross-institute ops view, P7-D2) | Phase 10 scope |
+
+## F. Phase 10 production-readiness gates (added in Batch 10.1)
+
+The gates, their pass criteria and the verdict rules are defined in `phase-10-production-readiness.md` §7
+(G1–G17). Rows A–D above remain valid and map to those gates (column "Existing checklist rows" there). Under the
+owner's ₹0 AI budget (D4), C9 (pricing) is replaced by count-based limits; the price table stays empty.
+
+| Gate | Status (2026-11-25, local execution; details in `phase-10-production-readiness.md` §11) |
+|---|---|
+| G1 | PASS (repo) |
+| G2, G3, G4, G5, G6, G11, G12, G15 | PARTIAL (local evidence; staging/provider/owner evidence missing) |
+| G7, G14 | NOT RUN |
+| G8, G9, G10, G13, G16 | BLOCKED (owner accounts, D7, deployment authorization, OQ-3, OQ-5) |
+| G17 | PASS |
+
+Row updates from the same session: B1 run on the working tree (see spec §10.10), B2 green on disposable Postgres
+16.16 as `app_user`, B3 136/136 (Qdrant server tests against a disposable Qdrant), B4 green; C1, C2 and C6
+drilled **locally** against a stub worker (not staging); C8 partly (one backend process + Redis drill, not several
+processes); D2 dependency scan run, findings open (spec §10.4).
 
 ## E. Sign-off
 
