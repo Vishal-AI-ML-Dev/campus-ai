@@ -62,7 +62,6 @@ from app.schemas import (
 from app.core.security import (
     get_current_tenant_id,
     get_current_user,
-    get_scoped_user,
     require_roles,
 )
 
@@ -594,10 +593,24 @@ def drive_applications(
     }
     # Phase 9.2: flagged institutes see the CURRENT eligibility v2 verdict
     # (same engine as apply); the response shape is unchanged.
-    v2 = _V2Eligibility(pm, db, drive, [a.student_id for a in applications]) if pm else None
+    # Phase 9 closure L4: one tenant-scoped query for every applicant instead of
+    # one `get_scoped_user` per row (same rule: id AND tenant must match, else
+    # the row is skipped exactly as before).
+    student_ids = list({a.student_id for a in applications})
+    students = (
+        {
+            u.id: u
+            for u in db.scalars(
+                select(User).where(User.id.in_(student_ids), User.tenant_id == drive.tenant_id)
+            )
+        }
+        if student_ids
+        else {}
+    )
+    v2 = _V2Eligibility(pm, db, drive, list(students.values())) if pm else None
     out: list[ApplicantOut] = []
     for application in applications:
-        student = get_scoped_user(db, application.student_id, drive.tenant_id)
+        student = students.get(application.student_id)
         if student is None:
             continue
         if v2 is not None:
@@ -627,18 +640,21 @@ def drive_applications(
 class _V2Eligibility:
     """Batched eligibility v2 for a set of applicants (Phase 9.2)."""
 
-    def __init__(self, pm, db: Session, drive: Drive, student_ids: list[int]) -> None:
+    def __init__(self, pm, db: Session, drive: Drive, students: list[User]) -> None:
         tenant_id = drive.tenant_id
+        student_ids = [s.id for s in students]
         self.pm = pm
         self.ctx = pm.drive_context(db, drive)
         self.metrics = pm.bulk_metrics(db, tenant_id, student_ids)
         self.profiles = pm.profiles_for(db, tenant_id, student_ids)
         self.placed = pm.placed_student_ids(db, tenant_id, student_ids)
-        self.db, self.tenant_id = db, tenant_id
+        # Phase 9 closure L4: departments for all applicants in one query
+        # (was one query per applicant).
+        self.depts = pm.departments_for(db, tenant_id, students)
 
     def verdict(self, student: User) -> tuple[dict, bool]:
         m = self.metrics.get(student.id) or self.pm.empty_metrics()
-        dept = self.pm.departments_for(self.db, self.tenant_id, [student])[student.id]
+        dept = self.depts.get(student.id, (None, None, None))
         ok, _r = self.pm.evaluate(
             self.ctx, m, self.profiles.get(student.id), dept, student.id in self.placed
         )

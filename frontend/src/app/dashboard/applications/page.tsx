@@ -18,6 +18,8 @@
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { api, ApiError } from "@/lib/api"
+import LegacyDecisionButtons from "@/components/applications/LegacyDecisionButtons"
+import { isWithdrawn } from "@/lib/legacyApplicationActions"
 
 type Drive = {
 	id: number
@@ -106,6 +108,8 @@ export default function ApplicationsPage() {
 	}, [loadApplicants])
 
 	async function decide(applicant: Applicant, status: AppStatus) {
+		// L2: a withdrawal is final; never send a staff decision for it.
+		if (isWithdrawn(applicant.status)) return
 		setError(null)
 		try {
 			await api.patch(
@@ -151,6 +155,7 @@ export default function ApplicationsPage() {
 					{/* Controls */}
 					<div className="mt-6 flex flex-wrap items-center gap-3">
 						<select
+							aria-label="Drive"
 							value={selectedDriveId ?? ""}
 							onChange={(e) => setSelectedDriveId(Number(e.target.value))}
 							className={selectClass}
@@ -164,6 +169,7 @@ export default function ApplicationsPage() {
 						</select>
 
 						<select
+							aria-label="Filter by status"
 							value={statusFilter}
 							onChange={(e) =>
 								setStatusFilter(e.target.value as "" | AppStatus)
@@ -175,6 +181,7 @@ export default function ApplicationsPage() {
 							<option value="shortlisted">Shortlisted</option>
 							<option value="selected">Selected</option>
 							<option value="rejected">Rejected</option>
+							<option value="withdrawn">Withdrawn</option>
 						</select>
 
 						{selectedDriveId != null && (
@@ -216,29 +223,11 @@ export default function ApplicationsPage() {
 											projects {applicant.verified_projects}
 											{applicant.eligible ? "" : " · (no longer eligible)"}
 										</div>
-										<div className="mt-3 flex gap-2">
-											<button
-												onClick={() => decide(applicant, "shortlisted")}
-												disabled={applicant.status === "shortlisted"}
-												className="rounded-lg border border-amber-400/30 px-3 py-1.5 text-sm text-amber-600 dark:text-amber-300 transition hover:bg-amber-400/10 disabled:opacity-40"
-											>
-												Shortlist
-											</button>
-											<button
-												onClick={() => decide(applicant, "selected")}
-												disabled={applicant.status === "selected"}
-												className="rounded-lg border border-emerald-400/30 px-3 py-1.5 text-sm text-emerald-600 dark:text-emerald-300 transition hover:bg-emerald-400/10 disabled:opacity-40"
-											>
-												Select
-											</button>
-											<button
-												onClick={() => decide(applicant, "rejected")}
-												disabled={applicant.status === "rejected"}
-												className="rounded-lg border border-red-400/30 px-3 py-1.5 text-sm text-red-300 transition hover:bg-red-400/10 disabled:opacity-40"
-											>
-												Reject
-											</button>
-										</div>
+										<LegacyDecisionButtons
+											applicationId={applicant.application_id}
+											status={applicant.status}
+											onDecide={(target) => decide(applicant, target)}
+										/>
 									</div>
 								))}
 							</div>

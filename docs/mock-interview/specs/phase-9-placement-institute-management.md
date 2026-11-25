@@ -61,7 +61,7 @@ Class: **1** complete—reuse · **2** partial—improve · **3** missing—buil
 |---|---|---|
 | **9.1 Placement core v2 (backend)** | Flags; migration P9-A (4 tables); student placement profiles API; drive settings + lifecycle; eligibility v2 (batched); apply v2 + legacy delegation; status transitions (compare-and-set) + event history + audit + notification; pre-existing tenant-filter hardening | — |
 | **9.2 Management UI + bulk operations** | Frontend flag; TPO student directory + profile editor; drive settings/lifecycle editor; student eligibility + window + history UI; bulk status (≤ 200, all-or-nothing); academic CSV import; publish notification; company directory view; **student withdrawal (P9-D8)** | 9.1 committed |
-| **9.3 Faculty campaigns + TPO dashboard** | `mock_interview_campaigns` + `…_campaign_targets` (sections); teacher/TPO/admin assign; student "assigned" list; progress (**completion status only**, P9-D7); TPO dashboard home (pipeline, deadlines, pending decisions) | 9.1, P9-D7 |
+| **9.3 Faculty campaigns + TPO dashboard** | `placement_campaigns` + `placement_campaign_students` (students, picked by section or placement filters; migration `e1a3c5b7d9f4`, §13) — *corrected 2026-11-25 (L5, §20): this row originally planned `mock_interview_campaigns` + `…_campaign_targets` (sections), names that were never created*; teacher/TPO/admin assign; student "assigned" list; progress (**completion status only**, P9-D7); TPO dashboard home (pipeline, deadlines, pending decisions) | 9.1, P9-D7 |
 | **9.4 Analytics v2 + interview integration** | Filtered analytics (academic year, graduation year, department, drive, company), department- and company-wise, cohort placement %, CSV export (formula-injection safe, audited); drive → interview preparation; prep progress (consent) | 9.1–9.3 |
 | **9.5 Hardening & acceptance** | Security review, Postgres RLS suite on a local throwaway DB, 2 000-student performance check, accessibility pass, full regression, runbook | all |
 
@@ -218,7 +218,7 @@ the student's placement status).
 | Owner decisions P9-D7/D8 | Both approved 2026-11-24; P9-D10 still deferred |
 | Phase 8 G2 not passed | Phase 9 has no dependency on the runner; nothing executes code |
 
-## 10. Batch 9.1 record (2026-11-24; implemented, uncommitted)
+## 10. Batch 9.1 record (2026-11-24; implemented — later committed as `2ccc8b9`)
 
 **Files.** New: `backend/app/models/placement_management.py`, `backend/alembic/versions/c8e2a4f6b1d9_placement_management_core.py`,
 `backend/app/schemas/placement_management.py`, `backend/app/services/placement_management.py`,
@@ -254,7 +254,7 @@ LIKE wildcards escaped; compare-and-set for status and lifecycle; unique constra
 **Known issues.** Legacy TPO applicant list (`GET /drives/{id}/applications`) still computes the legacy "eligible"
 flag. Applications created before an institute is flagged have no history events (history starts at the next
 change). Eligibility list evaluates all students in memory (fine for thousands; measured in 9.5).
-## 11. Batch 9.1 final verification (2026-11-24; still uncommitted, nothing staged)
+## 11. Batch 9.1 final verification (2026-11-24; at the time uncommitted — later committed as `2ccc8b9`)
 
 **Owner decisions (2026-11-24).** P9-D8 student withdrawal **approved for 9.2** (not added to 9.1). P9-D7 **approved,
 option A**: faculty see completion status only, enforced in the API. Batch 9.2 is **authorized but not started**; it
@@ -301,7 +301,7 @@ change. The eligibility list evaluates all students in memory (performance check
 
 ---
 
-## 12. Batch 9.2 — management UI, bulk status, withdrawal, academic import (2026-11-24; implemented, uncommitted)
+## 12. Batch 9.2 — management UI, bulk status, withdrawal, academic import (2026-11-24; implemented — committed locally as `9217d8d`)
 
 **Decisions taken with safe defaults (no new owner decision needed).**
 - New UI lives in one flag-gated area `/dashboard/placement-hub` (build flag `NEXT_PUBLIC_PLACEMENT_MANAGEMENT_ENABLED`,
@@ -346,7 +346,7 @@ CORS now exposes `X-Total-Count`, `X-Request-ID`, `X-Status-Counts`, `X-Eligible
 with bulk preview/confirm, eligibility panel, student hub) and pages `placement-hub/` (home), `drives`,
 `drives/[id]`, `students`, `import`, `opportunities/[id]`. `lib/api.ts` gained `getWithHeaders` (additive).
 
-## 13. Batch 9.3 — faculty campaigns + TPO home dashboard (2026-11-24; implemented, uncommitted)
+## 13. Batch 9.3 — faculty campaigns + TPO home dashboard (2026-11-24; implemented — committed locally as `9217d8d`)
 
 **Migration P9-C `e1a3c5b7d9f4`** (revises `d9f1a3c5e7b2`): `placement_campaigns` (title, description, status
 draft→active|cancelled, active→closed|cancelled, closed→active|archived, cancelled→archived; optional interview type,
@@ -375,7 +375,7 @@ campaign completion, pending actions (drafts, published drives with a closed win
 closed/completed drives, missing records, overdue campaigns). Student counts are institute-wide; the year filter
 applies to drives and their applications (stated in the response `notes`).
 
-## 14. Batch 9.4 — analytics, CSV export, AI Mock Interview connection (2026-11-24; implemented, uncommitted)
+## 14. Batch 9.4 — analytics, CSV export, AI Mock Interview connection (2026-11-24; implemented — committed locally as `9217d8d`)
 
 **Analytics** `GET /placement/analytics` (tpo, admin), filters `academic_year`, `department_id`, `graduation_year`,
 `company` (case/whitespace-insensitive), `drive_id`, `status`; foreign/unknown department or drive ⇒ 404. Metric
@@ -406,7 +406,7 @@ Faculty never receive interview content (§13).
 **Alembic head:** `e1a3c5b7d9f4` (single head). Chain: `b6d8f0a2c4e3` → `c8e2a4f6b1d9` (9.1) → `d9f1a3c5e7b2` (9.2)
 → `e1a3c5b7d9f4` (9.3).
 
-### 15.1 Test evidence (actual; code version = working tree on top of `2ccc8b9`, uncommitted)
+### 15.1 Test evidence (actual; code version = working tree on top of `2ccc8b9`, before commit `9217d8d`)
 
 | # | Command / check | Result | Exit | Still valid? |
 |---|---|---|---|---|
@@ -474,11 +474,13 @@ Phase 9 functionality (9.1–9.4) is implemented and verified on SQLite, in the 
 passed (§16), so all Phase 9 acceptance gates in this spec have passed. Still outside Phase 9: real-device /
 screen-reader checks and the production integration audit (Phase 10). The 10 browser-smoke failures are pre-existing
 and were NOT fixed. Nothing is committed, pushed or deployed; the deployed CampusAI site is unchanged.
+**Superseding status (2026-11-24, §19):** implementation committed (`9217d8d`); **final acceptance/closure pending** —
+the verification gates above passed, but the §19 closure tasks are open, so Phase 9 is NOT marked complete.
 
 ### 15.6 Known limitations
 1. ~~PostgreSQL gate not run (15.4).~~ Resolved: PostgreSQL gate passed (§16). The 2 Redis queue tests in
    `tests_pg_api` stay skipped (isolated Redis required) — not run, not passed.
-2. Pre-existing: the dashboard `AppShell` sidebar is fixed (240 px), so every dashboard page — legacy and hub — scrolls
+2. ~~Pre-existing: fixed sidebar, header 3 px, unlabeled selects~~ **Resolved 2026-11-25 (§20.6, §20.7).** Original text: the dashboard `AppShell` sidebar is fixed (240 px), so every dashboard page — legacy and hub — scrolls
    horizontally below ~768 px; the header adds 3 px at 320 px; the legacy applications page has two unlabeled
    selects. Hub content itself fits 320–1366 px when the shell allows it. Making the shell responsive changes the
    existing site layout ⇒ Phase 10 decision.
@@ -524,18 +526,20 @@ re-run with the correct `tests_pg_api` conftest.
 **Observed, pre-existing (not Phase 9).** `users`, `leads`, `feedback`, `refresh_tokens` and `tenant_invites` are not
 RLS-forced (`users` deliberately; app-layer guards). Phase 8 G2 status is unchanged (NOT passed).
 
-**Acceptance.** With this gate passed, every Phase 9 acceptance gate in this spec has passed: SQLite backend
+**Acceptance (superseded by §19: final acceptance/closure pending).** With this gate passed, the verification gates in this spec had passed: SQLite backend
 725 / 34 / 0; frontend 200/200, tsc, lint, build; browser smoke 84/94 (10 pre-existing failures, not fixed; all 12
 placement flow/keyboard checks passed); synthetic load at 2 000 students; PostgreSQL as above. Remaining for Phase 10:
 real devices / screen readers, the pre-existing fixed `AppShell` sidebar (hub content fits 320 px, but the shell
-scrolls horizontally below 768 px), and the production integration audit. Batches 9.2–9.5 remain uncommitted.
+scrolls horizontally below 768 px), and the production integration audit. Batches 9.2–9.5 are committed locally
+as `9217d8d` (§18).
 
-## 17. Final review fixes M1 and L1 (2026-11-24; owner-approved; implemented and verified, UNSTAGED)
+## 17. Final review fixes M1 and L1 (2026-11-24; owner-approved; verified — committed locally as `9217d8d`)
 
 The read-only review of the 50 staged files (verdict PASS WITH WARNINGS; no critical/high findings) raised M1 and
 L1; the owner approved fixing these two only. L2–L5 (cosmetic legacy buttons on withdrawn rows, 4 KB DOCTYPE scan
 window mitigated by ENTITY rejection, query-count growth in three lists, stale table name in §3) remain recorded,
-not fixed. The fixes are in the working tree and are **not staged** (the 50 staged files are unchanged).
+not fixed. At the time of this record the fixes were unstaged on top of the 50 staged files; they were then
+staged with owner approval and committed together with 9.2–9.5 in `9217d8d` (§18).
 
 **M1 — legacy placement analytics (`backend/app/routers/placement_analytics.py`).** Root cause: `/placement/analytics/
 overview` loaded every application, so `withdrawn` rows inflated `total_applications`, `unique_applicants`, per-drive
@@ -561,7 +565,7 @@ status route with the flag OFF (withdrawal is 404 when OFF, so it cannot compete
 withdrawn while it has an open or accepted offer; a withdrawal still records exactly one history event and one
 audit row; a refused operation records none.
 
-**Files (unstaged):** modified `backend/app/routers/placement_analytics.py`, `backend/app/routers/recruiters.py`,
+**Files (committed in `9217d8d`):** modified `backend/app/routers/placement_analytics.py`, `backend/app/routers/recruiters.py`,
 `backend/app/services/placement_management.py`; new `backend/tests/test_placement_review_fixes.py` (12 tests),
 `backend/tests_pg_api/test_placement_offer_withdraw_lock_pg.py` (2 opt-in Postgres tests).
 
@@ -579,3 +583,230 @@ isolated Redis). No real production traffic or multi-worker production load was 
 browser smoke 84/94 with 10 pre-existing failures (not fixed); the pre-existing fixed `AppShell` sidebar scrolls
 horizontally below 768 px (hub content fits at 320 px); real devices / screen readers and the production integration
 audit are Phase 10. Phase 8 G2 remains NOT passed.
+
+## 18. Phase 9 commit (2026-11-24; local only)
+
+| | |
+|---|---|
+| Commit | `9217d8d2ffc5200146cb7ad08f10471cc2b9d794` |
+| Subject | `feat(placement): add placement hub, campaigns, analytics and acceptance checks` |
+| Parent | `2ccc8b9c8b136c2d14d5b586c705d3d0df6b2c65` (Batch 9.1, which remains in that commit) |
+| Branch | `feature/ai-mock-interview` |
+| Content | 54 files, 10 218 insertions, 21 deletions — Batches 9.2–9.5, review fixes M1/L1 with their tests, Phase 9 docs |
+| Status | committed locally; **not pushed, merged or deployed**; live CampusAI unchanged |
+
+Evidence at commit time: full backend suite 737 passed / 34 skipped (PostgreSQL-specific) / 0 failed / 0 errors;
+PostgreSQL gate passed (§16) and PostgreSQL lock tests 2 passed (§17); frontend 200/200, tsc, lint, build (§15).
+Still unrun: the 2 Redis queue tests in `tests_pg_api`. Still open: review items L2–L5; 10 pre-existing browser-smoke
+failures; the fixed `AppShell` sidebar scrolls horizontally below 768 px; real devices / screen readers and the
+production integration audit (Phase 10). Not in the commit by design: the user's Phase 5 `frontend/Dockerfile` /
+`frontend/next.config.ts` edits and all local-only files. Phase 8 G2 remains NOT PASSED.
+
+## 19. Phase 9 status and remaining closure tasks (2026-11-24)
+
+**Phase 9 — IMPLEMENTATION COMMITTED, FINAL ACCEPTANCE/CLOSURE PENDING.** Not marked complete.
+
+**Superseded 2026-11-25 (§20): PHASE 9 — FINAL ACCEPTANCE COMPLETE** — tasks 1–7 below done and verified (§20);
+task 8 (documentation commit) awaits owner approval together with the uncommitted closure code. The original task
+list is kept below as history.
+
+**Completed and committed.** 9.1 placement core (`2ccc8b9`); 9.2–9.5 main implementation — Placement Hub, TPO and
+student workflows, faculty campaigns and TPO dashboard, placement analytics and exports — plus M1 (legacy analytics
+exclude withdrawn) and L1 (shared per-student offer/withdrawal lock), main implementation commit
+`9217d8d2ffc5200146cb7ad08f10471cc2b9d794` (§18). M1 and L1 are closed.
+
+**Evidence.** Full backend 737 passed / 34 skipped / 0 failed; PostgreSQL lock tests 2 passed; PostgreSQL RLS 34
+passed; full PostgreSQL API suite 237 passed, 2 Redis-related tests unrun; frontend unit 200/200; TypeScript, lint and
+production build passed; browser smoke 84/94 (10 failures reported as pre-existing, unresolved); Placement Hub pages fit
+at 320 px but the existing sidebar scrolls horizontally below 768 px.
+
+**Open closure tasks (none complete):**
+
+| # | Task | Notes |
+|---|---|---|
+| 1 | L2 — disable inappropriate action buttons on withdrawn rows in the legacy TPO pages | `dashboard/drives/[id]/page.tsx`, `dashboard/applications/page.tsx`; server already refuses (409) |
+| 2 | L3 — review/improve the spreadsheet DOCTYPE scan limitation | `services/placement_import.py` (4 KB DOCTYPE window; ENTITY rejection mitigates) |
+| 3 | L4 — review query count / performance | campaign list `counts_for`, legacy applicant list `_V2Eligibility`, analytics offer loading `load_scope`; fix only if evidence shows a meaningful issue, with tests |
+| 4 | L5 — correct the outdated campaign table name | §3 says `mock_interview_campaigns`; actual `placement_campaigns` / `placement_campaign_students` (left uncorrected on purpose until this task) |
+| 5 | Run the 2 Redis queue tests with an isolated Redis test service | `tests_pg_api/test_core_flows.py` (`RQ_TEST_REDIS_URL`) |
+| 6 | Investigate the 10 browser-smoke failures; determine which are genuinely pre-existing | §15.1 row 12 |
+| 7 | Fix and verify mobile sidebar horizontal scrolling below 768 px | existing `AppShell` |
+| 8 | Commit the post-implementation documentation changes separately | `PROJECT_STATE.md` and this spec have uncommitted updates after `9217d8d` |
+
+**Recommended order:** A. L2 + L3 → B. L4 (if evidence confirms; with tests) → C. L5 docs → D. Redis queue tests
+(isolated) → E. browser-smoke investigation → F. mobile sidebar fix + test → G. rerun relevant regression and
+acceptance tests → H. update docs with final evidence → I. review and separately approve the documentation commit →
+J. only then assess whether the Phase 9 acceptance criteria are fully satisfied.
+
+**Boundaries.** Phase 10 is not started. Phase 8 G2 remains **NOT PASSED**; student code execution is not approved.
+
+## 20. Phase 9 closure tasks L2–L8 (2026-11-25; implemented and verified — UNCOMMITTED, not staged)
+
+Base: HEAD `9217d8d2ffc5200146cb7ad08f10471cc2b9d794`. All changes below are working-tree changes only (nothing staged,
+committed, pushed or deployed). No migration, no schema/RLS change, no API response change, no new dependency, no
+flag change (all placement flags still default OFF).
+
+### 20.1 L2 — withdrawn rows on the legacy TPO pages
+`dashboard/drives/[id]` and `dashboard/applications` now render their Shortlist / Select / Reject row through one
+shared component `components/applications/LegacyDecisionButtons.tsx`; rules in `lib/legacyApplicationActions.ts`.
+Withdrawn ⇒ all three natively `disabled` (not focusable, not activatable by mouse/Enter/Space), a visible note
+"Withdrawn by the student. Withdrawal is final…" referenced by `aria-describedby`, and `decide()` returns early for a
+withdrawn row (no request even if called). Every other status keeps the existing rule (only the same-status button
+is disabled). Status badge and verified snapshot unchanged. The applications page gained a "Withdrawn" status-filter
+option (the backend already accepted it). Backend contract unchanged (it already refused with 409).
+Tests: `frontend/tests/unit/legacyApplicationActions.test.mjs` (7) + browser checks (§20.6).
+
+### 20.2 L3 — spreadsheet XML / DOCTYPE security (`services/placement_import.py`)
+Pipeline: upload → extension/content-type/size(2 MB)/magic checks → CSV (`csv` module, no XML) or XLSX (`zipfile`
+with member/size/ratio limits → `xl/workbook.xml`, `xl/_rels/workbook.xml.rels`, `xl/sharedStrings.xml`, first
+worksheet, each parsed by stdlib `ElementTree`). Only these four parts are ever parsed; all go through `_xml()`.
+**Defects found (reproduced before fixing):** (a) DOCTYPE scanned in the first 4 KB only — a DOCTYPE (incl. an
+external `SYSTEM`/`PUBLIC` DTD) after 4 KB of prolog was accepted; (b) both byte scans were ASCII-only — a **UTF-16**
+part with `<!DOCTYPE …[<!ENTITY …>]>` passed both checks and the entity **was expanded** by ElementTree.
+Stdlib expat did not fetch external resources in either case, but such input must never be accepted.
+**Fix (stdlib only, no new dependency):** `_guard_xml()` runs before `ElementTree` on the WHOLE part: the cheap byte
+scan now covers the whole part, then a `pyexpat` pass (decodes BOM / encoding declaration exactly like the real
+parse) aborts on the first DOCTYPE, ENTITY, NOTATION or unparsed-entity declaration and on any external entity
+reference; parameter-entity parsing is set to NEVER. Malformed XML ⇒ "damaged" (400). Limits unchanged.
+Tests: `backend/tests/test_placement_closure_import_xml.py` — **31 passed**: DOCTYPE in / after the first 4 KB, mixed
+case, external DTD (SYSTEM/PUBLIC, after 4 KB and after PIs), external / parameter / internal entities, NOTATION,
+billion laughs, UTF-16 (BOM, LE, BE) DTDs, DTD in sharedStrings / workbook / rels, DOCTYPE after the root, malformed
+parts, legitimate UTF-8 / UTF-8-BOM / UTF-16 / no-declaration parts, escaped `&lt;!DOCTYPE` text in a cell (no false
+positive), Excel-shaped workbook, unchanged limits, refused uploads (preview AND direct commit with a matching hash)
+change no record and write no audit row, valid XLSX commit with blank cells keeping stored values, valid CSV import.
+Against the old guard (monkeypatched in, scratchpad only) **9 of these tests fail**, so they detect the defect.
+
+### 20.3 L4 — placement query performance
+Baseline and result measured on synthetic SQLite data only (institute A: 2 000 students, 30 drives, 6 000
+applications, 814 offers, 1 457 sessions, 25 campaigns × 120 students; institute B: 600 students, 1 200 applications,
+173 offers, 6 campaigns). Query counts are deterministic; timings (p50, Windows dev box) are indicative and noisy.
+
+| Endpoint | Queries before → after | Rows / notes | p50 ms before → after |
+|---|---|---|---|
+| Campaign list, 25 per page | **30 → 6** | was 5 + 1 per campaign | 31.6 → 16.5 |
+| Campaign list, 10 per page | 15 → 6 | constant | 16.3 → 12.3 |
+| TPO dashboard (20 active campaigns) | **31 → 12** | was 11 + 1 per ACTIVE campaign (unbounded) | 49.1 → 41.7 |
+| Legacy applicant list, flag ON, 200 applicants | **411 → 13** | was ~2 per applicant | 145.9 → 18.3 |
+| Legacy applicant list, flag OFF, 200 applicants | 1 203 → 1 004 | user lookup batched; the remaining per-applicant legacy profile queries are the untouched flag-off path | 319 → 287 |
+| Analytics, drive filter | 16 → 16 | **offer rows read 814 → 21** | 60.7 → 55.5 |
+| Analytics, company filter | 10 → 10 | offer rows 814 → 79 | 48.0 → 43.5 |
+| Analytics / export, no drive-narrowing filter | unchanged | 814 offers (all in scope — plain query kept) | noise only |
+
+Changes: `services/placement_campaigns.counts_for` — two queries for any number of campaigns (assignments, then the
+assigned students' completed sessions since the earliest start), per-campaign rule applied in memory; a first
+single-SQL-join version was rejected because SQLite planned it via the low-selectivity `tenant_id` index (campaign
+list 31 → 304 ms). `routers/placement.drive_applications` — one tenant-scoped user query (same id+tenant rule as
+`get_scoped_user`, foreign rows still skipped) and `_V2Eligibility` resolves departments once.
+`services/placement_insights.load_scope` — with a drive/company/academic-year filter only offers on applications of
+in-scope drives are read; the Python student-scope filter is kept, so the set is identical.
+Not changed (evidence: bounded): a student's preparation card loops over that student's campaigns for one drive.
+**Correctness:** an equivalence run on the same data compared old (HEAD code) vs new — `counts_for` identical for all
+31 campaigns of both institutes; 5 campaign-list/dashboard bodies byte-identical; offer sets identical for 6 filter
+combinations; 5 analytics/export bodies byte-identical. Tests: `backend/tests/test_placement_closure_queries.py`
+— **6 passed** (counts = per-campaign reference incl. late completions and interview types; institute-B rows that
+reuse A student ids never count; constant query counts for counts_for, list, dashboard and the legacy list; foreign
+rows skipped; drive filter reads only in-scope offers, never another institute's; per-drive offer totals add up).
+The 2 000-student load evidence of §15.3 is kept; the table above is the fresh check for the changed queries.
+
+### 20.4 L5 — specification table name
+§3 row 9.3 corrected to `placement_campaigns` + `placement_campaign_students` (verified against
+`app/models/placement_campaigns.py` and migration `e1a3c5b7d9f4`; no `mock_interview_campaign*` table exists); the
+original planned names are kept in that row as history. No other wrong reference in this spec. No table renamed, no
+migration. Note: `IMPLEMENTATION_PLAN.md` (original pre-Phase-7 plan, kept as history) still lists the old planned names.
+
+### 20.5 L6 — Redis queue tests (isolated)
+The two skipped tests: `tests_pg_api/test_core_flows.py::test_queue_path_job_carries_server_tenant_and_persists`
+and `::test_queue_path_mismatched_or_missing_tenant_job_does_nothing` (they need `RQ_TEST_REDIS_URL` AND the
+disposable Postgres). Environment: one container from the already-local Redis image `7f7d30b7fdd0` (Redis 7.4.12,
+untagged; no pull) with a random `requirepass`, `--save "" --appendonly no`, `/data` on tmpfs, port on 127.0.0.1 only;
+one container from the local `postgres:16` (PostgreSQL 16.16), tmpfs data, 127.0.0.1 only, random database name and
+credentials (kept in a private scratchpad file, never printed). 61 migrations empty → `e1a3c5b7d9f4` as the owner;
+`app_user` created per `scripts/app_role.template.sql` (NOSUPERUSER / NOBYPASSRLS / NOCREATEROLE / NOCREATEDB, owns
+no tables); six Phase 9 tables RLS enabled + forced; fail-closed identity check (database, role, system id) passed.
+Result: **2 passed, 0 skipped** (the first proves a queued job carries the server tenant — not a smuggled body value —
+and persists under RLS; the second proves jobs with a foreign or missing tenant do nothing).
+Then, on the same disposable cluster as `app_user`: **full `tests_pg_api` 241 passed, 0 skipped, 0 failed** (the
+§16 run's 237 + the 2 L1 lock tests added in `9217d8d` + the 2 Redis tests, now run) and the six RLS suites
+(`test_placement_management_rls_postgres.py`, `test_placement_phase9_rls_postgres.py`, `test_rls_postgres.py`,
+`test_mock_interview_rls_postgres.py`, `test_mock_interview_coding_rls_postgres.py`,
+`test_mock_interview_batch2_rls_postgres.py`) **34 passed, 0 failed, 0 skipped**. The suite's cleanup left 0 marked rows.
+**Docker safety:** temporary containers `e071d3505dc8` (Postgres) and `9f982b551b21` (Redis) removed by exact ID and
+verified gone; credential files deleted. Before/after: the same 16 containers (IDs, names, exit status), 31 volumes,
+65 images and 9 networks (names); 8 non-default networks keep their IDs. The daemon-managed default `bridge` network
+has a new ID: the Docker engine (re)created it at 02:27:07 UTC, one second before the first `docker run` (engine
+wake-up); no network command was issued. Nothing pulled, no volume attached, Compose stack untouched.
+
+### 20.6 L7 — the 10 browser-smoke failures
+The original result file of the 84/94 run (`hub_smoke_results.json`, previous session scratchpad) was recovered, so
+the ten failures are known exactly. Attribution: `git diff 7d4147c 9217d8d` shows Phase 9 changed only the status
+type/style of `dashboard/applications/page.tsx` and added one nav entry to `AppShell.tsx`; the two selects, the
+decision-button row and the shell header all come from the initial release `f6de3d5`.
+
+| # | Original failure | Cause | Class | Resolution |
+|---|---|---|---|---|
+| 1 | tpo `/dashboard/applications` @320: content overflow 8 px | non-wrapping Shortlist/Select/Reject row + 32 px page padding (initial release) | B — existing unrelated | fixed: shared button row wraps (L2), mobile padding 16 px (L8) |
+| 2–5 | tpo `/dashboard/applications` @320/390/768/1366: two unlabeled `<select>` | no label/aria-label since initial release | B — existing unrelated | fixed: `aria-label` "Drive" / "Filter by status" |
+| 6 | teacher `/dashboard/placement-hub` @320: overflow 3 px | `AppShell` header (32 px padding + role pill) too wide for "teacher dashboard" | B | fixed by the L8 shell change |
+| 7 | teacher `/dashboard/placement-hub/campaigns` @320: 3 px | same header | B | fixed (L8) |
+| 8 | student `/dashboard/placement-hub` @320: 3 px | same header | B | fixed (L8) |
+| 9 | student `/dashboard/placement-hub/opportunities/1` @320: 3 px | same header | B | fixed (L8) |
+| 10 | student `/dashboard/placements` (legacy) @320: 3 px | same header (legacy page — proves not hub-specific) | B | fixed (L8) |
+
+None was caused by Phase 9 (class A: 0), none flaky (C: 0; deterministic layout/attribute facts), none
+environment (D: 0). No test was skipped, weakened or changed: the **original script was rerun unchanged** on the final
+code with the same synthetic seed — **84 checks, 84 passed, 0 failed** (the 10 failure records no longer occur; all
+12 flow/keyboard checks passed: keyboard focus ×4, bulk preview 8 movable + confirm, import preview 1 valid / 2 errors
++ commit, CSV download, teacher completion-only view, student withdraw, practice link pre-filled), and its
+informational "shell overflow" list went from **36 cases to 0**. Production build with the placement and mock
+interview flags ON passed before the runs.
+
+### 20.7 L8 — mobile navigation (`components/AppShell.tsx`, one shared change)
+From 768 px (`md`) the sidebar is the same static 240 px column. Below 768 px it is an off-canvas drawer, `hidden`
+(not visible, not focusable) until the header menu button opens it (`aria-label` "Open navigation",
+`aria-expanded`, `aria-controls="app-sidebar"`); the drawer is labelled "Main navigation" and has a "Close
+navigation" button. On open focus moves into the drawer and Tab/Shift+Tab stay inside it; the main column is
+`inert`; Escape, the backdrop, the close button or a link closes it and focus returns to the menu button (restored
+after the close commits — the first version focused the still-inert button; found by the browser check and fixed);
+resizing to ≥ 768 px closes it. Main column `min-w-0`, mobile padding 16 px, header title truncates, role pill from
+640 px (the title already names the role). Active link carries `aria-current="page"`.
+**Browser checks (separate scratchpad script, local throwaway servers, synthetic data): 280 checks, 280 passed** —
+4 roles (student, teacher, TPO, admin) × 2–5 pages (hub and legacy) × widths **320, 360, 375, 390, 414, 767** (no
+horizontal page scroll with the sidebar NOT hidden by the test; drawer closed; menu button shown) and **768, 1024,
+1366** (static 240 px sidebar, no menu button, no backdrop); per role: Enter opens the drawer (expanded, backdrop,
+focus inside, page inert), 25 Tab + 25 Shift+Tab never leave it, Escape / backdrop / close button close it with focus
+restored, a drawer link navigates and closes it, resize to desktop leaves no overlay, no page errors; plus the L2
+checks on both legacy pages (withdrawn row: 3 disabled buttons, note + `aria-describedby`, badge kept, Tab never
+lands on them, `focus()` cannot focus them, Enter/Space/forced click send **0** status requests; applied /
+shortlisted / selected rows keep the old rule; "Withdrawn" filter works; Shortlist on an applied row still sends
+exactly 1 request). Two first-run failures were test-script defects, fixed without loosening any assertion: the
+keyboard step left focus on another row's enabled button (it now blurs first and asserts focus did not land on the
+disabled button), and a list was read before its reload finished (now waits). Not done: real devices and screen
+readers (Phase 10 checklist).
+
+### 20.8 Final verification (final code)
+| Check (final code) | Result |
+|---|---|
+| Full backend SQLite suite (PostgreSQL/Redis variables unset) | **774 passed, 34 skipped (opt-in PostgreSQL tests), 0 failed** — 49 min 34 s (= 737 before + 31 L3 + 6 L4) |
+| Affected suites (all placement files incl. new ones, analytics, notifications, tenant + user isolation) | 147 passed, 10 skipped (opt-in PostgreSQL), 0 failed |
+| PostgreSQL 16.16 (disposable): 61 migrations empty → `e1a3c5b7d9f4`; RLS suites; full `tests_pg_api` incl. Redis + L1 lock tests | migrations OK; **RLS 34 / 0 / 0**; **`tests_pg_api` 241 passed / 0 skipped / 0 failed** |
+| Redis queue tests (isolated Redis 7.4.12) | **2 passed** |
+| Frontend unit (`npm run test:unit`) | **207 / 207** (200 + 7 new) |
+| `npx tsc --noEmit` / `npm run lint` | clean / 0 errors (2 pre-existing warnings in untouched `e2e/smoke.spec.ts`) |
+| `next build` with placement + mock-interview flags ON (final code) | passed; 8 hub routes |
+| Browser: original Phase 9 smoke script, unchanged | **84 / 84** (was 84 passed + 10 failure records); shell overflow cases 36 → 0 |
+| Browser: closure checks L2 + L8 | **280 / 280** |
+| L4 synthetic benchmark + old-vs-new equivalence (scratchpad, not repository tests) | see §20.3; all compared results identical |
+| Ruff (4 changed source files + 2 new test files) / `py_compile` / `git diff --check` | clean / passed / clean |
+| Read-only review of every change of this task (self-review, not an independent agent) | no defects found; checked: tenant filters kept on every new query, role gates untouched, no response shape change, flags untouched, XML guard runs before any parse, campaign code still reads only completion columns (privacy test passes), withdrawal/lock code untouched (M1/L1 tests pass), desktop layout classes equivalent |
+
+**Accepted limitations (not Phase 9 blockers).** Real devices and screen readers are not tested (Phase 10 checklist);
+browser checks are automated only. The legacy applicant list with the placement flag OFF still issues ~5 queries per
+applicant (pre-existing legacy path, deliberately unchanged; flag-on path fixed). Timings are single-machine SQLite and
+indicative only; PostgreSQL-scale latency remains a Phase 10 measurement. Earlier limitations 3–6 of §15.6 unchanged.
+
+**Acceptance decision (2026-11-25): PHASE 9 — FINAL ACCEPTANCE COMPLETE** (with the accepted limitations above):
+L2–L5 done and tested; both Redis tests passed; all 10 browser failures investigated, classified (all class B) and
+resolved; mobile navigation fixed and tested at 320–767 px and ≥ 768 px; backend, PostgreSQL, frontend, build and
+browser suites pass on the final code. **The closure changes are UNCOMMITTED working-tree changes** (nothing staged,
+committed, pushed or deployed) and await the owner's explicit approval to stage and commit. Phase 8 G2 remains
+**NOT PASSED**; Phase 10 is **NOT STARTED**.

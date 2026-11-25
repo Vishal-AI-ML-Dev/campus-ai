@@ -223,8 +223,16 @@ def completion_of(campaign: PlacementCampaign, at: datetime | None) -> str:
 
 
 def counts_for(db: Session, campaigns: list[PlacementCampaign]) -> dict[int, tuple[int, int, int]]:
-    """campaign_id -> (assigned, completed on time, completed late). Two
-    queries per campaign page (bounded by the page size)."""
+    """campaign_id -> (assigned, completed on time, completed late).
+
+    Exactly two queries for any number of campaigns (Phase 9 closure L4; it
+    used to be one completion query per campaign): the assignments, then the
+    assigned students' completed sessions since the earliest campaign start.
+    The per-campaign rule of ``completion_map`` is then applied in memory:
+    earliest ``completed`` session with ``completed_at >= starts_at``, matching
+    the campaign's interview type when set. Only the completion columns of
+    ``mock_interview_sessions`` are read.
+    """
     out: dict[int, tuple[int, int, int]] = {}
     if not campaigns:
         return out
@@ -237,10 +245,42 @@ def counts_for(db: Session, campaigns: list[PlacementCampaign]) -> dict[int, tup
         )
     ).all():
         by_campaign[cid].append(sid)
+    student_ids = sorted({sid for sids in by_campaign.values() for sid in sids})
+    sessions: dict[int, list[tuple[str, datetime]]] = {}
+    if student_ids:
+        earliest = min(_naive_utc(c.starts_at) for c in campaigns)
+        for sid, itype, at in db.execute(
+            select(
+                MockInterviewSession.student_id,
+                MockInterviewSession.interview_type,
+                MockInterviewSession.completed_at,
+            ).where(
+                MockInterviewSession.tenant_id == tenant_id,
+                MockInterviewSession.student_id.in_(student_ids),
+                MockInterviewSession.status == "completed",
+                MockInterviewSession.completed_at.is_not(None),
+                MockInterviewSession.completed_at >= earliest,
+            )
+        ).all():
+            sessions.setdefault(sid, []).append((itype, _utc(at)))
     for c in campaigns:
-        done = completion_map(db, c, by_campaign[c.id])
-        on_time = sum(1 for at in done.values() if completion_of(c, at) == "completed")
-        out[c.id] = (len(by_campaign[c.id]), on_time, len(done) - on_time)
+        starts = _utc(c.starts_at)
+        on_time = late = 0
+        for sid in by_campaign[c.id]:
+            first = min(
+                (
+                    at for itype, at in sessions.get(sid, ())
+                    if at >= starts and (not c.interview_type or itype == c.interview_type)
+                ),
+                default=None,
+            )
+            if first is None:
+                continue
+            if completion_of(c, first) == "completed":
+                on_time += 1
+            else:
+                late += 1
+        out[c.id] = (len(by_campaign[c.id]), on_time, late)
     return out
 
 

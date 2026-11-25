@@ -1,13 +1,19 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-24 (Phase 9 Batches 9.2–9.5 implemented and verified, **uncommitted** (spec §12–§15): full
+_Last updated: 2026-11-25. **PHASE 9 — FINAL ACCEPTANCE COMPLETE** (closure tasks L2–L8 done and verified on the
+working tree — section "Phase 9 closure (2026-11-25)" below and spec §20; the closure changes are UNCOMMITTED and await
+owner approval to stage/commit; Phase 10 NOT started; Phase 8 G2 NOT passed).
+Earlier on 2026-11-24: **Phase 9 — IMPLEMENTATION COMMITTED, FINAL ACCEPTANCE/CLOSURE PENDING** (closure tasks were
+listed in "Phase 9 status and remaining closure tasks" below).
+Phase 9 Batches 9.2–9.5 + review fixes M1/L1 **committed locally as `9217d8d`** (parent
+`2ccc8b9` = Batch 9.1; 54 files, 10 218 insertions / 21 deletions; not pushed, merged or deployed). Evidence: full
 backend 725 passed / 34 skipped / 0 failed; frontend 200/200, tsc, lint, build; browser smoke; synthetic load;
 **PostgreSQL gate PASSED** on a disposable PostgreSQL 16.16 container (61-migration chain empty → `e1a3c5b7d9f4`,
 up/down/up; RLS suites 34 passed / 0 failed; full `tests_pg_api` 237 passed / 2 skipped (Redis) / 0 failed; ad-hoc
-Phase 9 API check 5 passed) — spec §16. All Phase 9 acceptance gates passed; 50 files staged (not committed).
+Phase 9 API check 5 passed) — spec §16. The verification gates run so far passed; final acceptance/closure is pending.
 Final review fixes M1 (legacy analytics exclude withdrawn) and L1 (shared per-student lock for offer / acceptance /
-selection / withdrawal) implemented and verified, **unstaged** — full backend 737 passed / 34 skipped / 0 failed;
-real PostgreSQL lock tests 2 passed — spec §17.
+selection / withdrawal) verified — full backend 737 passed / 34 skipped / 0 failed; real PostgreSQL lock tests
+2 passed — spec §17; included in `9217d8d`. The 2 Redis queue tests remain unrun.
 Phase 8 G2 status unchanged (NOT passed).
 Before that: Phase 9.0 planning written — `specs/phase-9-placement-institute-management.md`; Batch 9.1
 implemented, verified and **committed locally as `2ccc8b9`** (not pushed; spec §10–§11); P9-D7/D8 approved.
@@ -43,7 +49,7 @@ block wins.
 | **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented. 6.3 video lobby, room and lifecycle implemented, `VIDEO_UI_READY = true`. 6.4 wiring (done in 6.3) audited, one fix, automated gaps closed, real-device matrix written. 6.5 done in 6.3, audited in 6.5 (report parity proven by tests). 6.6 automated hardening done (accessibility, responsive, privacy guards, full regression). **Phase 6 NOT complete: real-device checklist (24 rows) pending** | 6.1 `1ad5628`, 6.2 `17247e2`, 6.3 `aef2999`, 6.4 `0262f97` |
 | **7** | **Production operations and monitoring** (`specs/phase-7-production-operations.md`, runbooks in `runbooks/`) | **7.0–7.10 implementation complete.** 7.2 worker usage/latency, 7.3 usage ledger + metrics, 7.4 cost framework (**numeric pricing pending: no approved price table**), 7.5 circuit breaker + alerts, 7.6 institute controls + quotas, 7.7 admin API, 7.8 admin UI, 7.9 protected `/metrics`, 7.10 runbooks + retention script. Live drills and real-device tests are Phase 10 | 7.0 `ee48610`; 7.1 `863a8aa`; 7.2–7.10 `869d42b` |
 | **8** | **Advanced AI interview intelligence**, incl. coding round (old 7) and company/full simulation (old 8) (`specs/phase-8-advanced-ai-intelligence.md`) | **8.0 planning done (spec r2). G1 (narrower, Batch 1) approved 2026-11-23: P8-D1…D6, D8, D14…D17, B1-a/b/c Accepted. Batch 1 (8.1 + 8.2, review-only coding round) implementation complete and tested (spec §16); nothing is executed. All 24 problems are drafts pending human review (production serves none). P8-D7 (coding rubric) APPROVED 2026-11-23 with scoring semantics U1–U4 approved the same day (spec §7.1, §14.5): zero basic tests ⇒ ≤ 12.0/100; all three test groups required to publish; no session score if any problem is unverified; candidate timeouts ≠ runner faults (incomplete, never best). P8-D9…D11 (company profiles, sources, context) APPROVED 2026-11-23 (spec §7.5–§7.8, §14.6). O1 = option A APPROVED 2026-11-23 (spec §14.7). **Batch 2 (8.3 AI coding review, review-only + 8.4 company profiles) implemented, verified and committed (`1d620e6`, 2026-11-24; spec §17)**; nothing is executed anywhere. **Batch 3 (8.5a private test pack: 24 problems, 320 hidden tests, 96 validated references; U2 publication rule; 8.5b standalone `code-runner/` with Docker + gVisor hardening, fail-closed self-check, synthetic escape suite and CI job) implemented and committed locally as `7d4147c` 2026-11-24, not pushed (spec §18); G2 decisions P8-S2/S3/S5/S6/S7 APPROVED, G2 NOT passed (escape suite and CI not run).** No student code executed anywhere; all 24 problems still drafts pending a named human reviewer. Still open: P8-D12/D13, P8-S1/S1b/S4 (G3), G2 evidence, G4, G5** | Batch 1: `c62b067`; Batch 2: `1d620e6`; Batch 3: `7d4147c` |
-| **9** | **Institute and placement management**, incl. faculty campaigns (old 9) (`specs/phase-9-placement-institute-management.md`) | **9.0 planning done 2026-11-24 (audit, gap matrix, batches 9.1–9.5, decisions P9-D1…D10). Batch 9.1 (placement core v2, backend) committed `2ccc8b9`. Batches 9.2 (TPO/student Placement Hub UI, bulk shortlist/reject, withdrawal, academic CSV/XLSX import), 9.3 (faculty campaigns — completion status only — and TPO dashboard), 9.4 (filtered analytics, safe audited CSV export, AI Mock Interview preparation links) and 9.5 (security review, migrations, perf, browser smoke) implemented and verified, UNCOMMITTED (spec §12–§15): full backend 725 passed / 34 skipped / 0 failed; frontend unit 200/200, tsc, lint, build OK. Alembic head `e1a3c5b7d9f4`. All flags default off. PostgreSQL gate PASSED 2026-11-24 (disposable PostgreSQL 16.16: 61-migration chain, up/down/up; RLS 34/0; `tests_pg_api` 237 passed / 2 skipped (Redis) / 0 failed; ad-hoc Phase 9 API check 5 passed; spec §16). All Phase 9 acceptance gates passed; real devices / screen readers and production integration remain Phase 10. Review fixes M1 + L1 verified (full backend 737 / 34 / 0; PostgreSQL lock tests 2 passed; spec §17), unstaged.** P9-D7/D8 approved; P9-D10 deferred | 9.1 `2ccc8b9`; 9.2–9.5 staged (50 files), M1/L1 unstaged; nothing committed |
+| **9** | **Institute and placement management**, incl. faculty campaigns (old 9) (`specs/phase-9-placement-institute-management.md`) | **9.0 planning done 2026-11-24 (audit, gap matrix, batches 9.1–9.5, decisions P9-D1…D10). Batch 9.1 (placement core v2, backend) committed `2ccc8b9`. Batches 9.2 (TPO/student Placement Hub UI, bulk shortlist/reject, withdrawal, academic CSV/XLSX import), 9.3 (faculty campaigns — completion status only — and TPO dashboard), 9.4 (filtered analytics, safe audited CSV export, AI Mock Interview preparation links) and 9.5 (security review, migrations, perf, browser smoke) implemented and verified, UNCOMMITTED (spec §12–§15): full backend 725 passed / 34 skipped / 0 failed; frontend unit 200/200, tsc, lint, build OK. Alembic head `e1a3c5b7d9f4`. All flags default off. PostgreSQL gate PASSED 2026-11-24 (disposable PostgreSQL 16.16: 61-migration chain, up/down/up; RLS 34/0; `tests_pg_api` 237 passed / 2 skipped (Redis) / 0 failed; ad-hoc Phase 9 API check 5 passed; spec §16). ~~IMPLEMENTATION COMMITTED, FINAL ACCEPTANCE/CLOSURE PENDING~~ → **2026-11-25: PHASE 9 — FINAL ACCEPTANCE COMPLETE** (spec §20): L2–L5 fixed and tested, 2 Redis queue tests passed, 10 browser-smoke failures classified (all pre-existing, class B) and fixed, mobile navigation drawer below 768 px; final evidence: backend 774 / 34 / 0, `tests_pg_api` 241 / 0 / 0, RLS 34 / 0, frontend 207/207, tsc, lint, build, browser 84/84 + 280/280. Closure changes UNCOMMITTED (owner approval needed to stage/commit). Real devices / screen readers and production integration remain Phase 10. Review fixes M1 + L1 verified (full backend 737 / 34 / 0; PostgreSQL lock tests 2 passed; spec §17). Committed locally; not pushed, merged or deployed.** P9-D7/D8 approved; P9-D10 deferred | 9.1 `2ccc8b9`; 9.2–9.5 + M1/L1 `9217d8d` (parent `2ccc8b9`) |
 | 10 | Enterprise integrations, platform-level security, final acceptance (full regression + all real-device tests) | Not started | — |
 
 Roadmap re-numbered 2026-11-20 (P7-D1); old-to-new mapping: `IMPLEMENTATION_PLAN.md` §6a.
@@ -648,7 +654,7 @@ Full record: spec §10.
 - **Next:** Batch 9.2 (authorized, **not started**):
   TPO + student screens, bulk shortlisting, academic spreadsheet upload, student withdrawal.
 
-### Phase 9 Batches 9.2–9.5 — Placement Hub, campaigns, analytics, acceptance checks (2026-11-24; uncommitted)
+### Phase 9 Batches 9.2–9.5 — Placement Hub, campaigns, analytics, acceptance checks (2026-11-24; committed locally `9217d8d`)
 
 Full record, decisions, API tables, evidence table and limitations: spec §12–§15.
 - **Flags (unchanged names, default off):** backend `PLACEMENT_MANAGEMENT_ENABLED` + `PLACEMENT_MANAGEMENT_TENANT_IDS`
@@ -696,9 +702,10 @@ Full record: spec §16.
 - **Observed, pre-existing (not Phase 9):** `users`, `leads`, `feedback`, `refresh_tokens`, `tenant_invites` are not
   RLS-forced (`users` intentionally; app-layer guards).
 
-### Phase 9 final review fixes M1 and L1 (2026-11-24; owner-approved; verified; UNSTAGED)
+### Phase 9 final review fixes M1 and L1 (2026-11-24; owner-approved; verified; committed locally `9217d8d`)
 
-Full record: spec §17. The 50 staged Phase 9 files are unchanged; these five files are unstaged:
+Full record: spec §17. Staged separately with owner approval and committed together with 9.2–9.5 in `9217d8d`
+(at the time of this record they were unstaged on top of the 50 staged files). Files:
 `backend/app/routers/placement_analytics.py`, `backend/app/routers/recruiters.py`,
 `backend/app/services/placement_management.py` (modified), `backend/tests/test_placement_review_fixes.py`,
 `backend/tests_pg_api/test_placement_offer_withdraw_lock_pg.py` (new).
@@ -717,7 +724,93 @@ Full record: spec §17. The 50 staged Phase 9 files are unchanged; these five fi
 - **Limitations:** the 2 Redis queue tests of the earlier `tests_pg_api` run remain unrun; no real production traffic
   tested; browser smoke 10 pre-existing failures (not fixed) and the fixed-sidebar mobile limitation stand; review
   items L2–L5 recorded, not fixed. Phase 8 G2 remains NOT passed.
-- **Next:** owner approval to stage the five M1/L1 files, then to commit Phase 9.2–9.5.
+- **Next:** done — staged and committed (next section).
+
+### Phase 9 commit (2026-11-24; local only)
+
+- **Commit:** `9217d8d2ffc5200146cb7ad08f10471cc2b9d794` "feat(placement): add placement hub, campaigns, analytics and
+  acceptance checks" on `feature/ai-mock-interview`; parent `2ccc8b9c8b136c2d14d5b586c705d3d0df6b2c65` (Batch 9.1, which
+  stays in that earlier commit). 54 files, 10 218 insertions, 21 deletions: Batches 9.2–9.5 plus the M1/L1 fixes and tests
+  and the Phase 9 documentation. Owner-approved staging (exact paths) and a single local commit; no amend, hooks not bypassed.
+- **Not pushed, merged or deployed**; the live CampusAI site is unchanged. Not included (by design): the user's Phase 5
+  `frontend/Dockerfile` / `frontend/next.config.ts` edits (still uncommitted), `.claude/`, `frontend/AGENTS.md`,
+  `ai-worker/qdrant_data/`, `docker-compose.override.yml` and the local-only Phase 7/8/9 handoffs (untracked).
+- **Verified evidence carried by this commit:** full backend 737 passed / 34 skipped (PostgreSQL-specific) / 0 failed;
+  PostgreSQL gate passed (RLS 34/0; `tests_pg_api` 237 passed / 2 skipped; 61-migration chain; lock tests 2 passed);
+  frontend 200/200, tsc, lint, build. The 2 Redis queue tests remain unrun.
+- **Open / unchanged:** review items L2–L5 (recorded, not fixed); browser smoke 10 pre-existing failures (not fixed);
+  fixed `AppShell` sidebar scrolls horizontally below 768 px; real devices / screen readers and the production
+  integration audit are Phase 10. Phase 8 G2 remains NOT PASSED.
+- **Next:** superseded — see "Phase 9 status and remaining closure tasks" (Phase 9 closure first; Phase 10 not started).
+
+### Phase 9 status and remaining closure tasks (2026-11-24)
+
+**Phase 9 — IMPLEMENTATION COMMITTED, FINAL ACCEPTANCE/CLOSURE PENDING.** Phase 9 is NOT marked complete.
+
+**Completed and committed:** 9.1 placement core (`2ccc8b9`); 9.2–9.5 main implementation — Placement Hub, TPO and
+student workflows, faculty campaigns and TPO dashboard, placement analytics and CSV exports — plus the M1 analytics fix
+and the L1 offer/withdrawal concurrency fix (main implementation commit `9217d8d2ffc5200146cb7ad08f10471cc2b9d794`).
+M1 and L1 are closed; do not reopen.
+
+**Test evidence:** full backend 737 passed / 34 skipped / 0 failed; PostgreSQL lock tests 2 passed; PostgreSQL RLS
+34 passed; full PostgreSQL API suite 237 passed with the 2 Redis-related tests unrun; frontend unit 200/200;
+TypeScript, lint and production build passed; browser smoke 84/94 — the 10 failures were reported as pre-existing and
+remain unresolved; mobile: Placement Hub pages fit at 320 px, but the existing sidebar causes horizontal scrolling
+below 768 px.
+
+**OPEN closure tasks (none complete):**
+1. **L2** — disable inappropriate action buttons on withdrawn application rows in the legacy TPO pages
+   (`frontend/src/app/dashboard/drives/[id]/page.tsx`, `frontend/src/app/dashboard/applications/page.tsx`).
+2. **L3** — review and improve the spreadsheet DOCTYPE scan limitation (`backend/app/services/placement_import.py`,
+   first-4 KB DOCTYPE check; ENTITY rejection currently mitigates).
+3. **L4** — review query-count / performance in placement campaign listing (`services/placement_campaigns.py`
+   `counts_for`), the legacy applicant listing with the flag on (`routers/placement.py` `_V2Eligibility`) and offer
+   loading in analytics (`services/placement_insights.py` `load_scope`).
+4. **L5** — correct the outdated campaign table name in the spec (§3 says `mock_interview_campaigns`; actual tables are
+   `placement_campaigns` / `placement_campaign_students`).
+5. Run the 2 Redis queue tests (`tests_pg_api/test_core_flows.py`) against an isolated Redis test service.
+6. Investigate the 10 browser-smoke failures and determine which are genuinely pre-existing.
+7. Fix and verify the mobile sidebar horizontal scrolling below 768 px (existing `AppShell`).
+8. Commit the latest documentation changes separately — `PROJECT_STATE.md` and the Phase 9 spec have uncommitted
+   updates made after the implementation commit.
+
+**Recommended next-work order:** A. fix L2 and L3 → B. fix L4 if evidence confirms a meaningful performance issue,
+with tests → C. correct L5 in the docs → D. run the Redis queue tests in an isolated environment → E. investigate the
+browser-smoke failures → F. fix and test the mobile sidebar → G. rerun the relevant regression and acceptance tests →
+H. update the documentation with final evidence → I. review and separately approve the documentation commit →
+J. only then assess whether the Phase 9 acceptance criteria are fully satisfied.
+
+**Boundaries:** Phase 10 is NOT started — do not begin Phase 10 implementation. Phase 8 G2 remains **NOT PASSED**;
+student code execution is NOT approved (the `code-runner/` stays disconnected).
+
+*The list above is kept as history; superseded by the next section.*
+
+### Phase 9 closure (2026-11-25) — PHASE 9 — FINAL ACCEPTANCE COMPLETE
+
+Full record: spec §20. Base HEAD `9217d8d`; all changes are **uncommitted working-tree changes, nothing staged**.
+No migration, schema, RLS, API-response, dependency or flag change; all placement flags still default OFF.
+
+| Task | Result |
+|---|---|
+| L2 withdrawn rows (legacy TPO pages) | Shared `LegacyDecisionButtons`: withdrawn ⇒ all decisions natively disabled + "withdrawal is final" note (`aria-describedby`), `decide()` refuses; other statuses unchanged; "Withdrawn" filter option. 7 unit tests + browser checks (keyboard/forced activation send 0 requests) |
+| L3 XML / DOCTYPE | Real gaps found: DOCTYPE only checked in the first 4 KB; UTF-16 parts bypassed both byte scans and an internal entity was expanded. Fix: whole-part byte scan + stdlib `pyexpat` guard rejecting DOCTYPE / ENTITY / NOTATION / external entity in any encoding before `ElementTree`. 31 tests (9 fail on the old guard) |
+| L4 query performance | Campaign list 30 → 6 queries (constant), dashboard 31 → 12 (constant), legacy applicant list (flag on, 200) 411 → 13, analytics drive filter reads 21 instead of 814 offers; results proven identical old-vs-new; 6 tests |
+| L5 spec table name | §3 corrected to `placement_campaigns` / `placement_campaign_students` (original names kept as history) |
+| L6 Redis queue tests | **2 passed** on disposable Redis 7.4.12 + PostgreSQL 16.16 (local images, tmpfs, 127.0.0.1, random credentials; removed by exact ID) |
+| L7 10 browser failures | Original result file recovered: 4 × unlabeled selects + 1 × 8 px (legacy applications page) and 5 × 3 px header overflow at 320 px — all from the initial release, **class B (pre-existing), 0 caused by Phase 9, 0 flaky, 0 environment**; all fixed; original script rerun unchanged: **84 / 84** |
+| L8 mobile navigation | `AppShell` off-canvas drawer below 768 px (menu button, focus moved/trapped/restored, Escape/backdrop/close/link close, page inert while open); desktop unchanged. **280 / 280** browser checks at 320/360/375/390/414/767 and 768/1024/1366 px, 4 roles |
+| L9 final verification | Backend **774 passed / 34 skipped / 0 failed**; `tests_pg_api` **241 / 0 / 0**; RLS **34 / 0 / 0**; frontend unit **207 / 207**; tsc; lint 0 errors; flagged production build; Ruff, compile, `git diff --check` clean |
+| L10 docs | spec §3, §15.6, §19, §20; this section; local handoff §J |
+
+**Accepted limitations:** no real-device / screen-reader test (Phase 10); legacy applicant list with the flag OFF keeps
+its pre-existing per-applicant queries; timings indicative (SQLite, one machine). Docker: the temporary containers
+`e071d3505dc8` / `9f982b551b21` were removed; all 16 containers, 31 volumes, 65 images and the 9 networks' names are
+unchanged (the daemon recreated the default `bridge` network ID on engine start; no network command issued).
+
+**Next exact action (owner):** review the uncommitted closure change set and, if approved, authorize exact-path
+staging and one commit (code + tests + `PROJECT_STATE.md` + spec; never the Phase 5 `frontend/Dockerfile` /
+`frontend/next.config.ts` edits or local-only files). Nothing is pushed or deployed. Phase 10 NOT started; Phase 8 G2
+**NOT PASSED**.
 
 ### Next recommended action (approved sequence)
 1. Phases 6.1 (`1ad5628`), 6.2 (`17247e2`), 6.3 (`aef2999`), 6.4 (`0262f97`) and 6.5 (`75ed83c`) are committed. Phase

@@ -21,8 +21,10 @@ Rules (spec §12):
   logged; the audit row holds counts and a hash prefix only.
 
 The XLSX reader uses only the standard library: zip member count / size /
-compression-ratio limits, and any XML with a DOCTYPE is rejected before
-parsing (no entity expansion is possible).
+compression-ratio limits, and every XML part is first checked in full by a
+stdlib expat pass that rejects any DOCTYPE / ENTITY / NOTATION declaration or
+external entity reference in any encoding, before ElementTree parses it (no
+entity expansion and no external resolution are possible).
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import pyexpat
 import re
 import zipfile
 from dataclasses import dataclass, field
@@ -131,13 +134,54 @@ def _parse_csv(data: bytes) -> list[list[str]]:
     return rows
 
 
+class _ForbiddenXml(Exception):
+    """A DTD, entity or notation declaration was found (Phase 9 closure L3)."""
+
+
+def _forbid(*_args) -> None:
+    raise _ForbiddenXml
+
+
+def _reject_external_entity(*_args) -> int:
+    raise _ForbiddenXml
+
+
+def _guard_xml(raw: bytes) -> None:
+    """Refuse any DTD before ElementTree sees the bytes (Phase 9 closure L3).
+
+    SpreadsheetML never needs a DOCTYPE or entity declarations. A plain byte
+    search cannot be trusted on its own: it misses UTF-16 (or otherwise
+    re-encoded) parts and anything beyond a fixed window. So the WHOLE part is
+    run through a stdlib expat parser - which decodes the BOM / encoding
+    declaration exactly as the real parse will - with handlers that abort on
+    the first DOCTYPE, ENTITY, NOTATION or unparsed-entity declaration and on
+    any external entity reference; parameter entities are never parsed. The
+    cheap byte scan of the whole part stays as a first line of defence.
+    """
+    lowered = raw.lower()
+    if b"<!doctype" in lowered or b"<!entity" in lowered:
+        raise _bad("This .xlsx file contains unsupported XML declarations.")
+    parser = pyexpat.ParserCreate()
+    parser.SetParamEntityParsing(pyexpat.XML_PARAM_ENTITY_PARSING_NEVER)
+    parser.StartDoctypeDeclHandler = _forbid
+    parser.EntityDeclHandler = _forbid
+    parser.UnparsedEntityDeclHandler = _forbid
+    parser.NotationDeclHandler = _forbid
+    parser.ExternalEntityRefHandler = _reject_external_entity
+    try:
+        parser.Parse(raw, True)
+    except _ForbiddenXml:
+        raise _bad("This .xlsx file contains unsupported XML declarations.")
+    except (pyexpat.ExpatError, ValueError):
+        raise _bad("This .xlsx file is damaged and could not be read.")
+
+
 def _xml(zf: zipfile.ZipFile, name: str) -> ET.Element | None:
     try:
         raw = zf.read(name)
     except KeyError:
         return None
-    if b"<!doctype" in raw[:4096].lower() or b"<!entity" in raw.lower():
-        raise _bad("This .xlsx file contains unsupported XML declarations.")
+    _guard_xml(raw)
     try:
         return ET.fromstring(raw)
     except ET.ParseError:

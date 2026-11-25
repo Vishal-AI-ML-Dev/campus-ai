@@ -133,11 +133,22 @@ def load_scope(db: Session, tenant_id: int, f: Filters) -> Scope:
     if f.status is not None:
         apps = [a for a in apps if a.status == f.status]
     app_ids = {a.id for a in all_apps_for_placed}
-    offers = (
-        [o for o in db.scalars(select(Offer).where(Offer.tenant_id == tenant_id)) if o.application_id in app_ids]
-        if app_ids
-        else []
-    )
+    # Phase 9 closure L4: when a filter narrows the drives (drive, company,
+    # academic year), only offers on applications of those drives are read -
+    # it used to be every offer of the institute even for a one-drive filter.
+    # Without such a filter every drive is in scope, so the plain institute
+    # query is kept. The Python filter still applies the student scope, so the
+    # result set is identical either way.
+    ostmt = select(Offer).where(Offer.tenant_id == tenant_id)
+    if f.drive_id is not None or f.company or f.academic_year:
+        ostmt = ostmt.where(
+            Offer.application_id.in_(
+                select(Application.id).where(
+                    Application.tenant_id == tenant_id, Application.drive_id.in_(list(drives))
+                )
+            )
+        )
+    offers = [o for o in db.scalars(ostmt) if o.application_id in app_ids] if app_ids else []
     placed = {a.student_id for a in all_apps_for_placed if a.status == ApplicationStatus.selected} | {
         o.student_id for o in offers if o.status == OfferStatus.accepted and o.student_id in students
     }
