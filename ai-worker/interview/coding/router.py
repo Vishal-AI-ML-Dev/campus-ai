@@ -28,6 +28,7 @@ from interview.coding.schemas import (
 )
 from interview.no_tracing import tracing_disabled
 from interview.usage import usage_scope
+from provider_errors import step_failure
 
 router = APIRouter(prefix="/interview/coding", tags=["interview-coding"])
 
@@ -37,14 +38,16 @@ def coding_hint(payload: HintRequest) -> HintResponse:
     """502 when the model failed (the backend gives the hint back); 422 when the
     model only produced unsafe text, e.g. a solution (not an outage: the
     circuit breaker is not tripped, and the backend keeps the hint used)."""
+    usage = None
     try:
         with tracing_disabled(), usage_scope() as usage:  # R1: inputs hold student code
             hint = steps.generate_hint(payload)
     except steps.HintUnavailable as exc:
         if str(exc) == "filtered":
             raise HTTPException(status_code=422, detail="No safe hint could be produced")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail="A hint could not be generated"
+        # Phase 10: 429 when the provider's quota was exhausted (structured signal).
+        raise step_failure(
+            usage, status.HTTP_502_BAD_GATEWAY, "A hint could not be generated"
         )
     return HintResponse(hint=hint, provider=settings.LLM_PROVIDER, usage=usage.summary())
 
@@ -66,11 +69,12 @@ def coding_followup(payload: FollowupRequest) -> FollowupResponse:
 @router.post("/review", response_model=ReviewResponse)
 def coding_review(payload: ReviewRequest) -> ReviewResponse:
     """502 when the review could not be produced (nothing partial is returned)."""
+    usage = None
     try:
         with tracing_disabled(), usage_scope() as usage:
             result = steps.review(payload)
     except steps.ReviewUnavailable:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail="The code review could not be produced"
+        raise step_failure(
+            usage, status.HTTP_502_BAD_GATEWAY, "The code review could not be produced"
         )
     return ReviewResponse(**result, provider=settings.LLM_PROVIDER, usage=usage.summary())

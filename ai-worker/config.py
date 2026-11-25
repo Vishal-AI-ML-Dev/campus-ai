@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     # Lower temperature -> more consistent, less 'creative' scoring.
     LLM_TEMPERATURE: float = 0.2
 
+    # Phase 10.3 (D4): provider request timeout (seconds) and SDK retry count.
+    # Unset = the SDK defaults (no timeout; Groq retries 2x, Gemini 6x - each
+    # retry can repeat an LLM call). REQUIRED in production: a timeout between
+    # 1 and LLM_MAX_TIMEOUT_SECONDS (below the backend's shortest 60 s worker
+    # timeout) and at most 1 retry; ``insecure_worker_issues`` enforces it.
+    LLM_TIMEOUT_SECONDS: float | None = None
+    LLM_MAX_RETRIES: int | None = None
+
     # Shared secret. When set, every request except the open paths (/health, /)
     # must send a matching X-Worker-Token header (constant-time compare).
     # Empty = check disabled - allowed in development/test ONLY. In production
@@ -102,9 +110,30 @@ def metrics_token_issue(s: "Settings") -> str | None:
     return None
 
 
+# The backend's shortest interview/mentor timeout is 60 s (scoring 30 s, which
+# only loses an optional score); the provider must give up well before that.
+LLM_MAX_TIMEOUT_SECONDS = 45.0
+
+
+def llm_budget_issues(s: "Settings") -> list[str]:
+    """Phase 10.3: provider timeout/retry settings that are unsafe in production."""
+    issues: list[str] = []
+    t = s.LLM_TIMEOUT_SECONDS
+    if t is None or not (1 <= t <= LLM_MAX_TIMEOUT_SECONDS):
+        issues.append(
+            f"LLM_TIMEOUT_SECONDS must be set between 1 and {LLM_MAX_TIMEOUT_SECONDS:g} "
+            "(below the backend timeouts)."
+        )
+    if s.LLM_MAX_RETRIES is None or not (0 <= s.LLM_MAX_RETRIES <= 1):
+        issues.append("LLM_MAX_RETRIES must be set to 0 or 1 (SDK retries repeat LLM calls).")
+    if (s.LLM_PROVIDER or "").strip().lower() not in ("groq", "gemini"):
+        issues.append("LLM_PROVIDER must be groq or gemini.")
+    return issues
+
+
 def insecure_worker_issues(s: "Settings") -> list[str]:
     """Problems that make a PRODUCTION worker unsafe to start (empty = ok)."""
-    issues: list[str] = []
+    issues: list[str] = list(llm_budget_issues(s))
     if len(s.AI_WORKER_TOKEN.strip()) < MIN_WORKER_TOKEN_LENGTH:
         issues.append(
             "AI_WORKER_TOKEN is empty or shorter than "

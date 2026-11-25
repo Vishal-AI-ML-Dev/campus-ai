@@ -144,6 +144,8 @@ class StepUsage(BaseModel):
     tokens_reported: int = 0
     tokens_unreported: int = 0
     llm_latency_ms: int = 0
+    # Phase 10.3 (additive): the provider reported quota/rate-limit exhaustion.
+    quota_exhausted: bool = False
 
 
 class PlanResponse(BaseModel):

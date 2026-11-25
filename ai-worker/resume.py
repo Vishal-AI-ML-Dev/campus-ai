@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from llm import get_chat_model, get_structured_model
+from provider_errors import is_quota_error, quota_http_error
 from tracing import trace_config
 
 router = APIRouter(prefix="/resume", tags=["resume"])
@@ -158,13 +159,17 @@ def _ats_invoke(messages: list[Any]) -> AtsResult:
             return result
         if isinstance(result, dict):
             return AtsResult.model_validate(_coerce_ats_dict(result))
-    except Exception:  # noqa: BLE001 - fall through to manual parsing
-        pass
+    except Exception as exc:  # noqa: BLE001 - fall through to manual parsing
+        # Phase 10.3: a quota error would fail again - never spend a 2nd call.
+        if is_quota_error(exc):
+            raise quota_http_error() from None
 
     # 2) Fallback: plain call + JSON slice.
     try:
         raw = get_chat_model().invoke(messages, config=cfg)
     except Exception as exc:  # noqa: BLE001 - surface provider/SDK error
+        if is_quota_error(exc):
+            raise quota_http_error() from None
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"LLM call failed: {exc}",
@@ -277,6 +282,8 @@ def draft_resume(payload: ResumeDraftRequest) -> ResumeDraftResponse:
             config=trace_config("resume_draft", provider=settings.LLM_PROVIDER),
         )
     except Exception as exc:  # noqa: BLE001 - surface any provider/SDK error
+        if is_quota_error(exc):
+            raise quota_http_error() from None
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"LLM call failed: {exc}",

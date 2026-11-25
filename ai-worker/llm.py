@@ -17,6 +17,16 @@ from pydantic import BaseModel
 from config import settings
 
 
+def _budget_kwargs(timeout_name: str, retries_name: str) -> dict:
+    """Phase 10.3: explicit provider timeout / retry count when configured."""
+    kwargs: dict = {}
+    if settings.LLM_TIMEOUT_SECONDS is not None:
+        kwargs[timeout_name] = float(settings.LLM_TIMEOUT_SECONDS)
+    if settings.LLM_MAX_RETRIES is not None:
+        kwargs[retries_name] = int(settings.LLM_MAX_RETRIES)
+    return kwargs
+
+
 @lru_cache(maxsize=1)
 def get_chat_model() -> BaseChatModel:
     """Build (once) the chat model for `settings.LLM_PROVIDER`.
@@ -35,6 +45,7 @@ def get_chat_model() -> BaseChatModel:
             model=settings.GROQ_MODEL,
             api_key=settings.GROQ_API_KEY,
             temperature=settings.LLM_TEMPERATURE,
+            **_budget_kwargs("timeout", "max_retries"),
         )
 
     if provider == "gemini":
@@ -48,6 +59,7 @@ def get_chat_model() -> BaseChatModel:
             model=settings.GEMINI_MODEL,
             google_api_key=settings.GOOGLE_API_KEY,
             temperature=settings.LLM_TEMPERATURE,
+            **_budget_kwargs("request_timeout", "retries"),
         )
 
     raise ValueError(

@@ -21,6 +21,7 @@ from interview.company import active as company_active
 from interview.graph import QuestionGenerationFailed, plan_graph, turn_graph
 from interview.no_tracing import tracing_disabled, untraced_config
 from interview.usage import usage_scope
+from provider_errors import step_failure
 from interview.report import ReportGenerationFailed, ReportNotAssessable, report_graph
 from interview.schemas import (
     PlanRequest,
@@ -79,6 +80,7 @@ def _check_transcript(payload: TurnRequest) -> None:
 def interview_turn(payload: TurnRequest) -> TurnResponse:
     """Process one interview step (see module docstring)."""
     _check_transcript(payload)
+    usage = None
     try:
         with tracing_disabled(), usage_scope() as usage:  # R1: inputs hold resume/JD/answers
             final = turn_graph().invoke(
@@ -95,10 +97,11 @@ def interview_turn(payload: TurnRequest) -> TurnResponse:
                 config=untraced_config(),
             )
     except QuestionGenerationFailed:
-        # No details: provider errors can echo prompt fragments.
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="The interviewer could not generate the next question",
+        # No details: provider errors can echo prompt fragments. Phase 10:
+        # 429 when the provider's quota was exhausted (structured signal).
+        raise step_failure(
+            usage, status.HTTP_502_BAD_GATEWAY,
+            "The interviewer could not generate the next question",
         )
     return TurnResponse(
         action=final["action"],
@@ -125,6 +128,7 @@ def interview_report(payload: ReportRequest) -> ReportResponse:
                 status_code=422,
                 detail="Transcript sequence numbers must be 1..n in order",
             )
+    usage = None
     try:
         with tracing_disabled(), usage_scope() as usage:  # R1: inputs hold the transcript
             final = report_graph().invoke(
@@ -132,9 +136,8 @@ def interview_report(payload: ReportRequest) -> ReportResponse:
                 config=untraced_config(),
             )
     except ReportGenerationFailed:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="The report could not be generated",
+        raise step_failure(
+            usage, status.HTTP_502_BAD_GATEWAY, "The report could not be generated"
         )
     except ReportNotAssessable:
         raise HTTPException(

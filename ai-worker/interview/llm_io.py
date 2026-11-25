@@ -28,6 +28,7 @@ import llm_metrics
 from interview.no_tracing import tracing_disabled, untraced_config
 from interview.usage import TokenCounter, current_usage, model_name, provider_name
 from llm import get_chat_model, get_structured_model
+from provider_errors import is_quota_error
 
 logger = logging.getLogger("campus_ai_worker.interview")
 
@@ -86,6 +87,11 @@ def _invoke_structured(
             return schema.model_validate(result), "ok"
     except Exception as exc:  # noqa: BLE001 - fall through to the JSON path
         logger.warning("interview %s: structured output failed (%s)", step, type(exc).__name__)
+        # Phase 10.3: the quota is exhausted - a JSON-path retry would only
+        # spend (or be refused) again. Flag it for the backend and stop here.
+        if is_quota_error(exc):
+            _flag_quota()
+            raise LLMUnavailable(f"{step}: provider quota exhausted") from exc
 
     try:
         raw = get_chat_model().invoke(messages, config=cfg)
@@ -95,4 +101,12 @@ def _invoke_structured(
         raise LLMUnavailable(f"{step}: unusable model output") from exc
     except Exception as exc:  # noqa: BLE001 - provider/SDK/network error
         logger.warning("interview %s: provider call failed (%s)", step, type(exc).__name__)
+        if is_quota_error(exc):
+            _flag_quota()
         raise LLMUnavailable(f"{step}: provider call failed") from exc
+
+
+def _flag_quota() -> None:
+    usage = current_usage()
+    if usage is not None:
+        usage.mark_quota_exhausted()

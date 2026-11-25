@@ -80,13 +80,29 @@ class FaceSettings(BaseSettings):
 
     # Phase 7B kill-switch. False => every /face route answers 503 before any
     # model is loaded or downloaded (staging: resource + model-licence hold).
-    FACE_ENABLED: bool = True
+    # Release decision (B-8): FAIL-CLOSED - off unless FACE_ENABLED=true is set
+    # explicitly. Biometric data; disabled for the initial pilot and production.
+    FACE_ENABLED: bool = False
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> FaceSettings:
     """Return a cached settings instance (parsed once per process)."""
     return FaceSettings()
+
+
+def production_face_issue(s: FaceSettings) -> str | None:
+    """Release decision B-8: face recognition must stay OFF in production.
+
+    Returns a content-free reason (None = ok). Only reads the flag: no model
+    is loaded and no Qdrant store is opened.
+    """
+    if s.FACE_ENABLED:
+        return (
+            "FACE_ENABLED=true is not allowed in production (face recognition is "
+            "disabled for this release; decision B-8)."
+        )
+    return None
 
 
 # ---------------------------------------------------------------------------

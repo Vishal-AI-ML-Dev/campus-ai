@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from config import settings
@@ -29,6 +29,7 @@ from interview.no_tracing import tracing_disabled
 from interview.safety import clean_text, normalize, quote_in, safe_label, single_line, wrap
 from interview.schemas import MAX_JD_CHARS, CompanyContext, StepUsage
 from interview.usage import usage_scope
+from provider_errors import step_failure
 
 
 COMPANY_RULES = (
@@ -186,12 +187,13 @@ router = APIRouter(prefix="/interview/jd", tags=["interview-company"])
 @router.post("/skills", response_model=JDSkillsResponse)
 def jd_skills(payload: JDSkillsRequest) -> JDSkillsResponse:
     """502 when the model fails (nothing partial is returned)."""
+    usage = None
     try:
         with tracing_disabled(), usage_scope() as usage:  # R1: the JD is untrusted content
             skills = extract_skills(payload.job_description)
     except LLMUnavailable:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail="The job description could not be read"
+        raise step_failure(
+            usage, status.HTTP_502_BAD_GATEWAY, "The job description could not be read"
         )
     return JDSkillsResponse(skills=skills, provider=settings.LLM_PROVIDER, usage=usage.summary())
 

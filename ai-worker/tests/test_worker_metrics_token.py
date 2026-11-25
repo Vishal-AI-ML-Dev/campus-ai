@@ -45,6 +45,8 @@ REQUESTS = {
 def _run(extra: dict) -> tuple[dict, str]:
     env = {**os.environ, "ENVIRONMENT": "production", "AI_WORKER_TOKEN": WORKER_TOKEN,
            "METRICS_TOKEN": "", "SENTRY_DSN": "", "LANGFUSE_PUBLIC_KEY": "", "LANGFUSE_SECRET_KEY": "",
+           # Phase 10.3: mandatory provider budget in production (synthetic).
+           "LLM_TIMEOUT_SECONDS": "30", "LLM_MAX_RETRIES": "0",
            **extra}
     proc = subprocess.run([sys.executable, "-c", _PROBE, json.dumps(REQUESTS)], cwd=WORKER, env=env,
                           capture_output=True, text=True, timeout=180)

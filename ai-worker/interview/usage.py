@@ -46,6 +46,8 @@ class StepUsage:
         self.tokens_reported = 0
         self.tokens_unreported = 0
         self.llm_latency_ms = 0.0
+        # Phase 10.3: the provider reported its quota/rate limit as exhausted.
+        self.quota_exhausted = False
 
     def call_started(self) -> None:
         with self._lock:
@@ -70,6 +72,10 @@ class StepUsage:
         with self._lock:
             self.fallback_used = True
 
+    def mark_quota_exhausted(self) -> None:
+        with self._lock:
+            self.quota_exhausted = True
+
     def add_latency(self, ms: float) -> None:
         with self._lock:
             self.llm_latency_ms += ms
@@ -87,6 +93,7 @@ class StepUsage:
                 "tokens_reported": self.tokens_reported,
                 "tokens_unreported": self.tokens_unreported,
                 "llm_latency_ms": int(round(self.llm_latency_ms)),
+                "quota_exhausted": self.quota_exhausted,
             }
 
 

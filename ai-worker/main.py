@@ -35,6 +35,8 @@ from observability import (
 )
 from tracing import init_tracing
 from correlation import invocation_id_middleware
+from face import get_settings as get_face_settings
+from face import production_face_issue
 from face import router as face_router
 from mentor import router as mentor_router
 from resume import router as resume_router
@@ -60,6 +62,10 @@ init_tracing(
 # Phase 7 production gate: never serve with an open / weak shared secret.
 if settings.is_production:
     _issues = insecure_worker_issues(settings)
+    # Release decision B-8: refuse to start with face recognition enabled.
+    _face_issue = production_face_issue(get_face_settings())
+    if _face_issue:
+        _issues.append(_face_issue)
     if _issues:
         raise RuntimeError(
             "Insecure AI worker configuration: " + " ".join(_issues)

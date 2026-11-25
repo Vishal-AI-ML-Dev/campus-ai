@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import textwrap
 from pathlib import Path
 
@@ -45,13 +47,24 @@ print("RESULT " + json.dumps(out))
 def _run(environment: str, token: str, **extra: str) -> subprocess.CompletedProcess:
     env = {k: v for k, v in os.environ.items()
            if k not in {"AI_WORKER_TOKEN", "ENVIRONMENT", "SENTRY_DSN",
-                        "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"}}
+                        "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "FACE_ENABLED"}}
     env.update({"ENVIRONMENT": environment, "AI_WORKER_TOKEN": token,
-                "PYTHONDONTWRITEBYTECODE": "1", "GROQ_API_KEY": "", "GOOGLE_API_KEY": ""})
+                "PYTHONDONTWRITEBYTECODE": "1", "GROQ_API_KEY": "", "GOOGLE_API_KEY": "",
+                # Phase 10.3: mandatory provider budget in production (synthetic).
+                "LLM_TIMEOUT_SECONDS": "30", "LLM_MAX_RETRIES": "0"})
+    # The probe calls /face/health; without a Qdrant server that opens an
+    # EMBEDDED store, which by default is the developer's own ai-worker/qdrant_data
+    # (and rewrites its meta.json). Always use a throwaway directory instead.
+    scratch = tempfile.mkdtemp(prefix="campus-worker-sec-")
+    env.update({"QDRANT_URL": "", "QDRANT_LOCAL_PATH": os.path.join(scratch, "faces"),
+                "RAG_QDRANT_LOCAL_PATH": os.path.join(scratch, "rag")})
     env.update(extra)
     code = f"TOKEN = {token!r}\n" + textwrap.dedent(_PROBE)
-    return subprocess.run([sys.executable, "-c", code], cwd=WORKER, env=env,
-                          capture_output=True, text=True, timeout=300)
+    try:
+        return subprocess.run([sys.executable, "-c", code], cwd=WORKER, env=env,
+                              capture_output=True, text=True, timeout=300)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
 
 
 def _result(r: subprocess.CompletedProcess) -> dict:
@@ -101,8 +114,31 @@ def test_face_kill_switch_returns_503_without_loading_models():
     assert out["good_token"] == 422  # other routes unaffected
 
 
-def test_face_enabled_by_default():
-    out = _result(_run("development", GOOD))
+def test_face_disabled_by_default():
+    """Release decision B-8: FACE_ENABLED unset -> every /face route is refused (fail-closed)."""
+    out = _result(_run("production", GOOD))
+    assert out["face_health"] == 503
+    assert out["face_enroll"] == 503
+    assert out["good_token"] == 422  # other routes unaffected
+
+
+def test_production_refuses_to_start_with_face_enabled():
+    """Release decision B-8: runtime guard, not only the compose policy check."""
+    r = _run("production", GOOD, FACE_ENABLED="true")
+    assert r.returncode != 0
+    assert "FACE_ENABLED=true is not allowed in production" in r.stderr
+    assert "Refusing to start in production" in r.stderr
+    assert GOOD not in r.stderr  # never echo the secret
+
+
+def test_production_starts_with_face_explicitly_disabled():
+    out = _result(_run("production", GOOD, FACE_ENABLED="false"))
+    assert out["/health"] == 200
+    assert out["face_health"] == 503 and out["face_enroll"] == 503
+
+
+def test_face_enabled_only_when_explicitly_set():
+    out = _result(_run("development", GOOD, FACE_ENABLED="true"))
     assert out["face_health"] != 503
     assert out["face_enroll"] == 422  # reaches validation; no model loaded for a bad body
 
