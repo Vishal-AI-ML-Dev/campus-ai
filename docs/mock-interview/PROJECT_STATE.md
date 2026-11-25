@@ -1,6 +1,24 @@
 # AI Mock Interview — Project State
 
-_Last updated: 2026-11-25. **PHASE 9 — FINAL ACCEPTANCE COMPLETE** (closure tasks L2–L8 done and verified on the
+_Last updated: 2026-11-25 (later). **PHASE 10 — BATCHES 10.2–10.10 EXECUTED LOCALLY, UNCOMMITTED; VERDICT: NOT
+PRODUCTION READY** (`specs/phase-10-production-readiness.md` §10–§11). Owner decisions this session: OQ-2 = off in
+code / required in production; OQ-4 = external free monitors; D7 = decide later; D8 = 1 institute / 100 students /
+3 concurrent. Implemented: AI governance on every AI path (new migration `f3a5c7e9b1d2`, Alembic head), config
+templates + policy check, CI workflow (not run on GitHub), readiness queue/AI status, content-free frontend error
+reports (flags off), encrypted DB+Storage backup and restore drill (local PASS), staging-verify and load/drill scripts.
+Two defects found by drills and fixed (circuit refusals consumed AI budget; login 500 when Redis down). Blocked on the
+owner: D7, monitors/e-mail, provider limits/billing check, OQ-3/OQ-5/OQ-6/D9/OQ-1, deployment + staging migration
+authorization, real devices. Nothing committed, pushed or deployed; `D:\Campus_Ai` untouched.
+Earlier on 2026-11-25: **PHASE 5 D3 COMPLETE — committed locally as `12029d6`** ("fix(frontend): finalize Phase 5
+interview permissions", parent `a336bb1`, exactly 4 files: `frontend/Dockerfile`, `frontend/next.config.ts`,
+`frontend/tests/unit/mockInterviewVideoFoundations.test.mjs`, `frontend/tests/unit/cameraMedia.test.mjs`; not pushed).
+Global `microphone=(self)` now only when `NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED=true`, else `microphone=()`; the
+ineffective runner-stage ENV was removed (`specs/phase-10-production-readiness.md` §6).
+**PHASE 10 — BATCH 10.1 (DOCUMENTATION ONLY) DRAFTED, AWAITING OWNER REVIEW** (decision record
+and plan: `specs/phase-10-production-readiness.md`; owner decisions D1–D6 recorded; D7–D9 and OQ-1…OQ-6 open; 10.1
+docs uncommitted; no infrastructure changed; 10.2+ not started). Phase 9 closure committed locally as `a336bb1`
+(not pushed). Phase 8 G2 still NOT passed.
+Earlier on 2026-11-25: **PHASE 9 — FINAL ACCEPTANCE COMPLETE** (closure tasks L2–L8 done and verified on the
 working tree — section "Phase 9 closure (2026-11-25)" below and spec §20; the closure changes are UNCOMMITTED and await
 owner approval to stage/commit; Phase 10 NOT started; Phase 8 G2 NOT passed).
 Earlier on 2026-11-24: **Phase 9 — IMPLEMENTATION COMMITTED, FINAL ACCEPTANCE/CLOSURE PENDING** (closure tasks were
@@ -32,6 +50,27 @@ cost estimates wait for an approved price table. Phase 7.1 (`863a8aa`) and 7.0 (
 commit status. Phase 6.6 automated
 hardening done; Phase 6 NOT complete: real-device checklist pending, now part of the Phase 10 final acceptance)._
 
+### Release status — backend code freeze (2026-11-25, latest; documentation-only update)
+
+Unified release state (details: `docs/CAMPUSAI_UNIFIED_RELEASE_HANDOFF.md`). **NOT PRODUCTION READY.** The unified
+code exists only on the local branch `feature/ai-mock-interview` (HEAD `12029d6` + uncommitted Phase 10 working tree);
+push, PR, merge and staging deployment are all **pending**.
+
+| Item | Status |
+|---|---|
+| Application code | **Frozen 2026-11-25**; Phase 10 + B-8 + mentor precheck implemented locally, **uncommitted** |
+| Full backend suite (SQLite, frozen tree, run alone once) | **835 passed, 0 failed, 34 skipped, exit 0** (3 734 s). The 34 skips = opt-in Postgres RLS tests (`RLS_TEST_DATABASE_URL` unset). **B-1 resolved** |
+| Combined local integration smoke | **PARTIAL**: 411 focused backend + 77 AI-worker integration tests passed, frontend `tsc` passed (separate runs, not a total); local Postgres, Redis, Qdrant and app servers unavailable — no live-infrastructure or browser-to-backend check |
+| Frontend unit / lint / build | Historical (Phase 10 run, 2026-11-25): unit 215/215, lint 0 errors (2 old warnings), build OK; frontend unchanged since |
+| Postgres `tests_pg_api` / RLS suites | Historical only (Phase 10 run, before the findings fixes): 245/0/0 and 34/0. **Final-tree Postgres/RLS validation pending** |
+| AI worker complete run with disposable Qdrant on the final tree | Pending |
+| GitHub CI | **Pending** — never ran |
+| Staging / production | **Pending** — not deployed; new mandatory env must be set first |
+| Phase 8 security gates G2–G5 + human security acceptance | **Pending**; student code execution **disabled** (no code runs anywhere) |
+| Face recognition | `FACE_ENABLED` **disabled** for this release (worker default `false`, fail-closed) |
+| AI spending | **₹0/month**, free tiers only, no paid fallback (D4, D1); caps not yet derived from verified provider limits (B-2) |
+| Owner decisions | D7, D9, OQ-1, OQ-3, OQ-5, OQ-6 and the other items in handoff §5 **remain unresolved** |
+
 **This file is the single source of truth for status.** The "Status at a glance" block below is current. Everything
 after it is the dated, detailed history of each phase; where a historical section disagrees with this block, this
 block wins.
@@ -45,12 +84,12 @@ block wins.
 | 2 | Models + additive RLS migration (sessions, turns, reports) | Done, committed | `0fadaa8` (docs `0ac3efc`) |
 | 3 | Text HR + technical interview engine | Implemented, committed; live LLM not run | `926e59c` (docs `f8e3485`) |
 | 4 | Evaluation report + history | Implemented, committed; live LLM not run | `18d8db0` |
-| **5** | **Voice interview (browser speech)** | **Implemented, committed; automated/simulated tests pass; real-device tests pending** | `34fd3a9` |
+| **5** | **Voice interview (browser speech)** | **Implemented, committed; automated/simulated tests pass; real-device tests pending.** Deployment configuration (D3: master build arg, flag-gated `microphone=(self)`) committed 2026-11-25 | `34fd3a9`; D3 `12029d6` |
 | **6** | **AI video interview** | **Design approved (D1–D12). 6.1 foundations committed. 6.2 camera infrastructure implemented. 6.3 video lobby, room and lifecycle implemented, `VIDEO_UI_READY = true`. 6.4 wiring (done in 6.3) audited, one fix, automated gaps closed, real-device matrix written. 6.5 done in 6.3, audited in 6.5 (report parity proven by tests). 6.6 automated hardening done (accessibility, responsive, privacy guards, full regression). **Phase 6 NOT complete: real-device checklist (24 rows) pending** | 6.1 `1ad5628`, 6.2 `17247e2`, 6.3 `aef2999`, 6.4 `0262f97` |
 | **7** | **Production operations and monitoring** (`specs/phase-7-production-operations.md`, runbooks in `runbooks/`) | **7.0–7.10 implementation complete.** 7.2 worker usage/latency, 7.3 usage ledger + metrics, 7.4 cost framework (**numeric pricing pending: no approved price table**), 7.5 circuit breaker + alerts, 7.6 institute controls + quotas, 7.7 admin API, 7.8 admin UI, 7.9 protected `/metrics`, 7.10 runbooks + retention script. Live drills and real-device tests are Phase 10 | 7.0 `ee48610`; 7.1 `863a8aa`; 7.2–7.10 `869d42b` |
 | **8** | **Advanced AI interview intelligence**, incl. coding round (old 7) and company/full simulation (old 8) (`specs/phase-8-advanced-ai-intelligence.md`) | **8.0 planning done (spec r2). G1 (narrower, Batch 1) approved 2026-11-23: P8-D1…D6, D8, D14…D17, B1-a/b/c Accepted. Batch 1 (8.1 + 8.2, review-only coding round) implementation complete and tested (spec §16); nothing is executed. All 24 problems are drafts pending human review (production serves none). P8-D7 (coding rubric) APPROVED 2026-11-23 with scoring semantics U1–U4 approved the same day (spec §7.1, §14.5): zero basic tests ⇒ ≤ 12.0/100; all three test groups required to publish; no session score if any problem is unverified; candidate timeouts ≠ runner faults (incomplete, never best). P8-D9…D11 (company profiles, sources, context) APPROVED 2026-11-23 (spec §7.5–§7.8, §14.6). O1 = option A APPROVED 2026-11-23 (spec §14.7). **Batch 2 (8.3 AI coding review, review-only + 8.4 company profiles) implemented, verified and committed (`1d620e6`, 2026-11-24; spec §17)**; nothing is executed anywhere. **Batch 3 (8.5a private test pack: 24 problems, 320 hidden tests, 96 validated references; U2 publication rule; 8.5b standalone `code-runner/` with Docker + gVisor hardening, fail-closed self-check, synthetic escape suite and CI job) implemented and committed locally as `7d4147c` 2026-11-24, not pushed (spec §18); G2 decisions P8-S2/S3/S5/S6/S7 APPROVED, G2 NOT passed (escape suite and CI not run).** No student code executed anywhere; all 24 problems still drafts pending a named human reviewer. Still open: P8-D12/D13, P8-S1/S1b/S4 (G3), G2 evidence, G4, G5** | Batch 1: `c62b067`; Batch 2: `1d620e6`; Batch 3: `7d4147c` |
-| **9** | **Institute and placement management**, incl. faculty campaigns (old 9) (`specs/phase-9-placement-institute-management.md`) | **9.0 planning done 2026-11-24 (audit, gap matrix, batches 9.1–9.5, decisions P9-D1…D10). Batch 9.1 (placement core v2, backend) committed `2ccc8b9`. Batches 9.2 (TPO/student Placement Hub UI, bulk shortlist/reject, withdrawal, academic CSV/XLSX import), 9.3 (faculty campaigns — completion status only — and TPO dashboard), 9.4 (filtered analytics, safe audited CSV export, AI Mock Interview preparation links) and 9.5 (security review, migrations, perf, browser smoke) implemented and verified, UNCOMMITTED (spec §12–§15): full backend 725 passed / 34 skipped / 0 failed; frontend unit 200/200, tsc, lint, build OK. Alembic head `e1a3c5b7d9f4`. All flags default off. PostgreSQL gate PASSED 2026-11-24 (disposable PostgreSQL 16.16: 61-migration chain, up/down/up; RLS 34/0; `tests_pg_api` 237 passed / 2 skipped (Redis) / 0 failed; ad-hoc Phase 9 API check 5 passed; spec §16). ~~IMPLEMENTATION COMMITTED, FINAL ACCEPTANCE/CLOSURE PENDING~~ → **2026-11-25: PHASE 9 — FINAL ACCEPTANCE COMPLETE** (spec §20): L2–L5 fixed and tested, 2 Redis queue tests passed, 10 browser-smoke failures classified (all pre-existing, class B) and fixed, mobile navigation drawer below 768 px; final evidence: backend 774 / 34 / 0, `tests_pg_api` 241 / 0 / 0, RLS 34 / 0, frontend 207/207, tsc, lint, build, browser 84/84 + 280/280. Closure changes UNCOMMITTED (owner approval needed to stage/commit). Real devices / screen readers and production integration remain Phase 10. Review fixes M1 + L1 verified (full backend 737 / 34 / 0; PostgreSQL lock tests 2 passed; spec §17). Committed locally; not pushed, merged or deployed.** P9-D7/D8 approved; P9-D10 deferred | 9.1 `2ccc8b9`; 9.2–9.5 + M1/L1 `9217d8d` (parent `2ccc8b9`) |
-| 10 | Enterprise integrations, platform-level security, final acceptance (full regression + all real-device tests) | Not started | — |
+| **9** | **Institute and placement management**, incl. faculty campaigns (old 9) (`specs/phase-9-placement-institute-management.md`) | **9.0 planning done 2026-11-24 (audit, gap matrix, batches 9.1–9.5, decisions P9-D1…D10). Batch 9.1 (placement core v2, backend) committed `2ccc8b9`. Batches 9.2 (TPO/student Placement Hub UI, bulk shortlist/reject, withdrawal, academic CSV/XLSX import), 9.3 (faculty campaigns — completion status only — and TPO dashboard), 9.4 (filtered analytics, safe audited CSV export, AI Mock Interview preparation links) and 9.5 (security review, migrations, perf, browser smoke) implemented and verified, UNCOMMITTED (spec §12–§15): full backend 725 passed / 34 skipped / 0 failed; frontend unit 200/200, tsc, lint, build OK. Alembic head `e1a3c5b7d9f4`. All flags default off. PostgreSQL gate PASSED 2026-11-24 (disposable PostgreSQL 16.16: 61-migration chain, up/down/up; RLS 34/0; `tests_pg_api` 237 passed / 2 skipped (Redis) / 0 failed; ad-hoc Phase 9 API check 5 passed; spec §16). ~~IMPLEMENTATION COMMITTED, FINAL ACCEPTANCE/CLOSURE PENDING~~ → **2026-11-25: PHASE 9 — FINAL ACCEPTANCE COMPLETE** (spec §20): L2–L5 fixed and tested, 2 Redis queue tests passed, 10 browser-smoke failures classified (all pre-existing, class B) and fixed, mobile navigation drawer below 768 px; final evidence: backend 774 / 34 / 0, `tests_pg_api` 241 / 0 / 0, RLS 34 / 0, frontend 207/207, tsc, lint, build, browser 84/84 + 280/280. Closure changes UNCOMMITTED (owner approval needed to stage/commit) → committed locally as `a336bb1` on 2026-11-25 (14 files). Real devices / screen readers and production integration remain Phase 10. Review fixes M1 + L1 verified (full backend 737 / 34 / 0; PostgreSQL lock tests 2 passed; spec §17). Committed locally; not pushed, merged or deployed.** P9-D7/D8 approved; P9-D10 deferred | 9.1 `2ccc8b9`; 9.2–9.5 + M1/L1 `9217d8d` (parent `2ccc8b9`); closure L2–L8 `a336bb1` |
+| 10 | Enterprise integrations, platform-level security, final acceptance (full regression + all real-device tests) | **2026-11-25 (latest): code freeze; full backend suite 835 passed / 0 failed / 34 skipped (B-1 resolved); local integration smoke PARTIAL; Postgres/RLS final-tree run, GitHub CI, staging, G2–G5 pending — see "Release status" above.** **2026-11-25: Batches 10.2–10.10 executed locally (uncommitted), verdict NOT PRODUCTION READY (spec §10–§11); platform-operator role + integrations not implemented (OQ-1 open).** Before that: **Batch 10.1 (docs only) drafted 2026-11-25, awaiting owner review**: decision record D1–D6, open D7–D9 and OQ-1…OQ-6, gates G1–G17, plan 10.2–10.10 (`specs/phase-10-production-readiness.md`; audit archived in `specs/phase-10-readiness-audit.md`). OQ-1: the 10.1–10.10 plan covers production readiness only; platform-operator role and enterprise integrations await an owner scope decision. **D3 (Phase 5 frontend configuration) done and committed locally `12029d6` (2026-11-25).** 10.1 docs uncommitted; 10.2+ not started | D3 `12029d6` |
 
 Roadmap re-numbered 2026-11-20 (P7-D1); old-to-new mapping: `IMPLEMENTATION_PLAN.md` §6a.
 
@@ -124,6 +163,14 @@ frontend mock-interview components, `speechDictation.ts`, `useSpeech.ts`, `Voice
   - `frontend/next.config.ts`: `Permissions-Policy` `microphone=(self)`;
   - untracked `docker-compose.override.yml`.
   - Voice in a deployed build needs a `microphone=(self)` policy.
+  - **Superseded 2026-11-25 (Phase 10 D3):** the two frontend edits were reviewed, corrected and committed as
+    `12029d6` "fix(frontend): finalize Phase 5 interview permissions" (4 files: `frontend/Dockerfile`,
+    `frontend/next.config.ts`, `frontend/tests/unit/mockInterviewVideoFoundations.test.mjs`,
+    `frontend/tests/unit/cameraMedia.test.mjs`). The builder-stage `ARG NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED=false` is
+    kept; the runner-stage ENV (empty, stage-scoped arg) was removed; `microphone=(self)` is now global **only** when
+    that master build flag is exactly `"true"`, otherwise `microphone=()`. Evidence: `specs/phase-10-production-readiness.md`
+    §6. `docker-compose.override.yml` stays untracked and was not opened. Notes below that call these edits
+    "uncommitted" describe the state before `12029d6`.
 - Never commit: `.claude/` and `frontend/AGENTS.md`.
 
 ### Phase 6.1 — video foundations (2026-11-19; committed `1ad5628`)

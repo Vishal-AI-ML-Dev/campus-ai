@@ -18,7 +18,7 @@ service: LangChain/LangGraph, Groq|Gemini, Qdrant), `frontend/` (Next.js 16 — 
 - Frontend: pages in `src/app/dashboard/<feature>/page.tsx`, panels and API helpers in `src/components/<feature>/`; use `useApiResource` and `components/ui/states.tsx`.
 
 ## Testing
-- Backend: `cd backend && .venv/Scripts/python -m pytest` (SQLite, offline, ~10+ min). All runs share `%TEMP%\campus_ai_test.db`, so **never run two at once**.
+- Backend: `cd backend && .venv/Scripts/python -m pytest` (SQLite, offline, ~1 h for the full suite). All runs share `%TEMP%\campus_ai_test.db`, so **never run two at once**.
 - Postgres suites (`tests_pg_api/`, `test_rls_postgres.py`) are opt-in and need a local throwaway Postgres.
 - Frontend: `npx tsc --noEmit` and `npm run lint`.
 - Write test output to the session scratchpad, never to a drive root.
@@ -45,3 +45,9 @@ Phase 7 (operations): backend `AI_MOCK_INTERVIEW_OPS_ENABLED` (off), `AI_MOCK_IN
 **Exception (approved P7-D4):** the AI circuit breaker `AI_CIRCUIT_ENABLED` is ON by default (inert while
 `AI_MOCK_INTERVIEW_ENABLED` is off). Interview LLM calls must never reach Langfuse/LangSmith/Sentry AI integrations.
 Runbooks: `docs/mock-interview/runbooks/`.
+Phase 10 (production readiness, `specs/phase-10-production-readiness.md`): backend `AI_GOVERNANCE_ENABLED` (off in
+code, **required in production** with `AI_PLATFORM_DAILY_REQUEST_MAX`/`…_TOKEN_MAX` — OQ-2), `AI_KILL_SWITCH`,
+`AI_DISABLED_FEATURES` (act even with governance off; default nothing killed), `CLIENT_ERROR_REPORTING_ENABLED` (off),
+`BUILD_COMMIT`; worker `LLM_TIMEOUT_SECONDS` + `LLM_MAX_RETRIES` (required in production); frontend build
+`NEXT_PUBLIC_CLIENT_ERROR_REPORTING_ENABLED` (off). Every LLM call goes through `ai_governance` (never add an
+ungoverned AI path). Postgres suites: `scripts/ci/pg_suite_setup.sh` on a disposable cluster only.
