@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Campus AI - restore-verification drill.
 #
+# For encrypted bundles from backup_all.sh use restore_drill.sh instead.
 # Restores a dump (from pg_backup.sh) into a THROWAWAY Docker Postgres and runs
 # sanity checks, WITHOUT touching any real database. An untested backup is not a
 # backup - run this after setting up nightly backups, then quarterly.
@@ -16,14 +17,16 @@ DUMP_FILE="${1:?usage: verify_restore.sh <dump-file>}"
 
 CONTAINER="campus-restore-check"
 PGPORT="${PGPORT:-55432}"
-PW="verify"
+# Phase 10.6: random throwaway password and a digest-pinned image.
+PW="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+IMAGE="${RESTORE_PG_IMAGE:-postgres:16@sha256:63e83b5a3dc36a917dccb76fe1bd2ac51f1ec9c1deb47ff20d4f04233bf6eae9}"
 
 cleanup(){ docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
-echo "[verify] starting throwaway postgres:16 on :${PGPORT} ..."
+echo "[verify] starting throwaway pinned postgres:16 on 127.0.0.1:${PGPORT} ..."
 docker run -d --name "$CONTAINER" -e POSTGRES_PASSWORD="$PW" \
-  -e POSTGRES_DB=campus -p "${PGPORT}:5432" postgres:16 >/dev/null
+  -e POSTGRES_DB=campus -p "127.0.0.1:${PGPORT}:5432" "$IMAGE" >/dev/null
 
 echo "[verify] waiting for readiness ..."
 for _ in $(seq 1 30); do
