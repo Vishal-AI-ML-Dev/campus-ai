@@ -49,7 +49,13 @@ _clock: Callable[[], float] = time.monotonic
 
 
 def active() -> bool:
-    return bool(settings.AI_MOCK_INTERVIEW_ENABLED and settings.AI_CIRCUIT_ENABLED)
+    # Phase 10.3: also guards the governed mentor/resume/ATS/scoring calls
+    # (steps mentor_chat, mentor_stream, resume_draft, ats_score, proof_score)
+    # once AI_GOVERNANCE_ENABLED is on. Unchanged while both flags are off.
+    return bool(
+        (settings.AI_MOCK_INTERVIEW_ENABLED or settings.AI_GOVERNANCE_ENABLED)
+        and settings.AI_CIRCUIT_ENABLED
+    )
 
 
 class _Breaker:
@@ -125,7 +131,7 @@ class _Breaker:
         if opened:
             ai_alerts.alert(
                 "ai_circuit_open",
-                f"AI circuit opened for interview step '{self.step}'; new {self.step} calls "
+                f"AI circuit opened for AI step '{self.step}'; new {self.step} calls "
                 f"get an immediate 503 for {settings.AI_CIRCUIT_OPEN_SECONDS}s.",
                 severity="error",
                 key=self.step,
@@ -136,7 +142,7 @@ class _Breaker:
         if recovered:
             ai_alerts.alert(
                 "ai_circuit_closed",
-                f"AI circuit closed again for interview step '{self.step}' (trial call succeeded).",
+                f"AI circuit closed again for AI step '{self.step}' (trial call succeeded).",
                 severity="warning",
                 key=self.step,
                 step=self.step,
@@ -160,6 +166,33 @@ def allow(step: str) -> bool:
     if not active():
         return True
     return _breaker(step).allow()
+
+
+def would_refuse(step: str) -> bool:
+    """Read-only: would ``allow(step)`` refuse a call right now?
+
+    For route prechecks that must refuse BEFORE writing anything. Unlike
+    ``allow`` it never changes state: it does not move an expired OPEN breaker
+    to HALF_OPEN, never starts or replaces a half-open trial, and never creates
+    a breaker. Always False when inactive or for a step with no breaker yet.
+
+    Advisory only: the state can change between this check and the later
+    ``allow`` call, which stays the authoritative gate.
+    """
+    if not active():
+        return False
+    with _registry_lock:
+        b = _breakers.get(step)
+    if b is None:
+        return False
+    with b.lock:
+        now = _clock()
+        if b.state == OPEN:
+            return now - b.opened_at < settings.AI_CIRCUIT_OPEN_SECONDS
+        if b.state == HALF_OPEN:
+            stale = settings.AI_CIRCUIT_OPEN_SECONDS + _MAX_CALL_SECONDS
+            return b.trial_started is not None and now - b.trial_started < stale
+        return False
 
 
 def record(step: str, success: bool) -> None:

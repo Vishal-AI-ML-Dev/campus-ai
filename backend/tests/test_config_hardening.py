@@ -107,6 +107,10 @@ def _run_prod(code: str, **env_overrides) -> subprocess.CompletedProcess:
             "REDIS_URL": "",
             "SENTRY_DSN": "",
             "PYTHONDONTWRITEBYTECODE": "1",
+            # Phase 10.3 (OQ-2): AI governance is mandatory in production (synthetic caps).
+            "AI_GOVERNANCE_ENABLED": "true",
+            "AI_PLATFORM_DAILY_REQUEST_MAX": "500",
+            "AI_PLATFORM_DAILY_TOKEN_MAX": "400000",
         }
     )
     env.update(env_overrides)

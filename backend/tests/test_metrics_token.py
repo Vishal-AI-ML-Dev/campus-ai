@@ -52,6 +52,10 @@ def _run_in(db: str, env_extra: dict, requests: dict) -> tuple[dict, str]:
         "METRICS_TOKEN": "",
         "STAGING_GATE_TOKEN": "",
         "REDIS_URL": "",
+        # Phase 10.3 (OQ-2): AI governance is mandatory in production (synthetic caps).
+        "AI_GOVERNANCE_ENABLED": "true",
+        "AI_PLATFORM_DAILY_REQUEST_MAX": "500",
+        "AI_PLATFORM_DAILY_TOKEN_MAX": "400000",
         **env_extra,
     }
     proc = subprocess.run([sys.executable, "-c", _PROBE, json.dumps(requests)], cwd=BACKEND,

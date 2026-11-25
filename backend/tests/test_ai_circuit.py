@@ -274,3 +274,26 @@ def test_webhook_failure_log_never_contains_the_url(monkeypatch, caplog):
     failed = [ln for ln in lines if "alert webhook failed" in ln]
     assert failed and '"error": "ConnectError"' in failed[0]
     assert all("SECRET-TOKEN-123" not in ln and "hooks.example.invalid" not in ln for ln in lines)
+
+
+# --- Release fix: read-only precheck for routes (mentor) ---------------------------
+
+
+def test_would_refuse_is_read_only_and_matches_allow(breaker):
+    assert ai_circuit.would_refuse("mentor_chat") is False
+    assert "mentor_chat" not in ai_circuit.snapshot()  # no breaker created
+    fail("mentor_chat", 5)
+    assert ai_circuit.would_refuse("mentor_chat") is True
+    breaker.t += 61  # open period over: allow() would start the half-open trial
+    assert ai_circuit.would_refuse("mentor_chat") is False
+    assert ai_circuit.snapshot()["mentor_chat"]["state"] == "open"  # not moved to half_open
+    assert ai_circuit.allow("mentor_chat") is True  # the trial is still available
+    assert ai_circuit.would_refuse("mentor_chat") is True  # trial in flight
+    ai_circuit.record("mentor_chat", True)
+    assert ai_circuit.would_refuse("mentor_chat") is False
+
+
+def test_would_refuse_inert_when_inactive(breaker, monkeypatch):
+    fail("mentor_chat", 5)
+    monkeypatch.setattr(settings, "AI_CIRCUIT_ENABLED", False)
+    assert ai_circuit.would_refuse("mentor_chat") is False

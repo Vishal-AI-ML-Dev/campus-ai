@@ -19,13 +19,14 @@ import json
 from collections.abc import Iterator
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ai_client import ask_mentor, stream_mentor
+from app.services import ai_circuit, ai_governance
 from app.core.db import SessionLocal, get_db, set_current_tenant
 from app.models import (
     AttendanceRecord,
@@ -45,6 +46,7 @@ from app.schemas import (
     MentorConversationOut,
 )
 from app.core.security import apply_tenant_guc, get_current_user
+from app.observability import ai_metrics
 
 router = APIRouter(
     prefix="/mentor",
@@ -82,6 +84,21 @@ class MentorChatResponse(BaseModel):
     answer: str
     provider: str
     conversation_id: int
+
+
+def _refuse_if_circuit_open(step: str) -> None:
+    """Refuse with the usual 503 ``circuit_open`` BEFORE the question is saved.
+
+    Read-only (``ai_circuit.would_refuse``): it never calls ``allow``, so it
+    cannot consume a half-open trial. Known race: the breaker can open between
+    this check and the governed call's ``allow``; that call is then refused as
+    before (same 503 / SSE error) and the already-saved question stays
+    unanswered. The window is one request's DB work, so this only narrows the
+    pilot limitation, it does not remove it.
+    """
+    if ai_circuit.would_refuse(step):
+        ai_metrics.governance_refusal(ai_governance.FEATURE_MENTOR, "circuit_open")
+        raise ai_governance.AIRefused(ai_governance.FEATURE_MENTOR, "circuit_open", retry_after=60)
 
 
 def _build_verified_profile(db: Session, student_id: int) -> dict:
@@ -281,6 +298,7 @@ def _stream_with_persistence(
     history: list[dict],
     conversation_id: int,
     tenant_id: int,
+    user_id: int | None = None,
 ) -> Iterator[bytes]:
     """Proxy the worker's SSE stream to the client while capturing the full
     answer, then persist the assistant turn once the stream ends."""
@@ -290,7 +308,7 @@ def _stream_with_persistence(
     parts: list[str] = []
     provider: str | None = None
     buffer = ""
-    for chunk in stream_mentor(profile, question, history):
+    for chunk in stream_mentor(profile, question, history, tenant_id=tenant_id, user_id=user_id):
         # Pass the worker's bytes straight through - our bookkeeping never adds
         # latency to the tokens the user sees.
         yield chunk
@@ -322,27 +340,47 @@ def mentor_chat(
     payload: MentorChatRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> MentorChatResponse:
     """Ask the AI mentor a question, grounded on YOUR verified profile.
 
     Persists both turns into a conversation (a new one when no id is given) so
     the thread is remembered; prior turns are replayed to the worker.
+
+    Phase 10.3: AI limits are checked BEFORE anything is written; with AI
+    governance on, a repeated ``Idempotency-Key`` returns the first answer
+    instead of a second (paid) AI call.
     """
-    profile = _build_verified_profile(db, current_user.id)
-    convo = _resolve_conversation(db, payload, current_user)
-    history = _load_history(db, convo.id)
-    _add_message(db, convo, "user", payload.question)
-    result = ask_mentor(profile, payload.question, history)
-    if result is None:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="AI mentor is unavailable right now (is the AI worker running?)",
-        )
-    provider = result.get("provider", "unknown")
-    _add_message(db, convo, "assistant", result["answer"], provider)
-    return MentorChatResponse(
-        answer=result["answer"], provider=provider, conversation_id=convo.id
+    feature = ai_governance.FEATURE_MENTOR
+    ai_governance.precheck(feature, tenant_id=current_user.tenant_id, user_id=current_user.id)
+    _refuse_if_circuit_open("mentor_chat")
+    replay = ai_governance.idempotency_begin(
+        feature, current_user.id, idempotency_key, request=payload
     )
+    if replay is not None:
+        return replay
+    try:
+        profile = _build_verified_profile(db, current_user.id)
+        convo = _resolve_conversation(db, payload, current_user)
+        history = _load_history(db, convo.id)
+        _add_message(db, convo, "user", payload.question)
+        with ai_governance.caller(current_user.tenant_id, current_user.id):
+            result = ask_mentor(profile, payload.question, history)
+        if result is None:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="AI mentor is unavailable right now (is the AI worker running?)",
+            )
+        provider = result.get("provider", "unknown")
+        _add_message(db, convo, "assistant", result["answer"], provider)
+        response = MentorChatResponse(
+            answer=result["answer"], provider=provider, conversation_id=convo.id
+        )
+    except BaseException:
+        ai_governance.idempotency_abort(feature, current_user.id, idempotency_key)
+        raise
+    ai_governance.idempotency_finish(feature, current_user.id, idempotency_key, response)
+    return response
 
 
 @router.post("/chat/stream")
@@ -358,13 +396,19 @@ def mentor_chat_stream(
     afterwards proxies the AI worker and persists the assistant turn at the end
     via its own fresh session.
     """
+    # Phase 10.3: refuse with a real 429/503 BEFORE the stream starts.
+    ai_governance.precheck(
+        ai_governance.FEATURE_MENTOR, tenant_id=current_user.tenant_id, user_id=current_user.id
+    )
+    _refuse_if_circuit_open("mentor_stream")
     profile = _build_verified_profile(db, current_user.id)
     convo = _resolve_conversation(db, payload, current_user)
     history = _load_history(db, convo.id)
     _add_message(db, convo, "user", payload.question)
     return StreamingResponse(
         _stream_with_persistence(
-            profile, payload.question, history, convo.id, current_user.tenant_id
+            profile, payload.question, history, convo.id, current_user.tenant_id,
+            current_user.id,
         ),
         media_type="text/event-stream",
         headers={

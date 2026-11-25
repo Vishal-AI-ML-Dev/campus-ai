@@ -44,6 +44,17 @@ if _ENABLED:
         "New interviews refused by an institute control or quota.",
         ["reason"],
     )
+    # Phase 10.3: AI governance (every AI feature). Labels are fixed names.
+    GOVERNANCE_REFUSALS = Counter(
+        "ai_governance_refusals_total",
+        "AI calls refused before reaching the worker (kill switch, caps, cooldown, busy).",
+        ["feature", "reason"],
+    )
+    FEATURE_CALLS = Counter(
+        "ai_feature_calls_total",
+        "Governed backend -> AI worker calls for non-interview features by outcome.",
+        ["feature", "outcome"],
+    )
 
 _STATE_VALUE = {"closed": 0, "half_open": 1, "open": 2}
 
@@ -82,5 +93,23 @@ def quota_block(reason: str) -> None:
         return
     try:
         QUOTA_BLOCKS.labels(reason).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def governance_refusal(feature: str, reason: str) -> None:
+    if not _ENABLED:
+        return
+    try:
+        GOVERNANCE_REFUSALS.labels(feature, reason).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def feature_call(feature: str, outcome: str) -> None:
+    if not _ENABLED:
+        return
+    try:
+        FEATURE_CALLS.labels(feature, outcome).inc()
     except Exception:  # noqa: BLE001
         pass

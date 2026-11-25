@@ -13,7 +13,7 @@ gate).
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ALLOWED_ENVIRONMENTS = ("development", "test", "production")
@@ -231,6 +231,54 @@ class Settings(BaseSettings):
     # /metrics stays unregistered (404) in production. Ignored elsewhere.
     METRICS_TOKEN: str = ""
 
+    # --- AI governance (Phase 10.3, owner decisions D4 + OQ-2) -------------
+    # One spending/abuse guard for EVERY AI path (mock interview, mentor,
+    # mentor stream, resume, ATS, skill/project proof scoring). OQ-2: OFF in
+    # code (dev/tests unchanged) but REQUIRED in production - a production
+    # backend refuses to start unless this is true and the platform caps below
+    # are set (``ai_governance_issues``). When on: platform/institute/user
+    # daily request caps, a platform token cap, a process-wide concurrency
+    # cap, a provider-quota cooldown, safe (connect-only) retries, ledger rows
+    # and Idempotency-Key support for mentor/resume/ATS.
+    AI_GOVERNANCE_ENABLED: bool = False
+    # Kill switches work even while AI_GOVERNANCE_ENABLED is off (default:
+    # nothing killed). AI_KILL_SWITCH=true refuses EVERY new AI call;
+    # AI_DISABLED_FEATURES refuses the listed features only, comma-separated:
+    # mock_interview, mentor, resume, ats, proof_scoring.
+    AI_KILL_SWITCH: bool = False
+    AI_DISABLED_FEATURES: str = ""
+    # Daily caps (UTC day), positive integers; "" = no cap. Platform caps are
+    # mandatory in production when governance is on. Set them BELOW the
+    # verified free-tier limits of the provider (D4: Rs 0/month).
+    AI_PLATFORM_DAILY_REQUEST_MAX: str = ""
+    AI_PLATFORM_DAILY_TOKEN_MAX: str = ""
+    AI_TENANT_DAILY_REQUEST_MAX: str = ""
+    # Per user, across mentor/resume/ATS (interviews keep their own limits).
+    AI_USER_DAILY_REQUEST_MAX: str = ""
+    # Simultaneous AI calls per backend process, and how long a call may wait
+    # for a free slot before it is refused with a "busy" 503.
+    AI_MAX_CONCURRENT_CALLS: int = Field(default=3, ge=1, le=100)
+    AI_CONCURRENCY_WAIT_SECONDS: float = Field(default=10.0, ge=0, le=120)
+    # After the provider reports its quota/rate limit as exhausted, new AI
+    # calls are refused (no provider call) for this long.
+    AI_QUOTA_COOLDOWN_SECONDS: int = Field(default=900, ge=10, le=86400)
+    # Idempotency-Key replay window for mentor/resume/ATS responses.
+    AI_IDEMPOTENCY_TTL_SECONDS: int = Field(default=600, ge=10, le=86400)
+
+    # --- Release identification (Phase 10.7, gate G10) -------------------
+    # Git commit of this build, shown by GET /version ONLY when set, so
+    # staging can be checked against the approved commit. Render sets
+    # RENDER_GIT_COMMIT automatically. Hex only (anything else is ignored).
+    BUILD_COMMIT: str = Field(
+        default="", validation_alias=AliasChoices("BUILD_COMMIT", "RENDER_GIT_COMMIT")
+    )
+
+    # --- Frontend error tracking (Phase 10.5, feature flag, OFF by default) -
+    # POST /client-errors accepts content-free browser error reports (kind,
+    # error class name, normalised route, release, digest - never messages or
+    # stacks) and logs them on ``campus.client_error``. Off = 404.
+    CLIENT_ERROR_REPORTING_ENABLED: bool = False
+
     # --- Placement management (Phase 9, feature flag, OFF by default) -----
     # Placement core v2: student placement profiles, drive settings and
     # lifecycle, eligibility v2, apply/status rules with history. Needs the
@@ -315,6 +363,51 @@ def metrics_token_issue(s: Settings = settings) -> str | None:
     if any(token == (other or "").strip() for other in others if other):
         return "METRICS_TOKEN must be different from every other secret"
     return None
+
+
+AI_FEATURES = ("mock_interview", "mentor", "resume", "ats", "proof_scoring")
+
+
+def positive_int_or_none(raw: str) -> int | None:
+    """Parse an optional positive-integer cap ("" = no cap; invalid = None)."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def ai_governance_issues(s: Settings = settings) -> list[str]:
+    """Why a PRODUCTION backend must not start (Phase 10.3, OQ-2). [] = ok.
+
+    Production requires AI governance on, both platform daily caps set to
+    positive integers, every optional cap valid, and only known feature names
+    in AI_DISABLED_FEATURES (a typo must not silently leave a feature on).
+    Messages name keys only, never values of secrets.
+    """
+    issues: list[str] = []
+    if not s.AI_GOVERNANCE_ENABLED:
+        issues.append("AI_GOVERNANCE_ENABLED must be true in production (D4: Rs 0 AI budget).")
+        return issues
+    for key in ("AI_PLATFORM_DAILY_REQUEST_MAX", "AI_PLATFORM_DAILY_TOKEN_MAX"):
+        if positive_int_or_none(getattr(s, key)) is None:
+            issues.append(f"{key} must be a positive integer in production.")
+    for key in ("AI_TENANT_DAILY_REQUEST_MAX", "AI_USER_DAILY_REQUEST_MAX"):
+        raw = getattr(s, key)
+        if raw.strip() and positive_int_or_none(raw) is None:
+            issues.append(f"{key} is set but is not a positive integer.")
+    unknown = [
+        f for f in (x.strip().lower() for x in s.AI_DISABLED_FEATURES.split(","))
+        if f and f not in AI_FEATURES
+    ]
+    if unknown:
+        issues.append(
+            "AI_DISABLED_FEATURES has unknown names; allowed: " + ", ".join(AI_FEATURES) + "."
+        )
+    return issues
 
 
 def insecure_secret_issues(s: Settings = settings) -> list[str]:

@@ -20,12 +20,13 @@ missing row means "platform defaults". Rows can only NARROW what the
 environment flags allow (pause, disable voice/video, lower limits).
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     JSON,
     BigInteger,
+    Date,
     Boolean,
     DateTime,
     ForeignKey,
@@ -120,6 +121,31 @@ class AIFeatureControl(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class AIPlatformUsageDaily(Base):
+    """Platform-wide AI admission counter per UTC day (Phase 10.3, D4).
+
+    NOT tenant data: one row per day with two numbers (admitted AI requests and
+    provider-reported tokens across every institute), so the platform caps
+    survive restarts and are shared by every backend process. The request
+    counter is reserved atomically BEFORE a worker call, so a failed or retried
+    provider call still counts (it can never bypass the cap).
+
+    Postgres: ENABLE + FORCE RLS with a policy that admits only sessions that
+    set ``app.ai_platform_counter = 'on'`` for the transaction (the backend's
+    governance code does), so a Supabase Data API client cannot read or reset
+    it. Migration f3a5c7e9b1d2.
+    """
+
+    __tablename__ = "ai_platform_usage_daily"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    requests: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

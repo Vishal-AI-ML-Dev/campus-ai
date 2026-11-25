@@ -21,12 +21,13 @@ Location:
 import re
 from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ai_client import generate_resume, score_resume_ats
+from app.services import ai_governance
 from app.core.db import get_db
 from pagination import Pagination, paginate, pagination_params
 from app.models import (
@@ -301,8 +302,33 @@ def generate(
     payload: ResumeGenerateRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> ResumeGenerateResponse:
-    """Build a Markdown resume from YOUR verified profile (and save a version)."""
+    """Build a Markdown resume from YOUR verified profile (and save a version).
+
+    Phase 10.3: AI limits checked first; a repeated ``Idempotency-Key`` (AI
+    governance on) returns the first result without a second AI call or a
+    second saved version.
+    """
+    feature = ai_governance.FEATURE_RESUME
+    ai_governance.precheck(feature, tenant_id=current_user.tenant_id, user_id=current_user.id)
+    replay = ai_governance.idempotency_begin(
+        feature, current_user.id, idempotency_key, request=payload
+    )
+    if replay is not None:
+        return replay
+    try:
+        response = _generate(payload, db, current_user)
+    except BaseException:
+        ai_governance.idempotency_abort(feature, current_user.id, idempotency_key)
+        raise
+    ai_governance.idempotency_finish(feature, current_user.id, idempotency_key, response)
+    return response
+
+
+def _generate(
+    payload: ResumeGenerateRequest, db: Session, current_user: User
+) -> ResumeGenerateResponse:
     profile = _build_resume_profile(db, current_user, payload.target_role)
     if not profile["verified_skills"] and not profile["projects"]:
         raise HTTPException(
@@ -312,7 +338,8 @@ def generate(
                 "mentor before generating a resume."
             ),
         )
-    result = generate_resume(profile)
+    with ai_governance.caller(current_user.tenant_id, current_user.id):
+        result = generate_resume(profile)
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -346,14 +373,33 @@ def generate(
 def ats_score(
     payload: AtsScoreRequest,
     current_user: User = Depends(get_current_user),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> AtsScoreResponse:
     """Score a resume against a job description (matched/missing keywords + tips)."""
-    result = score_resume_ats(payload.resume_text, payload.job_description)
-    if result is None:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="ATS scorer is unavailable right now (is the AI worker running?).",
-        )
+    feature = ai_governance.FEATURE_ATS
+    ai_governance.precheck(feature, tenant_id=current_user.tenant_id, user_id=current_user.id)
+    replay = ai_governance.idempotency_begin(
+        feature, current_user.id, idempotency_key, request=payload
+    )
+    if replay is not None:
+        return replay
+    try:
+        with ai_governance.caller(current_user.tenant_id, current_user.id):
+            result = score_resume_ats(payload.resume_text, payload.job_description)
+        if result is None:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="ATS scorer is unavailable right now (is the AI worker running?).",
+            )
+        response = _ats_response(result)
+    except BaseException:
+        ai_governance.idempotency_abort(feature, current_user.id, idempotency_key)
+        raise
+    ai_governance.idempotency_finish(feature, current_user.id, idempotency_key, response)
+    return response
+
+
+def _ats_response(result: dict) -> AtsScoreResponse:
     return AtsScoreResponse(
         score=int(result.get("score", 0)),
         verdict=str(result.get("verdict", "")),

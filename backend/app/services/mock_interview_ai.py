@@ -40,7 +40,7 @@ from app.observability.observability import (
     request_id_ctx,
     safe_correlation_id,
 )
-from app.services import ai_circuit, ai_usage
+from app.services import ai_circuit, ai_governance, ai_usage
 
 logger = logging.getLogger("campus_ai.mock_interview")
 
@@ -75,12 +75,15 @@ class InterviewEngineUnavailable(RuntimeError):
         timed_out: bool = False,
         invocation_id: str | None = None,
         circuit_open: bool = False,
+        refused: str | None = None,
     ):
         super().__init__(path)
         self.status_code = status_code
         self.timed_out = timed_out
         self.invocation_id = invocation_id
         self.circuit_open = circuit_open
+        # Phase 10.3: AI governance refusal reason (no worker call was made).
+        self.refused = refused
 
 
 def _classify(exc: Exception) -> tuple[str, int | None]:
@@ -90,8 +93,10 @@ def _classify(exc: Exception) -> tuple[str, int | None]:
         return "unreachable", None
     if isinstance(exc, httpx.TimeoutException):
         return "timeout", None
-    if status_code == 502:
-        return "provider_error", status_code  # the worker's LLM step failed
+    if status_code in (429, 502):
+        # 502: the worker's LLM step failed. 429 (Phase 10): the worker's
+        # explicit "provider quota exhausted" signal for a step that failed.
+        return "provider_error", status_code
     return "worker_error", status_code
 
 
@@ -116,9 +121,28 @@ def _post(
     started = time.perf_counter()
     outcome, http_status, error_class, usage = "worker_error", None, None, None
     called = False
+    admission = None
     try:
+        # Phase 10.3: kill switches always; with AI governance on also the
+        # provider cooldown, institute + platform caps and the concurrency cap.
+        ctx = ai_usage.current_context()
+        try:
+            admission = ai_governance.admit(
+                ai_governance.FEATURE_MOCK_INTERVIEW,
+                tenant_id=ctx.tenant_id if ctx else None,
+                user_id=ctx.user_id if ctx else None,
+            )
+            admission.__enter__()
+        except ai_governance.AIRefused as refusal:
+            admission = None
+            outcome, error_class = "quota_blocked", refusal.reason
+            logger.warning("mock interview worker call %s refused: %s", path, refusal.reason)
+            raise InterviewEngineUnavailable(
+                path, invocation_id=invocation_id, circuit_open=True, refused=refusal.reason
+            ) from None
         if not ai_circuit.allow(step):
             outcome, error_class = "circuit_open", "CircuitOpen"
+            ai_governance.refund_platform_request()  # Phase 10.3: no provider call made
             logger.warning("mock interview worker call %s refused: circuit open", path)
             raise InterviewEngineUnavailable(path, invocation_id=invocation_id, circuit_open=True)
         called = True
@@ -138,6 +162,8 @@ def _post(
         except Exception as exc:  # noqa: BLE001 - normalized for the router
             outcome, http_status = _classify(exc)
             error_class = type(exc).__name__
+            if ai_governance.is_quota_signal(http_status, None):
+                error_class = "ProviderQuotaExhausted"
             # The JSON log line also carries request_id and invocation_id.
             logger.warning(
                 "mock interview worker call %s failed: %s (status=%s)",
@@ -163,6 +189,11 @@ def _post(
         seconds = time.perf_counter() - started
         if called:
             ai_circuit.record(step, success=not ai_circuit.is_failure(outcome, http_status))
+        if ai_governance.is_quota_signal(http_status, usage):
+            ai_governance.mark_provider_quota_exhausted(ai_governance.FEATURE_MOCK_INTERVIEW)
+        ai_governance.add_platform_tokens(ai_governance.usage_tokens(usage))
+        if admission is not None:
+            admission.__exit__(None, None, None)
         ai_metrics.observe_call(step, outcome, seconds)
         ai_usage.record_call(
             event_id=invocation_id,

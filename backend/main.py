@@ -62,6 +62,7 @@ Key URLs (feature routes are served under /v1 AND legacy unversioned paths):
 
 import hmac
 import logging
+import re
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -80,7 +81,13 @@ from app.routers.attendance import router as attendance_router
 from app.routers.audit import router as audit_router
 from app.routers.auth import router as auth_router
 from app.routers.calendar_events import router as calendar_router
-from app.core.config import insecure_secret_issues, metrics_token_issue, settings
+from app.routers.client_errors import router as client_errors_router
+from app.core.config import (
+    ai_governance_issues,
+    insecure_secret_issues,
+    metrics_token_issue,
+    settings,
+)
 from app.core.csrf import make_csrf_middleware
 from app.core.security_headers import hsts_value, make_security_headers_middleware
 from app.core.staging_gate import make_staging_gate_middleware
@@ -89,6 +96,7 @@ from app.observability.errors import register_exception_handlers
 from app.observability.health import readiness
 from app.observability.metrics import metrics_middleware, render_latest
 from app.core.rate_limit import limiter
+from app.services.ai_governance import AIRefused
 from app.observability.observability import (
     init_sentry,
     request_logging_middleware,
@@ -146,6 +154,15 @@ if _secret_issues:
         )
     logging.getLogger("campus-ai").warning(_secret_msg)
 
+# Phase 10.3 (D4 + OQ-2): AI governance is OFF in code but REQUIRED in
+# production - refuse to boot without it so AI spend can never be uncapped.
+_governance_issues = ai_governance_issues()
+if _governance_issues and settings.ENVIRONMENT == "production":
+    raise RuntimeError(
+        "Unsafe AI configuration: " + " ".join(_governance_issues)
+        + " Refusing to start in production."
+    )
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     """Production-only startup gate: refuse a runtime DB role that bypasses RLS."""
@@ -184,6 +201,28 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # validation, and any unhandled exception. slowapi's 429 handler above stays
 # more specific and keeps winning for rate-limit errors.
 register_exception_handlers(app)
+
+
+@app.exception_handler(AIRefused)
+async def _ai_refused_handler(request: Request, exc: AIRefused) -> JSONResponse:
+    """Phase 10.3: a refused AI call -> 429/503 in the uniform error envelope.
+
+    Only fixed, content-free text (``AIRefused.message``) and the reason code;
+    the rest of the platform is unaffected.
+    """
+    rid = getattr(request.state, "request_id", None) or request.headers.get("X-Request-ID") or ""
+    headers = {"X-Request-ID": rid} if rid else {}
+    if exc.retry_after:
+        headers["Retry-After"] = str(int(exc.retry_after))
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": exc.message,
+            "request_id": rid,
+            "error": {"type": "ai_unavailable", "status": exc.status_code, "reason": exc.reason},
+        },
+        headers=headers,
+    )
 
 # Log every request (method, path, status, duration_ms, request_id).
 app.middleware("http")(request_logging_middleware)
@@ -314,6 +353,8 @@ FEATURE_ROUTERS = [
     # interview preparation (same flag and gate as placement management).
     placement_campaigns_router,
     placement_insights_router,
+    # Phase 10.5: content-free browser error reports (CLIENT_ERROR_REPORTING_ENABLED; 404 when off).
+    client_errors_router,
 ]
 
 for _feature_router in FEATURE_ROUTERS:
@@ -336,11 +377,16 @@ def version() -> dict:
     Clients should call the versioned surface (e.g. /v1/...); the unversioned
     paths are deprecated aliases kept for backward compatibility.
     """
-    return {
+    body = {
         "version": API_VERSION,
         "api_versions": ["v1"],
         "current": settings.API_V1_PREFIX,
     }
+    # Phase 10.7 (gate G10): the build commit, only when configured (additive).
+    commit = settings.BUILD_COMMIT.strip().lower()
+    if re.fullmatch(r"[0-9a-f]{7,40}", commit):
+        body["build"] = commit
+    return body
 
 
 @app.get("/health")

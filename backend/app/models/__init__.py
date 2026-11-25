@@ -82,7 +82,7 @@ from app.models.mock_interview import (
     MockInterviewTurn,
     MockInterviewReport,
 )
-from app.models.ai_operations import AIFeatureControl, AIUsageEvent
+from app.models.ai_operations import AIFeatureControl, AIPlatformUsageDaily, AIUsageEvent
 from app.models.mock_interview_coding import (
     MockInterviewCodeAttempt,
     MockInterviewCodeSubmission,
@@ -161,6 +161,7 @@ __all__ = [
     "MockInterviewCodeReview",
     "MockInterviewCompanyProfile",
     "AIUsageEvent",
+    "AIPlatformUsageDaily",
     "AIFeatureControl",
     "StudentPlacementProfile",
     "PlacementCampaign",
