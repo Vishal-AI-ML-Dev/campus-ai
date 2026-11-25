@@ -134,13 +134,53 @@ describe("camera Permissions-Policy", () => {
 		}
 	})
 
-	it("the video flags never change the global microphone policy", () => {
-		// Whatever the global header says (e.g. a local Phase 5 microphone=(self)
-		// edit, or the committed microphone=()), the video flags leave it alone.
-		const off = policyOf(buildSecurityHeaders({}, false))
-		const on = policyOf(buildSecurityHeaders(ON, false))
-		assert.equal(on, off)
-		assert.equal(directives(policyOf(buildHeaderRules(ON, false)[0].headers)).microphone, directives(off).microphone)
+	it("the video flag alone never changes the global microphone policy", () => {
+		const MASTER = { NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED: "true" }
+		const VIDEO_ONLY = { NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED: "true" }
+		// Master off: adding the video flag changes nothing (the whole policy).
+		assert.equal(policyOf(buildSecurityHeaders(VIDEO_ONLY, false)), policyOf(buildSecurityHeaders({}, false)))
+		// Master on: adding the video flag changes nothing either.
+		assert.equal(policyOf(buildSecurityHeaders(ON, false)), policyOf(buildSecurityHeaders(MASTER, false)))
+		assert.equal(directives(policyOf(buildHeaderRules(ON, false)[0].headers)).microphone, "(self)")
+		assert.equal(directives(policyOf(buildHeaderRules(VIDEO_ONLY, false)[0].headers)).microphone, "()")
+	})
+
+	it("master interview flag off: the microphone stays blocked", () => {
+		for (const env of [
+			{},
+			{ NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED: "false" },
+			{ NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED: "TRUE" },
+			{ NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED: "1" },
+			{ NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED: "" },
+			{ NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED: "true" },
+		]) {
+			const policy = directives(policyOf(buildSecurityHeaders(env, false)))
+			assert.equal(policy.microphone, "()", JSON.stringify(env))
+			assert.equal(policy.camera, "()", JSON.stringify(env))
+			assert.equal(policy.geolocation, "()", JSON.stringify(env))
+		}
+	})
+
+	it("master interview flag on: the microphone is allowed for the same origin only", () => {
+		const MASTER = { NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED: "true" }
+		for (const env of [MASTER, ON]) {
+			const policy = directives(policyOf(buildSecurityHeaders(env, false)))
+			assert.equal(policy.microphone, "(self)", JSON.stringify(env))
+			// The camera stays blocked globally; only the route rule may allow it (video flag).
+			assert.equal(policy.camera, "()", JSON.stringify(env))
+			assert.equal(policy.geolocation, "()", JSON.stringify(env))
+		}
+		assert.equal(policyOf(buildSecurityHeaders(MASTER, false)), "camera=(), microphone=(self), geolocation=()")
+		// Master alone: no camera route rule.
+		assert.equal(buildHeaderRules(MASTER, false).length, 1)
+	})
+
+	it("the microphone flag changes only the Permissions-Policy header", () => {
+		const off = buildSecurityHeaders({}, false).filter((h) => h.key !== "Permissions-Policy")
+		const on = buildSecurityHeaders({ NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED: "true" }, false).filter(
+			(h) => h.key !== "Permissions-Policy",
+		)
+		assert.deepEqual(on, off)
 	})
 
 	it("allowCameraForSelf changes only the camera directive", () => {

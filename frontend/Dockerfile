@@ -25,6 +25,9 @@ ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ARG NEXT_PUBLIC_API_PREFIX=/v1
 ARG CSP_CONNECT_SRC_EXTRA=""
 ARG HSTS_MAX_AGE=0
+# Phase 5 master interview build flag (default off). Inlined at build time; it
+# also decides the global microphone Permissions-Policy (next.config.ts).
+ARG NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED=false
 # Phase 6 video build flag (default off). Read at build time: it is inlined
 # into the bundle and decides the mock-interview camera Permissions-Policy.
 ARG NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED=false

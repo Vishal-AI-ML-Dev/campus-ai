@@ -72,16 +72,29 @@ export function buildCsp(env: NodeJS.ProcessEnv = process.env, dev = isDev): str
   ].join("; ");
 }
 
+/**
+ * Phase 5 (AI Mock Interview voice): browser speech recognition needs
+ * `microphone=(self)`. It is granted globally (not per route, so a client-side
+ * navigation into the interview never carries a stale `microphone=()`), but
+ * only in a build where the master flag NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED is
+ * exactly "true". Otherwise the microphone stays blocked, as before. The video
+ * flag has no effect on the microphone. The browser still asks the user.
+ */
+export function mockInterviewMicrophoneEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED === "true";
+}
+
 export function buildSecurityHeaders(
   env: NodeJS.ProcessEnv = process.env,
   dev = isDev,
 ): { key: string; value: string }[] {
+  const microphone = mockInterviewMicrophoneEnabled(env) ? "(self)" : "()";
   const headers = [
     { key: "Content-Security-Policy", value: buildCsp(env, dev) },
     { key: "X-Content-Type-Options", value: "nosniff" },
     { key: "X-Frame-Options", value: "SAMEORIGIN" },
     { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-    { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+    { key: "Permissions-Policy", value: `camera=(), microphone=${microphone}, geolocation=()` },
     { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
   ];
   const maxAge = Number.parseInt(env.HSTS_MAX_AGE ?? "0", 10);

@@ -682,17 +682,21 @@ describe("Phase 6.2 guards and regressions", () => {
 		assert.deepEqual(visibleModes([text, voice], VIDEO_UI_READY), [text, voice])
 	})
 
-	it("camera policy stays route-scoped and the microphone policy is untouched", () => {
+	it("camera policy stays route-scoped and the video flag never changes the microphone", () => {
 		const on = { NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED: "true", NEXT_PUBLIC_MOCK_INTERVIEW_VIDEO_ENABLED: "true" }
+		const master = { NEXT_PUBLIC_MOCK_INTERVIEW_ENABLED: "true" }
 		const pol = (h) => h.find((x) => x.key === "Permissions-Policy").value
 		assert.equal(buildHeaderRules({}, false).length, 1)
 		const globalOff = pol(buildSecurityHeaders({}, false))
 		assert.match(globalOff, /camera=\(\)/)
-		assert.equal(pol(buildSecurityHeaders(on, false)), globalOff)
+		const globalOn = pol(buildSecurityHeaders(on, false))
+		assert.match(globalOn, /camera=\(\)/)
+		// The video flag adds nothing to the global header beyond what the master flag decides.
+		assert.equal(globalOn, pol(buildSecurityHeaders(master, false)))
 		const mic = (p) => p.split(",").map((d) => d.trim()).find((d) => d.startsWith("microphone="))
 		for (const rule of buildHeaderRules(on, false).slice(1)) {
 			assert.ok(rule.source.startsWith("/dashboard/mock-interview"))
-			assert.equal(mic(pol(rule.headers)), mic(globalOff))
+			assert.equal(mic(pol(rule.headers)), mic(globalOn))
 		}
 	})
 })
