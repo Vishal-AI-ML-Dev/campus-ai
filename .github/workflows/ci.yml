@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/ai-mock-interview]
   pull_request:
 
 # Read-only token; this workflow uses no repository secrets.
