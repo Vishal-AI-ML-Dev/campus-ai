@@ -1,0 +1,63 @@
+{
+  "key": "count-islands",
+  "version": 1,
+  "title": "Count the Islands",
+  "difficulty": "medium",
+  "topics": [
+    "graphs"
+  ],
+  "statement": "A satellite map is a grid of land (#) and water (.) cells. Land cells that touch up, down, left or right belong to the same island. Count the islands.",
+  "input_format": "The first line contains r and c. Each of the next r lines has c characters, each # or a dot.",
+  "output_format": "Print the number of islands.",
+  "constraints": "1 ≤ r, c ≤ 1000.",
+  "examples": [
+    {
+      "input": "3 4\n##..\n#..#\n..##\n",
+      "output": "2\n",
+      "explanation": "There are two separate groups of land cells, so the answer is 2."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "3 4\n##..\n#..#\n..##\n",
+      "output": "2\n"
+    },
+    {
+      "input": "2 2\n..\n..\n",
+      "output": "0\n"
+    },
+    {
+      "input": "1 5\n#.#.#\n",
+      "output": "3\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "Each time you find unvisited land, you have found a new island.",
+    "From that cell, visit every land cell connected to it and mark them as seen.",
+    "Use an explicit queue or stack: a recursive search can overflow on a 1000 by 1000 grid."
+  ],
+  "expected_complexity": {
+    "time": "O(r·c)",
+    "space": "O(r·c)"
+  },
+  "hidden_test_set": {
+    "id": "count-islands",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 5,
+      "performance": 3
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

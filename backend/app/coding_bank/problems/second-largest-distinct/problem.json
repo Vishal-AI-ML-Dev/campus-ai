@@ -1,0 +1,63 @@
+{
+  "key": "second-largest-distinct",
+  "version": 1,
+  "title": "Second Largest Distinct Value",
+  "difficulty": "easy",
+  "topics": [
+    "arrays"
+  ],
+  "statement": "In a quiz, several students can share a score. Find the second highest distinct score, or report that there is no second distinct score.",
+  "input_format": "The first line contains n. The second line contains n integers.",
+  "output_format": "Print the second largest distinct value, or -1 if all values are equal.",
+  "constraints": "1 ≤ n ≤ 100000; 0 ≤ value ≤ 1000000000.",
+  "examples": [
+    {
+      "input": "6\n4 9 9 7 1 7\n",
+      "output": "7\n",
+      "explanation": "The distinct values are 1, 4, 7 and 9, so the second largest is 7."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "6\n4 9 9 7 1 7\n",
+      "output": "7\n"
+    },
+    {
+      "input": "3\n5 5 5\n",
+      "output": "-1\n"
+    },
+    {
+      "input": "2\n0 1000000000\n",
+      "output": "0\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "Duplicates of the largest value do not count as the second largest.",
+    "Track the largest and the second largest in one pass, updating both carefully.",
+    "Initialise the second largest to a value that means 'not found yet' and print -1 if it never changes."
+  ],
+  "expected_complexity": {
+    "time": "O(n)",
+    "space": "O(1)"
+  },
+  "hidden_test_set": {
+    "id": "second-largest-distinct",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 4,
+      "performance": 1
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

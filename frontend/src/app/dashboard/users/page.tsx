@@ -31,6 +31,8 @@ type User = {
   full_name: string;
   role: Role;
   is_active: boolean;
+  /** True only for a self-registered student awaiting approval. */
+  approval_pending?: boolean;
   section_id: number | null;
 };
 type Department = { id: number; name: string; code: string };
@@ -71,6 +73,11 @@ export default function UsersPage() {
 
   const [users, setUsers] = useState<User[]>([]);
   const [roleFilter, setRoleFilter] = useState<"" | Role>("");
+  // Self-registered students awaiting approval (approval_pending=true only;
+  // accounts an admin disabled are NOT listed here).
+  const [pendingStudents, setPendingStudents] = useState<User[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(true);
+  const [pendingError, setPendingError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -115,6 +122,64 @@ export default function UsersPage() {
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
+
+  const loadPending = useCallback(async () => {
+    setPendingLoading(true);
+    setPendingError(null);
+    try {
+      setPendingStudents(
+        await api.get<User[]>("/admin/users?approval_pending=true"),
+      );
+    } catch (err) {
+      setPendingError(
+        err instanceof ApiError ? err.message : "Could not load requests.",
+      );
+    } finally {
+      setPendingLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPending();
+  }, [loadPending]);
+
+  async function approveStudent(u: User) {
+    setBusyKey(`ap${u.id}`);
+    setPendingError(null);
+    try {
+      await api.post(`/admin/users/${u.id}/approve`);
+      await Promise.all([loadPending(), loadUsers()]);
+    } catch (err) {
+      setPendingError(
+        err instanceof ApiError ? err.message : "Could not approve this account.",
+      );
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function declineStudent(u: User) {
+    if (
+      !window.confirm(
+        `Decline the sign-up request from ${u.email}? The account stays inactive and moves to the user list as disabled.`,
+      )
+    )
+      return;
+    setBusyKey(`dc${u.id}`);
+    setPendingError(null);
+    try {
+      // Disabling a pending request declines it (it becomes an ordinary
+      // disabled account and leaves this list).
+      await api.patch(`/admin/users/${u.id}/status`, { is_active: false });
+      await Promise.all([loadPending(), loadUsers()]);
+    } catch (err) {
+      setPendingError(
+        err instanceof ApiError ? err.message : "Could not decline this request.",
+      );
+    } finally {
+      setBusyKey(null);
+    }
+  }
 
   const loadInvites = useCallback(async () => {
     setInviteLoading(true);
@@ -191,6 +256,7 @@ export default function UsersPage() {
       );
     } finally {
       setBusyKey(null);
+      loadPending();
     }
   }
 
@@ -294,6 +360,76 @@ export default function UsersPage() {
         Manage accounts, roles and access. Assign students to a section to fill
         teacher rosters. You cannot change your own role or disable yourself.
       </p>
+
+      {/* Student sign-up requests (pending approval) */}
+      <div className="mt-6 rounded-2xl border border-amber-400/40 bg-white p-6 dark:bg-slate-900">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-lg font-semibold">
+            Student sign-up requests
+            {!pendingLoading && pendingStudents.length > 0 && (
+              <span className="ml-2 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                {pendingStudents.length} waiting
+              </span>
+            )}
+          </h3>
+          <button
+            onClick={loadPending}
+            disabled={pendingLoading}
+            className="rounded-lg border border-slate-200 px-3 py-1 text-xs transition hover:bg-slate-100 disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
+          >
+            Refresh
+          </button>
+        </div>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Students who register with your institute code stay inactive and
+          cannot sign in or see any institute data until you approve them.
+          Only approve people you recognise: Campus AI does not verify email
+          addresses. Accounts you disabled are not listed here; re-enable
+          those from the user list below.
+        </p>
+        {pendingError && (
+          <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+            {pendingError}
+          </p>
+        )}
+        {pendingLoading ? (
+          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Loading requests...</p>
+        ) : pendingStudents.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">No students are waiting for approval.</p>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {pendingStudents.map((u) => (
+              <div
+                key={u.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-white/10"
+              >
+                <div>
+                  <p className="font-medium">{u.full_name}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {u.email} · pending approval
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => approveStudent(u)}
+                    disabled={busyKey === `ap${u.id}` || busyKey === `dc${u.id}`}
+                    className="rounded-lg border border-emerald-400/30 px-3 py-1 text-xs text-emerald-600 transition hover:bg-emerald-400/10 disabled:opacity-40 dark:text-emerald-300"
+                  >
+                    {busyKey === `ap${u.id}` ? "Approving..." : "Approve"}
+                  </button>
+                  <button
+                    onClick={() => declineStudent(u)}
+                    disabled={busyKey === `ap${u.id}` || busyKey === `dc${u.id}`}
+                    className="rounded-lg border border-red-400/30 px-3 py-1 text-xs text-red-600 transition hover:bg-red-400/10 disabled:opacity-40 dark:text-red-300"
+                  >
+                    {busyKey === `dc${u.id}` ? "Declining..." : "Decline"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Add user */}
       <div className="mt-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-6">
@@ -515,8 +651,14 @@ export default function UsersPage() {
                       )}
                     </p>
                     <p className="text-xs text-slate-500 dark:text-slate-400">{u.email}</p>
-                    {!u.is_active && (
-                      <span className="text-xs text-red-300">Disabled</span>
+                    {u.approval_pending ? (
+                      <span className="text-xs text-amber-600 dark:text-amber-300">
+                        Pending approval (see sign-up requests above)
+                      </span>
+                    ) : (
+                      !u.is_active && (
+                        <span className="text-xs text-red-300">Disabled</span>
+                      )
                     )}
                   </div>
 
@@ -525,7 +667,7 @@ export default function UsersPage() {
                     <select
                       value={u.role}
                       onChange={(e) => changeRole(u, e.target.value as Role)}
-                      disabled={isSelf || busyKey === `r${u.id}`}
+                      disabled={isSelf || !!u.approval_pending || busyKey === `r${u.id}`}
                       className={smallSelect}
                     >
                       {ROLES.map((r) => (
@@ -551,7 +693,8 @@ export default function UsersPage() {
                       ))}
                     </select>
 
-                    {/* Enable / disable */}
+                    {/* Enable / disable (pending requests use Approve / Decline above) */}
+                    {!u.approval_pending && (
                     <button
                       onClick={() => toggleStatus(u)}
                       disabled={isSelf || busyKey === `s${u.id}`}
@@ -563,6 +706,7 @@ export default function UsersPage() {
                     >
                       {u.is_active ? "Disable" : "Enable"}
                     </button>
+                    )}
                   </div>
                 </div>
               );

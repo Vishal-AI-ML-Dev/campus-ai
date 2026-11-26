@@ -210,6 +210,13 @@ async function requestFile<T>(path: string, formData: FormData): Promise<T> {
   return parse<T>(res);
 }
 
+/** GET JSON plus the response headers (pagination: X-Total-Count, ...). */
+async function requestWithHeaders<T>(path: string): Promise<{ data: T; headers: Headers }> {
+  const res = await authedFetch(path, { method: "GET" });
+  const data = await parse<T>(res);
+  return { data, headers: res.headers };
+}
+
 /** GET a raw file/blob (e.g. a CSV template) with the auth header attached. */
 async function requestBlob(path: string): Promise<Blob> {
   const res = await authedFetch(path, { method: "GET" });
@@ -315,6 +322,8 @@ export const api = {
   postFile: <T>(path: string, formData: FormData) =>
     requestFile<T>(path, formData),
   getBlob: (path: string) => requestBlob(path),
+  /** GET JSON together with the response headers (e.g. X-Total-Count). */
+  getWithHeaders: <T>(path: string) => requestWithHeaders<T>(path),
   /** Log out: revoke the refresh-token family + clear the auth cookies. */
   logout: () => request<void>("POST", "/auth/logout"),
   /** POST + consume a Server-Sent Events token stream (AI mentor). */

@@ -85,6 +85,8 @@ ui_shots/
 # --- Local data stores ------------------------------------------------------
 qdrant_storage/
 qdrant_local*/
+# Embedded Qdrant store the AI worker creates locally (developer data; never commit).
+ai-worker/qdrant_data/
 .insightface/
 
 # --- Logs, OS, editors, local tooling ---------------------------------------

@@ -79,14 +79,24 @@ def _require_assignable(role: UserRole) -> None:
 def list_users(
     response: Response,
     role: UserRole | None = None,
+    is_active: bool | None = None,
+    approval_pending: bool | None = None,
     db: Session = Depends(get_db),
     admin: User = Depends(admin_only),
     page: Pagination = Depends(pagination_params),
 ) -> list[User]:
-    """List users in the caller's institute, optionally filtered by role."""
+    """List users in the caller's institute, optionally filtered.
+
+    ``approval_pending=true`` lists only sign-up requests awaiting approval;
+    ``is_active=false`` lists every inactive account (pending or disabled).
+    """
     stmt = select(User).where(User.tenant_id == admin.tenant_id).order_by(User.id)
     if role is not None:
         stmt = stmt.where(User.role == role)
+    if is_active is not None:
+        stmt = stmt.where(User.is_active == is_active)
+    if approval_pending is not None:
+        stmt = stmt.where(User.approval_pending == approval_pending)
     return list(paginate(db, response, stmt, page))
 
 
@@ -149,6 +159,13 @@ def update_user_role(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
+    if user.approval_pending:
+        # A pending self-registration is a student request: approve or
+        # decline it first; it must not be promoted while unapproved.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This sign-up request is pending; approve or decline it first",
+        )
     user.role = payload.role
     record_audit(
         db,
@@ -170,7 +187,13 @@ def update_user_status(
     db: Session = Depends(get_db),
     admin: User = Depends(admin_only),
 ) -> User:
-    """Enable/disable an account. An admin cannot disable themselves."""
+    """Enable/disable an account. An admin cannot disable themselves.
+
+    A PENDING self-registration cannot be enabled here (409): approval goes
+    only through POST /admin/users/{id}/approve. Disabling a pending request
+    DECLINES it: it stops being pending and stays inactive as an ordinary
+    disabled account.
+    """
     if user_id == admin.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -181,12 +204,67 @@ def update_user_status(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
+    if user.approval_pending:
+        if payload.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This sign-up request is pending; use Approve to activate it",
+            )
+        user.approval_pending = False
+        record_audit(
+            db,
+            admin,
+            action="user.registration_declined",
+            summary=f"Declined sign-up request from {user.email}",
+            target_type="user",
+            target_id=user.id,
+        )
+        db.commit()
+        db.refresh(user)
+        return user
     user.is_active = payload.is_active
     record_audit(
         db,
         admin,
         action="user.status_change",
         summary=f"{'Enabled' if payload.is_active else 'Disabled'} account {user.email}",
+        target_type="user",
+        target_id=user.id,
+    )
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.post("/users/{user_id}/approve", response_model=UserOut)
+def approve_registration(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(admin_only),
+) -> User:
+    """Approve a pending student self-registration (same institute only).
+
+    Only accounts with ``approval_pending`` qualify; an active account or one
+    an admin disabled gets 409, so this can never re-enable a disabled user.
+    Another institute's account is a 404, exactly like an unknown id.
+    """
+    user = get_scoped_user(db, user_id, admin.tenant_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    if not user.approval_pending:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This account has no pending sign-up request",
+        )
+    user.approval_pending = False
+    user.is_active = True
+    record_audit(
+        db,
+        admin,
+        action="user.registration_approved",
+        summary=f"Approved sign-up request from {user.email}",
         target_type="user",
         target_id=user.id,
     )

@@ -77,6 +77,25 @@ from app.models.mentor import (
 from app.models.notifications import (
     Notification,
 )
+from app.models.mock_interview import (
+    MockInterviewSession,
+    MockInterviewTurn,
+    MockInterviewReport,
+)
+from app.models.ai_operations import AIFeatureControl, AIPlatformUsageDaily, AIUsageEvent
+from app.models.mock_interview_coding import (
+    MockInterviewCodeAttempt,
+    MockInterviewCodeSubmission,
+    MockInterviewCodeReview,
+)
+from app.models.mock_interview_company import MockInterviewCompanyProfile
+from app.models.placement_management import (
+    PlacementApplicationEvent,
+    PlacementDriveDepartment,
+    PlacementDriveSettings,
+    StudentPlacementProfile,
+)
+from app.models.placement_campaigns import PlacementCampaign, PlacementCampaignStudent
 
 __all__ = [
     "Base",
@@ -134,4 +153,20 @@ __all__ = [
     "MentorConversation",
     "MentorMessage",
     "Notification",
+    "MockInterviewSession",
+    "MockInterviewTurn",
+    "MockInterviewReport",
+    "MockInterviewCodeAttempt",
+    "MockInterviewCodeSubmission",
+    "MockInterviewCodeReview",
+    "MockInterviewCompanyProfile",
+    "AIUsageEvent",
+    "AIPlatformUsageDaily",
+    "AIFeatureControl",
+    "StudentPlacementProfile",
+    "PlacementCampaign",
+    "PlacementCampaignStudent",
+    "PlacementDriveSettings",
+    "PlacementDriveDepartment",
+    "PlacementApplicationEvent",
 ]

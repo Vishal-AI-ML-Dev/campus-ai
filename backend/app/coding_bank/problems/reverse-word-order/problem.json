@@ -1,0 +1,63 @@
+{
+  "key": "reverse-word-order",
+  "version": 1,
+  "title": "Reverse the Word Order",
+  "difficulty": "easy",
+  "topics": [
+    "strings"
+  ],
+  "statement": "A notice board message was typed backwards word by word. Given one line of words separated by single or multiple spaces, print the words in reverse order separated by single spaces.",
+  "input_format": "One line containing at least one word. Words contain only English letters.",
+  "output_format": "Print the words in reverse order, separated by single spaces.",
+  "constraints": "The line has at most 100000 characters.",
+  "examples": [
+    {
+      "input": "exam starts at nine\n",
+      "output": "nine at starts exam\n",
+      "explanation": "The last word comes first: nine at starts exam."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "exam starts at nine\n",
+      "output": "nine at starts exam\n"
+    },
+    {
+      "input": "hello\n",
+      "output": "hello\n"
+    },
+    {
+      "input": "  many   spaces here  \n",
+      "output": "here spaces many\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "Split the line into words first; ignore extra spaces.",
+    "Once you have a list of words, walk it from the end to the start.",
+    "Join the words with exactly one space and print the result."
+  ],
+  "expected_complexity": {
+    "time": "O(n)",
+    "space": "O(n)"
+  },
+  "hidden_test_set": {
+    "id": "reverse-word-order",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 4,
+      "performance": 1
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

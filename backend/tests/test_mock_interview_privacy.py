@@ -1,0 +1,111 @@
+"""Phase 6.6: the mock-interview API cannot receive media (OpenAPI contract check).
+
+Complements ``test_openapi_has_no_media_route`` (paths) in test_mock_interview_video.py:
+every mock-interview operation's request body is walked (``$ref`` resolved) and
+must be JSON only, with no media-like field anywhere. The approved design (D2)
+keeps the camera in the browser; only reviewed answer text is accepted.
+"""
+
+import re
+
+MEDIA = re.compile(r"video|camera|frame|image|photo|media|audio|blob|file|upload|stream|snapshot|device", re.I)
+
+
+def _resolve(spec, schema):
+    while isinstance(schema, dict) and "$ref" in schema:
+        name = schema["$ref"].rsplit("/", 1)[-1]
+        schema = spec["components"]["schemas"][name]
+    return schema
+
+
+def _field_names(spec, schema, seen=None):
+    seen = set() if seen is None else seen
+    schema = _resolve(spec, schema)
+    if not isinstance(schema, dict) or id(schema) in seen:
+        return
+    seen.add(id(schema))
+    for name, sub in (schema.get("properties") or {}).items():
+        yield name
+        yield from _field_names(spec, sub, seen)
+    for key in ("items", "additionalProperties"):
+        if isinstance(schema.get(key), dict):
+            yield from _field_names(spec, schema[key], seen)
+    for key in ("anyOf", "oneOf", "allOf"):
+        for sub in schema.get(key) or []:
+            yield from _field_names(spec, sub, seen)
+
+
+def _operations(spec):
+    for path, item in spec["paths"].items():
+        if "mock-interview" not in path:
+            continue
+        for method, op in item.items():
+            if isinstance(op, dict):
+                yield path, method, op
+
+
+def test_mock_interview_request_bodies_are_json_without_media_fields(client):
+    spec = client.app.openapi()
+    ops = list(_operations(spec))
+    assert len(ops) >= 15  # every route, at /v1 and unversioned
+    bodies = 0
+    for path, method, op in ops:
+        body = op.get("requestBody")
+        if not body:
+            continue
+        bodies += 1
+        content = body.get("content", {})
+        assert set(content) == {"application/json"}, (method, path, set(content))
+        names = set(_field_names(spec, content["application/json"]["schema"]))
+        assert names, (method, path)
+        leaked = sorted(n for n in names if MEDIA.search(n) and not _is_control_flag(spec, path, method, n))
+        assert not leaked, (method, path, leaked)
+    assert bodies >= 4  # create session + answer, at /v1 and unversioned
+
+
+# Phase 7.7: the institute controls body switches modes on/off. These names
+# contain "video" but are booleans - they cannot carry media. Exempt ONLY these
+# names, ONLY on PUT .../admin/controls, and ONLY while their type is boolean.
+CONTROL_FLAGS = {"video_allowed", "voice_allowed"}
+
+
+def _is_control_flag(spec, path, method, name):
+    if name in ("company_profile_id", "profile_id"):
+        # Phase 8.4: "profile" contains "file", but these are integer ids (P8-D11).
+        # Exempt ONLY on these two POST routes and ONLY while they are integers.
+        allowed = {"company_profile_id": "/mock-interview/sessions", "profile_id": "/mock-interview/company/jd-skills"}
+        if method != "post" or not path.endswith(allowed[name]):
+            return False
+        body = _resolve(spec, spec["paths"][path][method]["requestBody"]["content"]["application/json"]["schema"])
+        prop = _resolve(spec, body["properties"][name])
+        types = {s.get("type") for s in prop.get("anyOf", [prop])}
+        return types <= {"integer", "null"} and "integer" in types
+    if method != "put" or not path.endswith("/mock-interview/admin/controls") or name not in CONTROL_FLAGS:
+        return False
+    body = _resolve(spec, spec["paths"][path][method]["requestBody"]["content"]["application/json"]["schema"])
+    return _resolve(spec, body["properties"][name]).get("type") == "boolean"
+
+
+def test_controls_flags_are_the_only_exemption_and_are_booleans(client):
+    spec = client.app.openapi()
+    flagged = [(p, m) for p, m, op in _operations(spec) if op.get("requestBody") and any(
+        _is_control_flag(spec, p, m, n) for n in CONTROL_FLAGS)]
+    assert sorted(flagged) == [("/mock-interview/admin/controls", "put"),
+                               ("/v1/mock-interview/admin/controls", "put")]
+
+
+def test_answer_and_create_bodies_have_exactly_the_documented_fields(client):
+    spec = client.app.openapi()
+    schemas = spec["components"]["schemas"]
+    answer = set(_resolve(spec, schemas["MockInterviewAnswerIn"])["properties"])
+    assert answer == {"turn_seq", "answer", "source"}
+    create = set(_resolve(spec, schemas["MockInterviewSessionCreate"])["properties"])
+    # Phase 8.1 (approved P8-D16): the optional "coding" choices object; it holds
+    # only languages / topics / problem_key (see test_mock_interview_coding_privacy).
+    # Phase 8.4 (approved P8-D11): optional company profile id, role template key
+    # and the student's focus skills (generation only; text, no media).
+    assert create == {
+        "interview_type", "difficulty", "duration_minutes", "target_role", "company_name",
+        "resume_id", "job_description", "language", "mode", "coding",
+        "company_profile_id", "role_template_key", "focus_skills",
+    }

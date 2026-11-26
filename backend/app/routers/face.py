@@ -126,6 +126,7 @@ def list_enrollments(
     stmt = select(User).where(
         User.role == UserRole.student,
         User.tenant_id == staff.tenant_id,
+        User.is_active.is_(True),  # pending / disabled students are not on rosters
     )
     if section_id is not None:
         section = db.get(Section, section_id)

@@ -1,0 +1,64 @@
+{
+  "key": "digit-sum-steps",
+  "version": 1,
+  "title": "Digit Sum Steps",
+  "difficulty": "easy",
+  "topics": [
+    "math",
+    "strings"
+  ],
+  "statement": "Replace a number by the sum of its digits again and again until a single digit remains. Report the final digit and how many replacements were made.",
+  "input_format": "One line with a non-negative integer that may be very long.",
+  "output_format": "Print two integers: the final single digit and the number of steps.",
+  "constraints": "The number has between 1 and 100000 digits and no leading zeros (except the number 0 itself).",
+  "examples": [
+    {
+      "input": "9875\n",
+      "output": "2 3\n",
+      "explanation": "9875 → 29 → 11 → 2, which takes 3 steps."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "9875\n",
+      "output": "2 3\n"
+    },
+    {
+      "input": "7\n",
+      "output": "7 0\n"
+    },
+    {
+      "input": "99999999999999999999\n",
+      "output": "9 2\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "The number may not fit in any integer type; read it as text.",
+    "The first digit sum of a 100000-digit number is at most 900000, which fits easily.",
+    "Repeat the digit sum on the new value until it has one digit, counting the steps."
+  ],
+  "expected_complexity": {
+    "time": "O(d)",
+    "space": "O(d)"
+  },
+  "hidden_test_set": {
+    "id": "digit-sum-steps",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 4,
+      "performance": 1
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

@@ -15,10 +15,16 @@ collection name, deleted at the end.
 
     QDRANT_TEST_URL=http://<test-qdrant>:6333 QDRANT_URL=$QDRANT_TEST_URL \
     FACE_COLLECTION=zz_test_faces_<run> python tests/test_face_qdrant_server.py
+
+Under pytest (CI provides a pinned Qdrant service and these variables) the
+module is SKIPPED with an explicit reason when QDRANT_TEST_URL is unset, and
+ERRORS (never falls back to the embedded store) when it is set but the worker
+config does not point at it.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from types import SimpleNamespace
@@ -31,16 +37,76 @@ import numpy as np  # noqa: E402
 
 import face  # noqa: E402
 
+try:  # pytest is a dev dependency; the direct-run mode below works without it.
+    import pytest
+except ImportError:  # pragma: no cover - direct run in an image without pytest
+    pytest = None
+
 TENANT_A, TENANT_B = 101, 202
 STUDENT_A, STUDENT_B, STUDENT_LEGACY = 11, 22, 33
 
+_PATCHED_GLOBALS = ("_qdrant_client", "_decode_image", "_detect_faces")
 
-def _guard() -> None:
+
+def _guard_issue() -> str | None:
+    """Why these tests must not run against the configured store (None = ok)."""
     cfg = face.get_settings()
     if not TEST_URL:
-        raise SystemExit("SKIP: QDRANT_TEST_URL not set")
+        return "SKIP: QDRANT_TEST_URL not set"
     if cfg.QDRANT_URL.strip() != TEST_URL or not cfg.FACE_COLLECTION.startswith("zz_test_"):
-        raise SystemExit("REFUSED: worker QDRANT_URL/FACE_COLLECTION are not the test values")
+        return "REFUSED: worker QDRANT_URL/FACE_COLLECTION are not the test values"
+    return None
+
+
+def _guard() -> None:
+    issue = _guard_issue()
+    if issue:
+        raise SystemExit(issue)
+
+
+@contextlib.contextmanager
+def _face_enabled_scope():
+    """Enable face routes for ONE test, then restore the env var, the settings
+    cache and the face-module globals the tests patch. The production default
+    (FACE_ENABLED=false, fail-closed) is untouched."""
+    saved_env = os.environ.get("FACE_ENABLED")
+    saved_globals = {n: getattr(face, n) for n in _PATCHED_GLOBALS}
+    os.environ["FACE_ENABLED"] = "true"
+    face.get_settings.cache_clear()
+    try:
+        yield
+    finally:
+        if saved_env is None:
+            os.environ.pop("FACE_ENABLED", None)
+        else:
+            os.environ["FACE_ENABLED"] = saved_env
+        for name, value in saved_globals.items():
+            setattr(face, name, value)
+        face.get_settings.cache_clear()
+
+
+if pytest is not None:
+    pytestmark = pytest.mark.skipif(
+        not TEST_URL,
+        reason="needs an isolated Qdrant server: set QDRANT_TEST_URL and QDRANT_URL to it "
+               "(CI ai-worker job provides one)",
+    )
+
+    @pytest.fixture(scope="module", autouse=True)
+    def _isolated_server_only():
+        """Refuse (error, not skip) unless the worker points at the test server;
+        remove the test collection afterwards."""
+        issue = _guard_issue()
+        if issue:
+            pytest.fail(issue, pytrace=False)
+        yield
+        with _face_enabled_scope():
+            assert _cleanup(), "test collection was not removed"
+
+    @pytest.fixture(autouse=True)
+    def _face_enabled_for_test():
+        with _face_enabled_scope():
+            yield
 
 
 def _vec(i: int) -> list[float]:
@@ -164,7 +230,8 @@ if __name__ == "__main__":
     failed = 0
     for name, fn in tests:
         try:
-            fn()
+            with _face_enabled_scope():
+                fn()
             print(f"PASSED {name}")
         except Exception as exc:  # noqa: BLE001
             failed += 1

@@ -1,0 +1,64 @@
+{
+  "key": "tree-level-sums",
+  "version": 1,
+  "title": "Tree Level Sums",
+  "difficulty": "medium",
+  "topics": [
+    "trees",
+    "graphs"
+  ],
+  "statement": "A club's hierarchy is a rooted tree. Each member has a value. Print the sum of values on each level, from the root's level downwards.",
+  "input_format": "The first line contains n. The second line contains the n values of members 1..n. The third line contains n integers: the parent of each member, with 0 for the root.",
+  "output_format": "Print the level sums separated by spaces.",
+  "constraints": "1 ≤ n ≤ 200000; values are between -10000 and 10000; exactly one root.",
+  "examples": [
+    {
+      "input": "5\n1 2 3 4 5\n0 1 1 2 2\n",
+      "output": "1 5 9\n",
+      "explanation": "Level 0: 1. Level 1: 2+3 = 5. Level 2: 4+5 = 9."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "5\n1 2 3 4 5\n0 1 1 2 2\n",
+      "output": "1 5 9\n"
+    },
+    {
+      "input": "1\n-7\n0\n",
+      "output": "-7\n"
+    },
+    {
+      "input": "4\n1 1 1 1\n0 1 2 3\n",
+      "output": "1 1 1 1\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "Build a list of children for each member from the parent array.",
+    "A breadth-first traversal visits the tree level by level.",
+    "A chain of 200000 members is a deep tree, so avoid deep recursion."
+  ],
+  "expected_complexity": {
+    "time": "O(n)",
+    "space": "O(n)"
+  },
+  "hidden_test_set": {
+    "id": "tree-level-sums",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 5,
+      "performance": 3
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

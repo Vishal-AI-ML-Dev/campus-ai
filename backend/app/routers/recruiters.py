@@ -723,6 +723,18 @@ def extend_offer(
     application, drive = _recruiter_application(
         db, recruiter, payload.application_id
     )
+    # Phase 9 (review L1): an offer competes with the student's withdrawal, so
+    # take the shared per-student lock, then re-check the application: if the
+    # student withdrew first it is no longer visible and no offer is created.
+    from app.services.placement_management import lock_student_for_placement
+
+    lock_student_for_placement(db, application.tenant_id, application.student_id)
+    db.refresh(application)
+    if application.status not in _VISIBLE_TO_RECRUITER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This candidate is not visible to your company yet.",
+        )
 
     role_title = payload.role_title or drive.role_title
     package = (
@@ -887,6 +899,12 @@ def respond_to_offer(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found"
         )
+    # Phase 9 (review L1): accepting places the student, so it shares the
+    # per-student lock with withdrawals; re-read the offer after locking.
+    from app.services.placement_management import lock_student_for_placement
+
+    lock_student_for_placement(db, offer.tenant_id, offer.student_id)
+    db.refresh(offer)
     if offer.status != OfferStatus.extended:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

@@ -1,0 +1,64 @@
+{
+  "key": "minimum-edit-steps",
+  "version": 1,
+  "title": "Minimum Edit Steps",
+  "difficulty": "hard",
+  "topics": [
+    "dp",
+    "strings"
+  ],
+  "statement": "A spelling tool may insert a character, delete a character or replace a character, each as one step. Find the minimum number of steps to turn the first word into the second.",
+  "input_format": "Two lines, each with a word of lowercase letters (a word may be empty).",
+  "output_format": "Print the minimum number of steps.",
+  "constraints": "0 ≤ length of each word ≤ 2000.",
+  "examples": [
+    {
+      "input": "kitten\nsitting\n",
+      "output": "3\n",
+      "explanation": "Replace k with s, replace e with i and insert g: 3 steps."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "kitten\nsitting\n",
+      "output": "3\n"
+    },
+    {
+      "input": "abc\nabc\n",
+      "output": "0\n"
+    },
+    {
+      "input": "\nabc\n",
+      "output": "3\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 2000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "Think about the answer for every pair of prefixes of the two words.",
+    "Each cell depends on three neighbours: insert, delete or replace (free when the letters match).",
+    "Only the previous row is needed at any time, which keeps memory small."
+  ],
+  "expected_complexity": {
+    "time": "O(n·m)",
+    "space": "O(m)"
+  },
+  "hidden_test_set": {
+    "id": "minimum-edit-steps",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 5,
+      "performance": 4
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

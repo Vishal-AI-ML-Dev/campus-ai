@@ -60,6 +60,12 @@ def _fresh_state(monkeypatch):
     _reset_rate_limiter()
     db.Base.metadata.drop_all(bind=db.engine)
     db.Base.metadata.create_all(bind=db.engine)
+    # Drop pooled connections after the rebuild. SQLite answers PRAGMA-based
+    # reflection (e.g. inspect().get_indexes) from a connection's cached schema,
+    # so an idle pooled connection from an earlier test - more of them since the
+    # Phase 7.3 usage ledger writes on its own connection during a request - can
+    # still describe the previous schema. Fresh connections see the new one.
+    db.engine.dispose()
     yield
     db.Base.metadata.drop_all(bind=db.engine)
 

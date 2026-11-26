@@ -1,0 +1,64 @@
+{
+  "key": "pair-with-target-sum",
+  "version": 1,
+  "title": "Pair With Target Sum",
+  "difficulty": "easy",
+  "topics": [
+    "two_pointers",
+    "arrays"
+  ],
+  "statement": "A sorted list of item prices is given. Decide whether two different items together cost exactly the target amount.",
+  "input_format": "The first line contains n and target. The second line contains n integers in non-decreasing order.",
+  "output_format": "Print YES if two different positions add up to target, otherwise NO.",
+  "constraints": "2 ≤ n ≤ 100000; values and target are between -1000000000 and 1000000000.",
+  "examples": [
+    {
+      "input": "5 9\n1 2 4 5 7\n",
+      "output": "YES\n",
+      "explanation": "2 + 7 = 9, so the answer is YES."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "5 9\n1 2 4 5 7\n",
+      "output": "YES\n"
+    },
+    {
+      "input": "4 100\n1 2 3 4\n",
+      "output": "NO\n"
+    },
+    {
+      "input": "2 6\n3 3\n",
+      "output": "YES\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "Because the list is sorted, moving left makes sums smaller and moving right makes them larger.",
+    "Start one pointer at each end and compare their sum with the target.",
+    "Move the left pointer when the sum is too small and the right pointer when it is too large."
+  ],
+  "expected_complexity": {
+    "time": "O(n)",
+    "space": "O(1)"
+  },
+  "hidden_test_set": {
+    "id": "pair-with-target-sum",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 4,
+      "performance": 1
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

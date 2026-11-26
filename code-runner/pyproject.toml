@@ -1,0 +1,27 @@
+[project]
+name = "campus-ai-code-runner"
+version = "1.0.0"
+description = "Campus AI code runner: Docker + gVisor sandbox for coding interview submissions (Phase 8.5b)."
+requires-python = ">=3.13,<3.14"
+# Same exact versions as the backend, so no new third-party code enters the project.
+dependencies = [
+    "fastapi==0.138.0",
+    "pydantic==2.13.4",
+    "uvicorn==0.49.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "httpx==0.28.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "gvisor: needs a verified Linux host with the pinned Docker + gVisor (escape/conformance suite)",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"

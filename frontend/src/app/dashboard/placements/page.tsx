@@ -46,7 +46,7 @@ type MyEligibility = {
 	reasons: Reason[]
 }
 
-type AppStatus = "applied" | "shortlisted" | "selected" | "rejected"
+type AppStatus = "applied" | "shortlisted" | "selected" | "rejected" | "withdrawn"
 
 type MyApplication = {
 	id: number
@@ -66,6 +66,8 @@ const STATUS_STYLES: Record<AppStatus, string> = {
 	shortlisted: "bg-amber-500/15 text-amber-600 dark:text-amber-300",
 	selected: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
 	rejected: "bg-red-500/15 text-red-300",
+	// Phase 9.2: only set by a student withdrawal (placement management).
+	withdrawn: "bg-slate-500/10 text-slate-500 dark:text-slate-400",
 }
 
 export default function PlacementsPage() {

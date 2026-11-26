@@ -60,10 +60,12 @@ Key URLs (feature routes are served under /v1 AND legacy unversioned paths):
     /audit         -> append-only governance audit log (admin only)
 """
 
+import hmac
 import logging
+import re
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from slowapi import _rate_limit_exceeded_handler
@@ -79,7 +81,13 @@ from app.routers.attendance import router as attendance_router
 from app.routers.audit import router as audit_router
 from app.routers.auth import router as auth_router
 from app.routers.calendar_events import router as calendar_router
-from app.core.config import insecure_secret_issues, settings
+from app.routers.client_errors import router as client_errors_router
+from app.core.config import (
+    ai_governance_issues,
+    insecure_secret_issues,
+    metrics_token_issue,
+    settings,
+)
 from app.core.csrf import make_csrf_middleware
 from app.core.security_headers import hsts_value, make_security_headers_middleware
 from app.core.staging_gate import make_staging_gate_middleware
@@ -88,6 +96,7 @@ from app.observability.errors import register_exception_handlers
 from app.observability.health import readiness
 from app.observability.metrics import metrics_middleware, render_latest
 from app.core.rate_limit import limiter
+from app.services.ai_governance import AIRefused
 from app.observability.observability import (
     init_sentry,
     request_logging_middleware,
@@ -103,10 +112,17 @@ from app.routers.leads import router as leads_router
 from app.routers.leaveod import router as leaveod_router
 from app.routers.materials import router as materials_router
 from app.routers.mentor import router as mentor_router
+from app.routers.mock_interview import router as mock_interview_router
+from app.routers.mock_interview_admin import router as mock_interview_admin_router
+from app.routers.mock_interview_coding import router as mock_interview_coding_router
+from app.routers.mock_interview_company import router as mock_interview_company_router
 from app.routers.notifications import router as notifications_router
 from app.routers.people import router as people_router
 from app.routers.placement import router as placement_router
 from app.routers.placement_analytics import router as placement_analytics_router
+from app.routers.placement_management import router as placement_management_router
+from app.routers.placement_campaigns import router as placement_campaigns_router
+from app.routers.placement_insights import router as placement_insights_router
 from app.routers.projects import router as projects_router
 from app.routers.recruiters import router as recruiters_router
 from app.routers.resume import router as resume_router
@@ -137,6 +153,15 @@ if _secret_issues:
             "host environment."
         )
     logging.getLogger("campus-ai").warning(_secret_msg)
+
+# Phase 10.3 (D4 + OQ-2): AI governance is OFF in code but REQUIRED in
+# production - refuse to boot without it so AI spend can never be uncapped.
+_governance_issues = ai_governance_issues()
+if _governance_issues and settings.ENVIRONMENT == "production":
+    raise RuntimeError(
+        "Unsafe AI configuration: " + " ".join(_governance_issues)
+        + " Refusing to start in production."
+    )
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
@@ -177,6 +202,28 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # more specific and keeps winning for rate-limit errors.
 register_exception_handlers(app)
 
+
+@app.exception_handler(AIRefused)
+async def _ai_refused_handler(request: Request, exc: AIRefused) -> JSONResponse:
+    """Phase 10.3: a refused AI call -> 429/503 in the uniform error envelope.
+
+    Only fixed, content-free text (``AIRefused.message``) and the reason code;
+    the rest of the platform is unaffected.
+    """
+    rid = getattr(request.state, "request_id", None) or request.headers.get("X-Request-ID") or ""
+    headers = {"X-Request-ID": rid} if rid else {}
+    if exc.retry_after:
+        headers["Retry-After"] = str(int(exc.retry_after))
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": exc.message,
+            "request_id": rid,
+            "error": {"type": "ai_unavailable", "status": exc.status_code, "reason": exc.reason},
+        },
+        headers=headers,
+    )
+
 # Log every request (method, path, status, duration_ms, request_id).
 app.middleware("http")(request_logging_middleware)
 
@@ -184,7 +231,15 @@ app.middleware("http")(request_logging_middleware)
 # GET /metrics for scraping. No-op when prometheus_client isn't installed.
 # Phase 7: off in production (no collection, no route) until monitoring
 # access is decided - see Settings.metrics_enabled.
-if settings.metrics_enabled:
+# Phase 7.9: in production, collected and served only with a valid dedicated
+# METRICS_TOKEN (see the protected route below); otherwise still off.
+_METRICS_TOKEN_ISSUE = metrics_token_issue(settings)
+_METRICS_PROTECTED = settings.ENVIRONMENT == "production" and _METRICS_TOKEN_ISSUE is None
+if settings.ENVIRONMENT == "production" and settings.METRICS_TOKEN and _METRICS_TOKEN_ISSUE:
+    # Fail closed: an unusable token keeps /metrics unregistered (404). The
+    # reason is logged, never the value.
+    logging.getLogger("campus-ai").warning("/metrics stays disabled: %s", _METRICS_TOKEN_ISSUE)
+if settings.metrics_enabled or _METRICS_PROTECTED:
     app.middleware("http")(metrics_middleware)
 
 # CORS: allow the frontend to call the API from the browser. Deployed origins
@@ -234,6 +289,16 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Phase 9.2: let a cross-origin frontend read the pagination / count /
+    # request-id headers (same-origin proxy deployments already can). Additive:
+    # no response body or status changes.
+    expose_headers=[
+        "X-Total-Count",
+        "X-Request-ID",
+        "X-Status-Counts",
+        "X-Eligible-Count",
+        "X-Completion-Counts",
+    ],
 )
 
 # Feature routers, mounted under BOTH the canonical versioned prefix (/v1,
@@ -271,6 +336,25 @@ FEATURE_ROUTERS = [
     timetable_router,
     leaveod_router,
     tenants_router,
+    # AI Mock Interview: feature-flagged (AI_MOCK_INTERVIEW_ENABLED, default
+    # off). Only /mock-interview/status answers while it is off.
+    mock_interview_router,
+    # Phase 7.7: institute operations (admin/TPO), 404 unless
+    # AI_MOCK_INTERVIEW_OPS_ENABLED (default off) is on for the institute.
+    mock_interview_admin_router,
+    # Phase 8.1: coding round (review-only; flag-gated, 404 when off).
+    mock_interview_coding_router,
+    # Phase 8.4: company profiles (AI_MOCK_INTERVIEW_COMPANY_ENABLED; 404 when off).
+    mock_interview_company_router,
+    # Phase 9.1: placement management v2 (PLACEMENT_MANAGEMENT_ENABLED +
+    # PLACEMENT_MANAGEMENT_TENANT_IDS; 404 when off).
+    placement_management_router,
+    # Phase 9.3/9.4: campaigns, TPO dashboard, analytics, exports and
+    # interview preparation (same flag and gate as placement management).
+    placement_campaigns_router,
+    placement_insights_router,
+    # Phase 10.5: content-free browser error reports (CLIENT_ERROR_REPORTING_ENABLED; 404 when off).
+    client_errors_router,
 ]
 
 for _feature_router in FEATURE_ROUTERS:
@@ -293,11 +377,16 @@ def version() -> dict:
     Clients should call the versioned surface (e.g. /v1/...); the unversioned
     paths are deprecated aliases kept for backward compatibility.
     """
-    return {
+    body = {
         "version": API_VERSION,
         "api_versions": ["v1"],
         "current": settings.API_V1_PREFIX,
     }
+    # Phase 10.7 (gate G10): the build commit, only when configured (additive).
+    commit = settings.BUILD_COMMIT.strip().lower()
+    if re.fullmatch(r"[0-9a-f]{7,40}", commit):
+        body["build"] = commit
+    return body
 
 
 @app.get("/health")
@@ -341,3 +430,22 @@ if settings.metrics_enabled:
         """
         body, content_type = render_latest()
         return Response(content=body, media_type=content_type)
+
+elif _METRICS_PROTECTED:
+
+    @app.get("/metrics", include_in_schema=False)
+    def metrics_protected(request: Request) -> Response:
+        """Production scrape endpoint (Phase 7.9): ``Authorization: Bearer
+        <METRICS_TOKEN>`` required, compared in constant time. The token is
+        never logged or echoed; a wrong or missing token gets a bare 401."""
+        auth = request.headers.get("authorization") or ""
+        scheme, _, provided = auth.partition(" ")
+        expected = settings.METRICS_TOKEN.encode("utf-8")
+        if scheme.lower() != "bearer" or not hmac.compare_digest(
+            provided.strip().encode("utf-8"), expected
+        ):
+            return Response(status_code=401, headers={"WWW-Authenticate": "Bearer"})
+        body, content_type = render_latest()
+        return Response(
+            content=body, media_type=content_type, headers={"Cache-Control": "no-store"}
+        )

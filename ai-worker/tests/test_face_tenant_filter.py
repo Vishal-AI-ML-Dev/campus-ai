@@ -18,6 +18,7 @@ Also collectable by pytest if it is installed.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from types import SimpleNamespace
@@ -32,8 +33,48 @@ from qdrant_client.models import PointStruct  # noqa: E402
 
 import face  # noqa: E402
 
+try:  # pytest is a dev dependency; the direct-run mode below works without it.
+    import pytest
+except ImportError:  # pragma: no cover - direct run in an image without pytest
+    pytest = None
+
 TENANT_A, TENANT_B = 101, 202
 STUDENT_A, STUDENT_B, STUDENT_LEGACY = 11, 22, 33
+
+_PATCHED_GLOBALS = ("_qdrant_client", "_decode_image", "_detect_faces")
+
+
+def _set_face_enabled(value: bool) -> None:
+    """Test-only: FACE_ENABLED for this process, re-read by face.get_settings()."""
+    os.environ["FACE_ENABLED"] = "true" if value else "false"
+    face.get_settings.cache_clear()
+
+
+@contextlib.contextmanager
+def _face_enabled_scope():
+    """Enable face routes for ONE test, then restore the env var, the settings
+    cache and the face-module globals the tests patch. The production default
+    (FACE_ENABLED=false, fail-closed) is untouched."""
+    saved_env = os.environ.get("FACE_ENABLED")
+    saved_globals = {n: getattr(face, n) for n in _PATCHED_GLOBALS}
+    _set_face_enabled(True)
+    try:
+        yield
+    finally:
+        if saved_env is None:
+            os.environ.pop("FACE_ENABLED", None)
+        else:
+            os.environ["FACE_ENABLED"] = saved_env
+        for name, value in saved_globals.items():
+            setattr(face, name, value)
+        face.get_settings.cache_clear()
+
+
+if pytest is not None:
+    @pytest.fixture(autouse=True)
+    def _face_enabled_for_test():
+        with _face_enabled_scope():
+            yield
 
 
 def _vec(i: int) -> list[float]:
@@ -148,12 +189,29 @@ def test_requests_without_tenant_are_rejected():
     assert c.delete("/face/enroll/1?tenant_id=0").status_code == 422
 
 
+def test_routes_fail_closed_when_face_disabled():
+    """Release decision B-8: with FACE_ENABLED=false every /face route answers
+    503 before validation, model loading or any vector-store access."""
+    _set_face_enabled(False)
+    face._qdrant_client = None
+    api = FastAPI()
+    api.include_router(face.router)
+    c = TestClient(api)
+    assert c.post("/face/enroll", json={"student_id": 1, "tenant_id": TENANT_A,
+                                        "image_base64": "x"}).status_code == 503
+    assert c.post("/face/match", json={"image_base64": "x", "tenant_id": TENANT_A}).status_code == 503
+    assert c.delete(f"/face/enroll/1?tenant_id={TENANT_A}").status_code == 503
+    assert c.post("/face/enroll", json={"student_id": 1, "image_base64": "x"}).status_code == 503
+    assert face._qdrant_client is None  # no store was opened
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0
     for name, fn in tests:
         try:
-            fn()
+            with _face_enabled_scope():
+                fn()
             print(f"PASSED {name}")
         except Exception as exc:  # noqa: BLE001
             failed += 1

@@ -48,6 +48,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from llm import get_chat_model
+from provider_errors import is_quota_error, quota_http_error
 from rag import retrieve
 from tracing import trace_config
 
@@ -218,6 +219,8 @@ def mentor_chat(payload: MentorChatRequest) -> MentorChatResponse:
     try:
         final = _get_graph().invoke(_initial_state(payload))
     except Exception as exc:  # noqa: BLE001 - surface any provider/SDK error
+        if is_quota_error(exc):  # Phase 10.3: 429 so the backend stops new calls
+            raise quota_http_error() from None
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"LLM call failed: {exc}",
@@ -251,6 +254,10 @@ def _stream_tokens(payload: MentorChatRequest) -> Iterator[str]:
             yield _sse({"type": "token", "content": str(final.get("answer", ""))})
         yield _sse({"type": "done", "provider": settings.LLM_PROVIDER})
     except Exception as exc:  # noqa: BLE001 - never leave the stream hanging
+        if is_quota_error(exc):  # Phase 10.3: additive machine-readable code
+            yield _sse({"type": "error", "detail": "LLM call failed: provider quota exhausted",
+                        "code": "quota_exhausted"})
+            return
         yield _sse({"type": "error", "detail": f"LLM call failed: {exc}"})
 
 

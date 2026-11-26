@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from llm import get_chat_model
+from provider_errors import is_quota_error, quota_http_error
 from schemas import ProofScoreRequest, ProofScoreResponse
 from tracing import trace_config
 
@@ -69,6 +70,8 @@ def score_proof(payload: ProofScoreRequest) -> ProofScoreResponse:
             ),
         )
     except Exception as exc:  # noqa: BLE001 - surface any provider/SDK error
+        if is_quota_error(exc):  # Phase 10.3
+            raise quota_http_error() from None
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"LLM call failed: {exc}",

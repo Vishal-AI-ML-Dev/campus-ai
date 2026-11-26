@@ -43,12 +43,16 @@ class ApplicationStatus(str, enum.Enum):
       shortlisted -> TPO shortlisted the candidate for the next round
       selected    -> candidate was selected/placed
       rejected    -> TPO rejected the application
+      withdrawn   -> the student withdrew (Phase 9.2, decision P9-D8; only
+                     from applied/shortlisted, final; only reachable through
+                     the placement-management withdraw route)
     """
 
     applied = "applied"
     shortlisted = "shortlisted"
     selected = "selected"
     rejected = "rejected"
+    withdrawn = "withdrawn"
 
 
 class RecruiterDecision(str, enum.Enum):
@@ -187,6 +191,9 @@ class NotificationType(str, enum.Enum):
 
     announcement = "announcement"
     application_status = "application_status"
+    # Phase 9.2/9.3 (placement management; plain strings, no migration).
+    drive_published = "drive_published"
+    campaign_assigned = "campaign_assigned"
     doubt_answer = "doubt_answer"
     submission_graded = "submission_graded"
     generic = "generic"

@@ -33,6 +33,8 @@ class UserOut(BaseModel):
     full_name: str
     role: UserRole
     is_active: bool
+    # True only while a self-registered student awaits admin approval.
+    approval_pending: bool = False
     section_id: int | None = None  # a student's class/section (None for staff)
 
     model_config = ConfigDict(from_attributes=True)

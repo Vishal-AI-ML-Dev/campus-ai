@@ -18,6 +18,8 @@
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { api, ApiError } from "@/lib/api"
+import LegacyDecisionButtons from "@/components/applications/LegacyDecisionButtons"
+import { isWithdrawn } from "@/lib/legacyApplicationActions"
 
 type Drive = {
 	id: number
@@ -26,7 +28,7 @@ type Drive = {
 	is_open: boolean
 }
 
-type AppStatus = "applied" | "shortlisted" | "selected" | "rejected"
+type AppStatus = "applied" | "shortlisted" | "selected" | "rejected" | "withdrawn"
 
 type Applicant = {
 	application_id: number
@@ -46,6 +48,8 @@ const STATUS_STYLES: Record<AppStatus, string> = {
 	shortlisted: "bg-amber-500/15 text-amber-600 dark:text-amber-300",
 	selected: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
 	rejected: "bg-red-500/15 text-red-300",
+	// Phase 9.2: only set by a student withdrawal (placement management).
+	withdrawn: "bg-slate-500/10 text-slate-500 dark:text-slate-400",
 }
 
 export default function ApplicationsPage() {
@@ -104,6 +108,8 @@ export default function ApplicationsPage() {
 	}, [loadApplicants])
 
 	async function decide(applicant: Applicant, status: AppStatus) {
+		// L2: a withdrawal is final; never send a staff decision for it.
+		if (isWithdrawn(applicant.status)) return
 		setError(null)
 		try {
 			await api.patch(
@@ -149,6 +155,7 @@ export default function ApplicationsPage() {
 					{/* Controls */}
 					<div className="mt-6 flex flex-wrap items-center gap-3">
 						<select
+							aria-label="Drive"
 							value={selectedDriveId ?? ""}
 							onChange={(e) => setSelectedDriveId(Number(e.target.value))}
 							className={selectClass}
@@ -162,6 +169,7 @@ export default function ApplicationsPage() {
 						</select>
 
 						<select
+							aria-label="Filter by status"
 							value={statusFilter}
 							onChange={(e) =>
 								setStatusFilter(e.target.value as "" | AppStatus)
@@ -173,6 +181,7 @@ export default function ApplicationsPage() {
 							<option value="shortlisted">Shortlisted</option>
 							<option value="selected">Selected</option>
 							<option value="rejected">Rejected</option>
+							<option value="withdrawn">Withdrawn</option>
 						</select>
 
 						{selectedDriveId != null && (
@@ -214,29 +223,11 @@ export default function ApplicationsPage() {
 											projects {applicant.verified_projects}
 											{applicant.eligible ? "" : " · (no longer eligible)"}
 										</div>
-										<div className="mt-3 flex gap-2">
-											<button
-												onClick={() => decide(applicant, "shortlisted")}
-												disabled={applicant.status === "shortlisted"}
-												className="rounded-lg border border-amber-400/30 px-3 py-1.5 text-sm text-amber-600 dark:text-amber-300 transition hover:bg-amber-400/10 disabled:opacity-40"
-											>
-												Shortlist
-											</button>
-											<button
-												onClick={() => decide(applicant, "selected")}
-												disabled={applicant.status === "selected"}
-												className="rounded-lg border border-emerald-400/30 px-3 py-1.5 text-sm text-emerald-600 dark:text-emerald-300 transition hover:bg-emerald-400/10 disabled:opacity-40"
-											>
-												Select
-											</button>
-											<button
-												onClick={() => decide(applicant, "rejected")}
-												disabled={applicant.status === "rejected"}
-												className="rounded-lg border border-red-400/30 px-3 py-1.5 text-sm text-red-300 transition hover:bg-red-400/10 disabled:opacity-40"
-											>
-												Reject
-											</button>
-										</div>
+										<LegacyDecisionButtons
+											applicationId={applicant.application_id}
+											status={applicant.status}
+											onDecide={(target) => decide(applicant, target)}
+										/>
 									</div>
 								))}
 							</div>

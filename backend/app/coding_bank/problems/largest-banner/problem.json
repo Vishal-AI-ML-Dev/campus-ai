@@ -1,0 +1,64 @@
+{
+  "key": "largest-banner",
+  "version": 1,
+  "title": "Largest Rectangular Banner",
+  "difficulty": "hard",
+  "topics": [
+    "stack_queue",
+    "arrays"
+  ],
+  "statement": "A row of n adjacent poles of width 1 has the given heights. Find the area of the largest rectangle that fits entirely within the poles, aligned with the ground.",
+  "input_format": "The first line contains n. The second line contains n heights.",
+  "output_format": "Print the largest area.",
+  "constraints": "1 ≤ n ≤ 200000; 0 ≤ height ≤ 1000000000.",
+  "examples": [
+    {
+      "input": "6\n2 1 5 6 2 3\n",
+      "output": "10\n",
+      "explanation": "Heights 5 and 6 side by side give a 2 by 5 rectangle of area 10."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "6\n2 1 5 6 2 3\n",
+      "output": "10\n"
+    },
+    {
+      "input": "1\n0\n",
+      "output": "0\n"
+    },
+    {
+      "input": "5\n3 3 3 3 3\n",
+      "output": "15\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "For each pole, the best rectangle using its full height stretches until a shorter pole on each side.",
+    "A stack of increasing heights finds those boundaries in one pass.",
+    "Areas can exceed 32 bits; use 64-bit arithmetic."
+  ],
+  "expected_complexity": {
+    "time": "O(n)",
+    "space": "O(n)"
+  },
+  "hidden_test_set": {
+    "id": "largest-banner",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 5,
+      "performance": 4
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

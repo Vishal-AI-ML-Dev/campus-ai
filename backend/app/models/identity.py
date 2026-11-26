@@ -8,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     String,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -63,6 +64,13 @@ class User(Base):
         nullable=False,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # True only for a self-registered student awaiting approval by an admin of
+    # the same institute (POST /admin/users/{id}/approve). Keeps "pending
+    # request" distinct from "disabled by an admin": both have is_active=False.
+    # Every other account (and every pre-existing row) is False.
+    approval_pending: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
     # A student's class/section - used to build attendance rosters & gradebook.
     # Nullable: staff accounts (teacher/tpo/admin) and not-yet-assigned students.
     section_id: Mapped[int | None] = mapped_column(

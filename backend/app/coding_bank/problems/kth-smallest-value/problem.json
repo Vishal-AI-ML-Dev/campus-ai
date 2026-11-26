@@ -1,0 +1,63 @@
+{
+  "key": "kth-smallest-value",
+  "version": 1,
+  "title": "K-th Smallest Value",
+  "difficulty": "medium",
+  "topics": [
+    "sorting_searching"
+  ],
+  "statement": "Given the marks of n students, print the k-th smallest mark (counting duplicates).",
+  "input_format": "The first line contains n and k. The second line contains n integers.",
+  "output_format": "Print the k-th smallest value.",
+  "constraints": "1 ≤ k ≤ n ≤ 200000; 0 ≤ value ≤ 1000000000.",
+  "examples": [
+    {
+      "input": "6 2\n7 10 4 3 20 15\n",
+      "output": "4\n",
+      "explanation": "Sorted: 3 4 7 10 15 20. The 2nd smallest is 4."
+    }
+  ],
+  "visible_tests": [
+    {
+      "input": "6 2\n7 10 4 3 20 15\n",
+      "output": "4\n"
+    },
+    {
+      "input": "4 4\n5 5 5 5\n",
+      "output": "5\n"
+    },
+    {
+      "input": "1 1\n42\n",
+      "output": "42\n"
+    }
+  ],
+  "checker": "tokens",
+  "limits": {
+    "time_ms": 1000,
+    "memory_profile": "standard"
+  },
+  "hints": [
+    "Sorting the whole list and picking a position is a valid start.",
+    "A heap of size k or a selection algorithm can avoid sorting everything.",
+    "Remember that k counts from 1, not from 0."
+  ],
+  "expected_complexity": {
+    "time": "O(n log n)",
+    "space": "O(n)"
+  },
+  "hidden_test_set": {
+    "id": "kth-smallest-value",
+    "version": 1,
+    "digest_sha256": null,
+    "groups": {
+      "basic": 6,
+      "edge": 5,
+      "performance": 3
+    }
+  },
+  "source": {
+    "kind": "original",
+    "author": "Campus AI (draft by Claude Code, pending human review)"
+  },
+  "status": "draft"
+}

@@ -79,8 +79,14 @@ else:
 # limits are applied explicitly via @limiter.limit(...) on individual routes.
 # headers_enabled => responses carry X-RateLimit-Limit / -Remaining / -Reset
 # so clients (and we) can see the quota state.
+# Phase 10.9 (Redis-failure drill): with Redis storage, an unreachable Redis
+# made every rate-limited route (login, register, refresh) answer 500. The
+# in-memory fallback keeps the limits ENFORCED (per process) until Redis is
+# back, instead of failing - or, worse, skipping - the check. No effect when
+# REDIS_URL is empty (already in-memory).
 limiter = Limiter(
     key_func=client_ip,
     headers_enabled=True,
     storage_uri=_storage_uri,
+    in_memory_fallback_enabled=bool(_storage_uri),
 )

@@ -58,7 +58,9 @@ def emit_alert(
             timeout=3.0,
         )
     except Exception as exc:  # noqa: BLE001 - alerting must never crash caller
+        # Phase 7.5: log the error CLASS only. Some httpx errors repeat the
+        # request URL in their message, and a webhook URL embeds its secret.
         logger.warning(
             "alert webhook failed",
-            extra={"extra_fields": {"alert_name": name, "error": str(exc)}},
+            extra={"extra_fields": {"alert_name": name, "error": type(exc).__name__}},
         )

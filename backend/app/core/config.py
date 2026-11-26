@@ -13,7 +13,7 @@ gate).
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ALLOWED_ENVIRONMENTS = ("development", "test", "production")
@@ -148,6 +148,147 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_KEY: str = ""
     SUPABASE_STORAGE_BUCKET: str = "campus-uploads"
 
+    # --- AI Mock Interview (feature flag, OFF by default) -----------------
+    # Master switch. While False every /mock-interview/* route except
+    # /mock-interview/status returns 404 and the rest of the app is untouched.
+    # Turning it off again is the rollback: no code or data is removed.
+    AI_MOCK_INTERVIEW_ENABLED: bool = False
+    # Optional pilot allow-list of tenant ids, comma-separated (e.g. "3,7").
+    # Empty = every institute once the master switch is on. Entries that are
+    # not integers are ignored; if none are valid, NO institute is enabled
+    # (fail closed). See app/routers/mock_interview.py.
+    AI_MOCK_INTERVIEW_TENANT_IDS: str = ""
+    # Phase 5 sub-flag: offer voice interviews (browser speech-to-text and
+    # text-to-speech; the server only ever receives text). Needs the master
+    # switch too. Off = text only; voice sessions already created can finish.
+    AI_MOCK_INTERVIEW_VOICE_ENABLED: bool = False
+    # Phase 6 sub-flag: offer video interviews (camera self-view that stays in
+    # the browser; the server only ever receives text). Needs the master switch
+    # and master allow-list too, AND the institute must be listed in
+    # AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS. Unlike the master list, an EMPTY
+    # video list enables NO institute (fail closed). Students only.
+    AI_MOCK_INTERVIEW_VIDEO_ENABLED: bool = False
+    AI_MOCK_INTERVIEW_VIDEO_TENANT_IDS: str = ""
+    # Phase 8.1 sub-flag: offer coding rounds (editor + review-only mode; no
+    # code is ever executed by this service). Needs the master switch and
+    # master allow-list too, AND the institute must be listed in
+    # AI_MOCK_INTERVIEW_CODING_TENANT_IDS. Like video, an EMPTY coding list
+    # enables NO institute (fail closed). Students only.
+    AI_MOCK_INTERVIEW_CODING_ENABLED: bool = False
+    AI_MOCK_INTERVIEW_CODING_TENANT_IDS: str = ""
+    # Development only (decision B1-b): also offer problems whose status is
+    # "draft" (not yet human-reviewed). Ignored when ENVIRONMENT=production,
+    # so production only ever serves "published" problems.
+    AI_MOCK_INTERVIEW_CODING_ALLOW_DRAFT_PROBLEMS: bool = False
+    # Phase 8.3 sub-flag: AI help in coding rounds (review-only, decision
+    # P8-D7 "coding-v1-unverified"): AI-tailored hints after the authored ones,
+    # typed explanation questions after "Done", and the AI-estimate coding
+    # feedback (/sessions/{id}/coding/feedback). Needs the coding gate too and
+    # the worker's MOCK_INTERVIEW_CODING_ENABLED. Off = Batch 1 behaviour
+    # (authored hints only, no explanation turns, no coding feedback). Nothing
+    # is ever executed either way.
+    AI_MOCK_INTERVIEW_CODING_AI_ENABLED: bool = False
+    # Phase 8.4 sub-flag: institute company profiles (admin/TPO authoring,
+    # students pick a published profile of their own institute) and
+    # company-context question generation (decisions P8-D9..D11). Needs the
+    # master switch and allow-list. Off = the company routes 404 and create
+    # rejects a company profile. Evaluation is never affected.
+    AI_MOCK_INTERVIEW_COMPANY_ENABLED: bool = False
+
+    # --- AI Mock Interview: production operations (Phase 7) --------------
+    # Institute operations: admin/TPO usage + controls API, institute quotas,
+    # GET /mock-interview/usage/me. OFF = those routes 404 and no quota beyond
+    # the existing per-student limits is enforced. Needs the master switch too.
+    AI_MOCK_INTERVIEW_OPS_ENABLED: bool = False
+    # Optional platform ceilings for institute quotas, as positive integers
+    # ("" = no cap). An institute can only set lower values (Phase 7.6).
+    AI_MOCK_INTERVIEW_TENANT_MONTHLY_SESSION_MAX: str = ""
+    AI_MOCK_INTERVIEW_TENANT_MONTHLY_TOKEN_MAX: str = ""
+    # Token budgets count only provider-reported tokens (decision 2026-11-23,
+    # spec 15.12 option a; the session cap is the hard limit). Warn (never
+    # block) when at least this percent of the month's AI calls - once there
+    # are MIN_CALLS of them - had unknown or partial usage. Checked only when
+    # an institute token budget applies. 0 = no alert.
+    AI_MOCK_INTERVIEW_UNREPORTED_TOKENS_ALERT_PERCENT: int = Field(default=10, ge=0, le=100)
+    AI_MOCK_INTERVIEW_UNREPORTED_TOKENS_ALERT_MIN_CALLS: int = Field(default=20, ge=1, le=100000)
+    # Approved model price table (JSON, see docs/mock-interview/runbooks/
+    # pricing.md). Empty = cost "pricing not configured": tokens are still
+    # recorded, cost stays null. Prices are never invented (decision P7-D9).
+    AI_PRICE_TABLE: str = ""
+    # Circuit breaker for interview AI calls - ON by default (approved
+    # exception P7-D4, conservative thresholds). Inert while
+    # AI_MOCK_INTERVIEW_ENABLED is off; AI_CIRCUIT_ENABLED=false disables it.
+    AI_CIRCUIT_ENABLED: bool = True
+    AI_CIRCUIT_FAILURE_THRESHOLD: int = Field(default=5, ge=1, le=1000)
+    AI_CIRCUIT_ERROR_RATE: float = Field(default=0.5, gt=0, le=1)
+    AI_CIRCUIT_MIN_CALLS: int = Field(default=10, ge=1, le=10000)
+    AI_CIRCUIT_WINDOW_SECONDS: int = Field(default=120, ge=10, le=86400)
+    AI_CIRCUIT_OPEN_SECONDS: int = Field(default=60, ge=5, le=3600)
+    # Minimum gap between two alerts with the same name/key (Phase 7.5).
+    AI_ALERT_THROTTLE_SECONDS: int = Field(default=300, ge=0, le=86400)
+    # Phase 7.9: dedicated bearer token for GET /metrics in production
+    # (>= 32 chars, different from every other secret). Empty or invalid =
+    # /metrics stays unregistered (404) in production. Ignored elsewhere.
+    METRICS_TOKEN: str = ""
+
+    # --- AI governance (Phase 10.3, owner decisions D4 + OQ-2) -------------
+    # One spending/abuse guard for EVERY AI path (mock interview, mentor,
+    # mentor stream, resume, ATS, skill/project proof scoring). OQ-2: OFF in
+    # code (dev/tests unchanged) but REQUIRED in production - a production
+    # backend refuses to start unless this is true and the platform caps below
+    # are set (``ai_governance_issues``). When on: platform/institute/user
+    # daily request caps, a platform token cap, a process-wide concurrency
+    # cap, a provider-quota cooldown, safe (connect-only) retries, ledger rows
+    # and Idempotency-Key support for mentor/resume/ATS.
+    AI_GOVERNANCE_ENABLED: bool = False
+    # Kill switches work even while AI_GOVERNANCE_ENABLED is off (default:
+    # nothing killed). AI_KILL_SWITCH=true refuses EVERY new AI call;
+    # AI_DISABLED_FEATURES refuses the listed features only, comma-separated:
+    # mock_interview, mentor, resume, ats, proof_scoring.
+    AI_KILL_SWITCH: bool = False
+    AI_DISABLED_FEATURES: str = ""
+    # Daily caps (UTC day), positive integers; "" = no cap. Platform caps are
+    # mandatory in production when governance is on. Set them BELOW the
+    # verified free-tier limits of the provider (D4: Rs 0/month).
+    AI_PLATFORM_DAILY_REQUEST_MAX: str = ""
+    AI_PLATFORM_DAILY_TOKEN_MAX: str = ""
+    AI_TENANT_DAILY_REQUEST_MAX: str = ""
+    # Per user, across mentor/resume/ATS (interviews keep their own limits).
+    AI_USER_DAILY_REQUEST_MAX: str = ""
+    # Simultaneous AI calls per backend process, and how long a call may wait
+    # for a free slot before it is refused with a "busy" 503.
+    AI_MAX_CONCURRENT_CALLS: int = Field(default=3, ge=1, le=100)
+    AI_CONCURRENCY_WAIT_SECONDS: float = Field(default=10.0, ge=0, le=120)
+    # After the provider reports its quota/rate limit as exhausted, new AI
+    # calls are refused (no provider call) for this long.
+    AI_QUOTA_COOLDOWN_SECONDS: int = Field(default=900, ge=10, le=86400)
+    # Idempotency-Key replay window for mentor/resume/ATS responses.
+    AI_IDEMPOTENCY_TTL_SECONDS: int = Field(default=600, ge=10, le=86400)
+
+    # --- Release identification (Phase 10.7, gate G10) -------------------
+    # Git commit of this build, shown by GET /version ONLY when set, so
+    # staging can be checked against the approved commit. Render sets
+    # RENDER_GIT_COMMIT automatically. Hex only (anything else is ignored).
+    BUILD_COMMIT: str = Field(
+        default="", validation_alias=AliasChoices("BUILD_COMMIT", "RENDER_GIT_COMMIT")
+    )
+
+    # --- Frontend error tracking (Phase 10.5, feature flag, OFF by default) -
+    # POST /client-errors accepts content-free browser error reports (kind,
+    # error class name, normalised route, release, digest - never messages or
+    # stacks) and logs them on ``campus.client_error``. Off = 404.
+    CLIENT_ERROR_REPORTING_ENABLED: bool = False
+
+    # --- Placement management (Phase 9, feature flag, OFF by default) -----
+    # Placement core v2: student placement profiles, drive settings and
+    # lifecycle, eligibility v2, apply/status rules with history. Needs the
+    # institute in PLACEMENT_MANAGEMENT_TENANT_IDS too; an EMPTY or invalid
+    # list enables NO institute (fail closed). Off = every /placement/* v2
+    # route 404s and the legacy /drives routes behave exactly as before
+    # (decisions P9-D1, P9-D6; docs/mock-interview/specs/phase-9-...md).
+    PLACEMENT_MANAGEMENT_ENABLED: bool = False
+    PLACEMENT_MANAGEMENT_TENANT_IDS: str = ""
+
     @property
     def docs_enabled(self) -> bool:
         """Swagger UI, ReDoc and /openapi.json (Phase 7).
@@ -202,6 +343,71 @@ settings = get_settings()
 
 # Values that must never be used as real production secrets.
 _INSECURE_SECRET_KEYS = {"", "dev-secret-change-me", "changeme", "secret"}
+
+
+def metrics_token_issue(s: Settings = settings) -> str | None:
+    """Why METRICS_TOKEN cannot protect /metrics (None = usable). Phase 7.9.
+
+    The token must be a dedicated secret: >= 32 characters, no whitespace,
+    not a known placeholder, and different from every other secret. The
+    message never contains the value.
+    """
+    token = s.METRICS_TOKEN
+    if not token:
+        return "METRICS_TOKEN is not set"
+    if token != token.strip() or any(ch.isspace() for ch in token):
+        return "METRICS_TOKEN contains whitespace"
+    if len(token) < MIN_SECRET_KEY_LENGTH or token in _INSECURE_SECRET_KEYS:
+        return f"METRICS_TOKEN is shorter than {MIN_SECRET_KEY_LENGTH} characters or a placeholder"
+    others = (s.SECRET_KEY, s.AI_WORKER_TOKEN, s.STAGING_GATE_TOKEN, s.SUPABASE_SERVICE_KEY)
+    if any(token == (other or "").strip() for other in others if other):
+        return "METRICS_TOKEN must be different from every other secret"
+    return None
+
+
+AI_FEATURES = ("mock_interview", "mentor", "resume", "ats", "proof_scoring")
+
+
+def positive_int_or_none(raw: str) -> int | None:
+    """Parse an optional positive-integer cap ("" = no cap; invalid = None)."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def ai_governance_issues(s: Settings = settings) -> list[str]:
+    """Why a PRODUCTION backend must not start (Phase 10.3, OQ-2). [] = ok.
+
+    Production requires AI governance on, both platform daily caps set to
+    positive integers, every optional cap valid, and only known feature names
+    in AI_DISABLED_FEATURES (a typo must not silently leave a feature on).
+    Messages name keys only, never values of secrets.
+    """
+    issues: list[str] = []
+    if not s.AI_GOVERNANCE_ENABLED:
+        issues.append("AI_GOVERNANCE_ENABLED must be true in production (D4: Rs 0 AI budget).")
+        return issues
+    for key in ("AI_PLATFORM_DAILY_REQUEST_MAX", "AI_PLATFORM_DAILY_TOKEN_MAX"):
+        if positive_int_or_none(getattr(s, key)) is None:
+            issues.append(f"{key} must be a positive integer in production.")
+    for key in ("AI_TENANT_DAILY_REQUEST_MAX", "AI_USER_DAILY_REQUEST_MAX"):
+        raw = getattr(s, key)
+        if raw.strip() and positive_int_or_none(raw) is None:
+            issues.append(f"{key} is set but is not a positive integer.")
+    unknown = [
+        f for f in (x.strip().lower() for x in s.AI_DISABLED_FEATURES.split(","))
+        if f and f not in AI_FEATURES
+    ]
+    if unknown:
+        issues.append(
+            "AI_DISABLED_FEATURES has unknown names; allowed: " + ", ".join(AI_FEATURES) + "."
+        )
+    return issues
 
 
 def insecure_secret_issues(s: Settings = settings) -> list[str]:

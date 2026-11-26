@@ -1,0 +1,184 @@
+{
+  "rubric_version": "hr-v1",
+  "overall_score": 30.0,
+  "categories": [
+    {
+      "key": "relevance",
+      "label": "Relevance",
+      "weight": 0.25,
+      "description": "Answers the question that was asked",
+      "score": 30.0,
+      "assessed": 4
+    },
+    {
+      "key": "structure",
+      "label": "Structure",
+      "weight": 0.2,
+      "description": "Clear structure, e.g. STAR for experiences",
+      "score": 30.0,
+      "assessed": 4
+    },
+    {
+      "key": "specificity",
+      "label": "Specific examples",
+      "weight": 0.2,
+      "description": "Concrete examples, actions and outcomes",
+      "score": 30.0,
+      "assessed": 4
+    },
+    {
+      "key": "communication",
+      "label": "Communication",
+      "weight": 0.2,
+      "description": "Clear, concise and easy to follow",
+      "score": 30.0,
+      "assessed": 4
+    },
+    {
+      "key": "self_awareness",
+      "label": "Self-awareness",
+      "weight": 0.15,
+      "description": "Reflection, attitude and learning",
+      "score": 30.0,
+      "assessed": 4
+    }
+  ],
+  "questions": [
+    {
+      "seq": 1,
+      "status": "scored",
+      "scores": {
+        "relevance": {
+          "score": 4,
+          "evidence": "In my final year project I"
+        },
+        "structure": {
+          "score": 4,
+          "evidence": "In my final year project I"
+        },
+        "specificity": {
+          "score": 4,
+          "evidence": "In my final year project I"
+        },
+        "communication": {
+          "score": 4,
+          "evidence": "In my final year project I"
+        },
+        "self_awareness": {
+          "score": 4,
+          "evidence": "In my final year project I"
+        }
+      },
+      "feedback": "Good."
+    },
+    {
+      "seq": 2,
+      "status": "dont_know",
+      "scores": {
+        "relevance": {
+          "score": 0,
+          "evidence": ""
+        },
+        "structure": {
+          "score": 0,
+          "evidence": ""
+        },
+        "specificity": {
+          "score": 0,
+          "evidence": ""
+        },
+        "communication": {
+          "score": 0,
+          "evidence": ""
+        },
+        "self_awareness": {
+          "score": 0,
+          "evidence": ""
+        }
+      },
+      "feedback": "Candidate said they did not know."
+    },
+    {
+      "seq": 3,
+      "status": "scored",
+      "scores": {
+        "relevance": {
+          "score": 2,
+          "evidence": "I am a quick learner always."
+        },
+        "structure": {
+          "score": 2,
+          "evidence": "I am a quick learner always."
+        },
+        "specificity": {
+          "score": 2,
+          "evidence": "I am a quick learner always."
+        },
+        "communication": {
+          "score": 2,
+          "evidence": "I am a quick learner always."
+        },
+        "self_awareness": {
+          "score": 2,
+          "evidence": "I am a quick learner always."
+        }
+      },
+      "feedback": "Good."
+    },
+    {
+      "seq": 4,
+      "status": "no_answer",
+      "scores": {
+        "relevance": {
+          "score": 0,
+          "evidence": ""
+        },
+        "structure": {
+          "score": 0,
+          "evidence": ""
+        },
+        "specificity": {
+          "score": 0,
+          "evidence": ""
+        },
+        "communication": {
+          "score": 0,
+          "evidence": ""
+        },
+        "self_awareness": {
+          "score": 0,
+          "evidence": ""
+        }
+      },
+      "feedback": "No answer given."
+    }
+  ],
+  "strengths": [
+    {
+      "text": "Clear team example.",
+      "seq": 1,
+      "evidence": "I led a team of four"
+    }
+  ],
+  "weaknesses": [
+    {
+      "text": "Answer was very short.",
+      "seq": 3,
+      "evidence": "I am a quick learner always."
+    },
+    {
+      "text": "Work on relevance (30/100): answers the question that was asked.",
+      "seq": null,
+      "evidence": ""
+    },
+    {
+      "text": "Work on structure (30/100): clear structure, e.g. star for experiences.",
+      "seq": null,
+      "evidence": ""
+    }
+  ],
+  "recommendations": [
+    "Use STAR for experience questions."
+  ],
+  "provider": "fixture"
+}

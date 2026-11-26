@@ -37,14 +37,17 @@ def list_students(
     staff: User = Depends(staff_only),
     page: Pagination = Depends(pagination_params),
 ) -> list[User]:
-    """List student accounts, optionally filtered to one section.
+    """List ACTIVE student accounts, optionally filtered to one section.
 
     Pass ?section_id=<id> to get just that section's roster (e.g. for marking
-    attendance). Omit it to list every student.
+    attendance). Omit it to list every student. Inactive accounts (pending
+    sign-up requests and disabled students) are excluded; admins see them on
+    the Users page (GET /admin/users).
     """
     stmt = select(User).where(
         User.role == UserRole.student,
         User.tenant_id == staff.tenant_id,
+        User.is_active.is_(True),
     )
     if section_id is not None:
         section = db.get(Section, section_id)

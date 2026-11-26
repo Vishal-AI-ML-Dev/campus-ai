@@ -7,6 +7,9 @@
 import { useEffect } from "react"
 import Link from "next/link"
 
+import { sendClientError } from "@/components/observability/ClientErrorReporter"
+import { reportingEnabled } from "@/components/observability/clientErrors"
+
 export default function DashboardError({
 	error,
 	reset,
@@ -16,6 +19,10 @@ export default function DashboardError({
 }) {
 	useEffect(() => {
 		console.error("Dashboard route error:", error)
+		// Phase 10.5: content-free report (class name, route, digest only).
+		if (reportingEnabled(process.env.NEXT_PUBLIC_CLIENT_ERROR_REPORTING_ENABLED)) {
+			sendClientError("render", error, error.digest)
+		}
 	}, [error])
 
 	return (
