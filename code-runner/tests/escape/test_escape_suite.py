@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import stat
 import subprocess
 import sys
@@ -24,6 +25,7 @@ from pathlib import Path
 import pytest
 
 from runner.executor import Executor
+from runner.limits import FSIZE_BYTES
 from runner.pack import load_pack
 from runner.sandbox import MANAGED_LABEL, DockerCLI, self_check
 from runner.schemas import ExecutionRequest
@@ -118,6 +120,12 @@ def test_host_filesystem_network_and_privileges_are_unreachable(sandbox, name):
     text = no_escape(resp)
     assert resp.verdict == "accepted", text[:2000]
     assert "BLOCKED" in resp.visible[0].stdout_trunc
+    if name == "disk_fill.c":
+        # Proof that the 16 MiB RLIMIT_FSIZE stopped the writes: the kernel raised SIGXFSZ (the fixture records it
+        # instead of dying) and no more than 16 MiB was written.
+        out = resp.visible[0].stdout_trunc
+        assert "sigxfsz=1" in out, out
+        assert int(out.split()[2]) <= FSIZE_BYTES, out
     no_leftovers(docker)
 
 
@@ -138,11 +146,21 @@ def test_orphans_and_zombies_are_gone_before_the_next_test(sandbox):
                 os._exit(0)
             print("left-orphans")
         else:
-            others = []
+            # Candidate leftovers are processes of the RUN uid (65534) other than this census. The container's own
+            # init (pid 1) and its builder-owned keep-alive (`sleep infinity`, uid 65533) are runner infrastructure.
+            me, run_uid, others = os.getpid(), os.getuid(), []
             for pid in os.listdir("/proc"):
-                if pid.isdigit() and int(pid) not in (1, os.getpid()):
-                    others.append(pid)
-            print("ESCAPED leftovers" if others else "BLOCKED leftovers")
+                if not pid.isdigit() or int(pid) == me:
+                    continue
+                try:
+                    with open(f"/proc/{pid}/status") as f:
+                        status = dict(line.rstrip("\\n").split(":\\t", 1) for line in f if ":\\t" in line)
+                except OSError:
+                    continue  # exited while we looked
+                uids = status.get("Uid", "").split()
+                if uids and int(uids[0]) == run_uid:
+                    others.append(f"pid={pid} uid={uids[0]} name={status.get('Name', '?')}")
+            print("ESCAPED leftovers " + "; ".join(others) if others else "BLOCKED leftovers")
     """)
     resp, _ = run(executor, spawn, "python313", kind="visible", problem="synthetic-census")
     no_escape(resp)
@@ -211,14 +229,27 @@ def test_runner_killed_mid_execution_is_cleaned_up_by_the_reaper(sandbox, tmp_pa
             source={source!r}, custom_input="x\\n"))
         ex.run(req, "victim")
     """))
+    def running_run_containers() -> list[str]:
+        # The first managed container is the COMPILE one (cr-c-*); the run phase has a running cr-r-* container.
+        p = subprocess.run([docker.binary, "ps", "--no-trunc", "--filter", f"label={MANAGED_LABEL}=1",
+                            "--filter", "status=running", "--format", "{{.ID}} {{.Names}}"],
+                           capture_output=True, text=True, timeout=30, check=False)
+        return [line.split()[0] for line in p.stdout.splitlines() if line.split()[1:2] and
+                line.split()[1].startswith("cr-r-")]
+
     victim = subprocess.Popen([sys.executable, str(script)])
     deadline = time.monotonic() + 60
-    while time.monotonic() < deadline and not docker.list_managed():
-        time.sleep(0.5)
-    time.sleep(3)
-    victim.kill()
+    run_cids: list[str] = []
+    while time.monotonic() < deadline and victim.poll() is None and not run_cids:
+        run_cids = running_run_containers()
+        if not run_cids:
+            time.sleep(0.05)
+    assert run_cids, f"the victim never reached the run phase (victim exit code {victim.poll()})"
+    victim.kill()  # mid-execution: its run-phase container is running right now
     victim.wait(30)
-    assert docker.list_managed(), "the victim never started a container"
+    assert victim.returncode == -signal.SIGKILL, victim.returncode  # killed, did not finish and clean up
+    managed = [cid for cid, _ in docker.list_managed()]
+    assert set(run_cids) <= set(managed), "the abandoned run container must still exist for the reaper"
     from runner.observability import Metrics
     from runner.sandbox import SelfCheck
     from runner.service import Runner
