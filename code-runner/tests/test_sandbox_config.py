@@ -153,16 +153,38 @@ def _local_docker() -> str | None:
     return path if ok else None
 
 
-@pytest.mark.skipif(_local_docker() is None, reason="no local Docker daemon")
+def _local_docker_is_bare() -> bool:
+    """True when the local daemon has NO runsc runtime registered (plain Docker).
+
+    The CI sandbox job runs the "not gvisor" tests on the host it has just provisioned with the pinned
+    Docker + registered runsc + pulled images, where the self-check rightly PASSES; "bare Docker" cannot
+    be observed there. The refusal on a gVisor host is covered by the missing-binary test below.
+    """
+    path = _local_docker()
+    return path is not None and pins.RUNSC_RUNTIME_NAME not in DockerCLI(path).runtimes()
+
+
+@pytest.mark.skipif(not _local_docker_is_bare(), reason="needs a local Docker daemon WITHOUT a runsc runtime")
 def test_real_local_docker_without_gvisor_is_refused():
-    """Against this machine's real Docker daemon (no gVisor): the self-check must refuse to serve.
+    """Against this machine's real, bare Docker daemon (no runsc runtime): the self-check must refuse to serve.
 
     Only read-only Docker queries run here (version, info, image inspect). No container is created.
     """
     docker = DockerCLI(_local_docker())
     result = self_check(docker)
     assert not result.ok
-    assert "runsc_runtime_missing" in result.failures or "runsc_binary_missing" in result.failures
+    assert "runsc_runtime_missing" in result.failures
+
+
+@pytest.mark.skipif(_local_docker() is None, reason="no local Docker daemon")
+def test_real_local_docker_without_the_runsc_binary_is_refused(tmp_path):
+    """Any real daemon (bare, or the CI gVisor host): without the approved runsc binary, never serve.
+
+    Read-only Docker queries only. No container is created.
+    """
+    result = self_check(DockerCLI(_local_docker()), runsc_path=str(tmp_path / "no-runsc"))
+    assert not result.ok
+    assert "runsc_binary_missing" in result.failures
 
 
 @pytest.mark.skipif(_local_docker() is None, reason="no local Docker daemon")
