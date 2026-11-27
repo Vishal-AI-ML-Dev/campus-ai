@@ -8,7 +8,7 @@ import pytest
 
 from fakes import FakeClock, FakeDocker
 from runner.executor import Executor
-from runner.languages import BUILDER_UID, RUN_UID
+from runner.languages import BUILDER_UID, COMPILE_TMP_DIR, RUN_DIR, RUN_UID
 from runner.pack import PackMismatch
 from runner.schemas import ExecutionRequest
 
@@ -269,3 +269,30 @@ def test_programs_and_cleanup_run_as_the_run_uid_but_never_own_the_container(pac
             assert user == RUN_UID, argv
     restores = [u for c, u, a in docker.exec_log if c == run_cid and a[:1] == ("tar",)]
     assert restores == [BUILDER_UID]
+
+
+@pytest.mark.parametrize("language", ["c11", "cpp17", "java21", "python313"])
+def test_compile_temporaries_go_to_a_builder_dir_in_the_workspace_not_tmp(pack, language):
+    """/tmp is a read-only mount, so the compiler's TMPDIR is a builder-owned dir inside the /workspace tmpfs; the
+    build tar copies only src/ and build/, and programs keep TMPDIR inside their run dir."""
+    ex, docker = make(pack)
+    calls = []
+    real_exec = docker.exec
+
+    def recording_exec(cid, user, argv, stdin, timeout_s, cap, workdir="/workspace", env=None):
+        calls.append((cid, user, tuple(argv), env))
+        return real_exec(cid, user, argv, stdin, timeout_s, cap, workdir, env)
+
+    docker.exec = recording_exec
+    ex.run(request("ECHO_FIRST", language=language), "r")
+    compile_cid, run_cid = docker.created[0], docker.created[1]
+    mkdirs = [a for c, u, a, e in calls if c == compile_cid and a[:1] == ("mkdir",)]
+    assert mkdirs and COMPILE_TMP_DIR in mkdirs[0]
+    from runner.languages import LANGUAGES
+    compiles = [(u, e) for c, u, a, e in calls if c == compile_cid and a == LANGUAGES[language].compile_cmd]
+    assert compiles == [(BUILDER_UID, {"TMPDIR": COMPILE_TMP_DIR})]
+    assert COMPILE_TMP_DIR.startswith("/workspace/")
+    tars = [a for c, u, a, e in calls if c == compile_cid and a[:1] == ("tar",)]
+    assert tars and tars[0][-2:] == ("src", "build")  # the compiler scratch dir is never copied to the run container
+    runs = [e for c, u, a, e in calls if c == run_cid and u == RUN_UID and a and a[0] not in ("mkdir", "sh")]
+    assert runs and all(e is not None and e["TMPDIR"] == RUN_DIR for e in runs)

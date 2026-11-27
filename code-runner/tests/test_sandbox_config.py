@@ -10,6 +10,7 @@ from runner.languages import LANGUAGES, RUN_UID
 from runner.sandbox import (
     ContainerSpec,
     DockerCLI,
+    TMP_TMPFS,
     SandboxFault,
     assert_hardened,
     container_argv,
@@ -38,6 +39,37 @@ def test_container_arguments_carry_every_control():
     joined = " ".join(argv)
     for bad in ("docker.sock", "/var/run", "--privileged", "--volume", "--mount", "--device", "-v "):
         assert bad not in joined
+
+
+def test_tmp_is_an_explicit_read_only_tmpfs():
+    """gVisor mounts a WRITABLE internal tmpfs over an empty, unmounted /tmp even with --read-only (runsc mountTmp);
+    an explicit read-only /tmp mount is what prevents it."""
+    argv = container_argv(spec())
+    tmp = [a for a in argv if a.startswith("--tmpfs=/tmp:")]
+    assert tmp == [TMP_TMPFS]
+    options = set(TMP_TMPFS.split(":", 1)[1].split(","))
+    assert {"ro", "nosuid", "noexec"} <= options and "rw" not in options and "exec" not in options
+
+
+@pytest.mark.parametrize("tmp", [
+    None,                                         # no /tmp mount: gVisor would add a writable one
+    "--tmpfs=/tmp",                               # writable default options
+    "--tmpfs=/tmp:rw,nosuid,nodev,size=1m",       # explicitly writable
+    "--tmpfs=/tmp:ro,exec,nosuid,nodev,size=1m",  # executable
+])
+def test_writable_or_missing_tmp_is_refused(tmp):
+    argv = [a for a in container_argv(spec()) if a != TMP_TMPFS]
+    if tmp is not None:
+        argv.insert(argv.index("--cpus=1"), tmp)
+    with pytest.raises(SandboxFault, match="unsafe_configuration"):
+        assert_hardened(argv)
+
+
+def test_a_second_tmp_mount_is_refused():
+    argv = container_argv(spec())
+    argv.insert(argv.index("--cpus=1"), "--tmpfs=/tmp:rw")
+    with pytest.raises(SandboxFault, match="unsafe_configuration"):
+        assert_hardened(argv)
 
 
 @pytest.mark.parametrize("flag", ["--runtime=runsc", "--network=none", "--cap-drop=ALL",

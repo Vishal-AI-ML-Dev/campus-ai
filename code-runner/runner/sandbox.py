@@ -6,7 +6,9 @@ shell string); request data only ever travels as bytes on a process's stdin, nev
 Hardening (spec §4.3, P8-S2), applied to every container and verified by ``assert_hardened`` before creation:
 ``--runtime=runsc`` (gVisor, systrap platform, its own network disabled), never ``--privileged``,
 ``--cap-drop ALL``, ``--security-opt no-new-privileges``, a fixed non-root uid, ``--read-only`` root filesystem,
-``--tmpfs /workspace`` (nosuid, nodev, size-capped), ``--network none``, ``--ipc none``, ``--memory`` with equal
+``--tmpfs /workspace`` (nosuid, nodev, size-capped), an explicit READ-ONLY ``--tmpfs /tmp`` (gVisor otherwise mounts a
+writable internal tmpfs at an empty, unmounted /tmp even under ``--read-only``), ``--network none``, ``--ipc none``,
+``--memory`` with equal
 ``--memory-swap`` (no swap), ``--pids-limit``, ``--ulimit nofile/fsize/core/cpu``, ``--init``, ``--log-driver
 none``, ``--pull never`` and an image referenced by ``@sha256`` digest. No volumes, bind mounts, devices, published
 ports, extra capabilities or host namespaces, and no Docker socket inside any container.
@@ -27,6 +29,11 @@ from dataclasses import dataclass, field
 from . import pins
 from .languages import WORKSPACE
 from .limits import FSIZE_BYTES, WORKSPACE_TMPFS_MB
+
+# /tmp is mounted explicitly and read-only. Without an explicit /tmp mount, runsc's mountTmp (runsc/boot/vfs.go,
+# release-20261102.0) mounts a WRITABLE internal tmpfs (mode=01777) over an empty /tmp, defeating --read-only. Any
+# explicit mount at /tmp makes it skip that; "ro" makes the tmpfs read-only. Exact string: assert_hardened requires it.
+TMP_TMPFS = "--tmpfs=/tmp:ro,nosuid,nodev,noexec,size=1m"
 
 MANAGED_LABEL = "campus-ai-runner"
 CREATED_LABEL = "campus-ai-runner.created"
@@ -86,6 +93,7 @@ def container_argv(spec: ContainerSpec) -> list[str]:
         f"--user={spec.user}:{spec.user}",
         "--read-only",
         f"--tmpfs={WORKSPACE}:rw,exec,nosuid,nodev,size={WORKSPACE_TMPFS_MB}m,mode=1777",
+        TMP_TMPFS,
         "--cpus=1",
         f"--memory={spec.memory_mb}m",
         f"--memory-swap={spec.memory_mb}m",
@@ -108,7 +116,7 @@ def assert_hardened(argv: Sequence[str]) -> None:
     required = {
         "--runtime=runsc", "--pull=never", "--network=none", "--ipc=none", "--cap-drop=ALL",
         "--security-opt=no-new-privileges", "--read-only", "--init", "--log-driver=none", "--cpus=1",
-        "--ulimit=core=0:0",
+        "--ulimit=core=0:0", TMP_TMPFS,
     }
     missing = required - set(argv)
     if missing:
@@ -134,8 +142,10 @@ def assert_hardened(argv: Sequence[str]) -> None:
         raise SandboxFault("unsafe_configuration")
     if not any(a.startswith("--pids-limit=") for a in argv) or not any(a.startswith("--tmpfs=") for a in argv):
         raise SandboxFault("unsafe_configuration")
+    # Exactly two tmpfs mounts: the size-capped nosuid /workspace, and /tmp exactly as TMP_TMPFS (read-only).
     tmpfs = [a for a in argv if a.startswith("--tmpfs=")]
-    if len(tmpfs) != 1 or not tmpfs[0].startswith(f"--tmpfs={WORKSPACE}:") or "nosuid" not in tmpfs[0]:
+    workspace = [a for a in tmpfs if a.startswith(f"--tmpfs={WORKSPACE}:")]
+    if len(tmpfs) != 2 or len(workspace) != 1 or "nosuid" not in workspace[0] or tmpfs.count(TMP_TMPFS) != 1:
         raise SandboxFault("unsafe_configuration")
     images = [a for a in argv if a in pins.ALL_IMAGES]
     if len(images) != 1 or "@sha256:" not in images[0]:

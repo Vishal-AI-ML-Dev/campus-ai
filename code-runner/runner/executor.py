@@ -28,7 +28,18 @@ from dataclasses import dataclass, field
 
 from . import packformat as pf
 from .checkers import check
-from .languages import BUILD_DIR, BUILDER_UID, LANGUAGES, RUN_DIR, RUN_UID, SRC_DIR, WORKSPACE, Language, run_command
+from .languages import (
+    BUILD_DIR,
+    BUILDER_UID,
+    COMPILE_TMP_DIR,
+    LANGUAGES,
+    RUN_DIR,
+    RUN_UID,
+    SRC_DIR,
+    WORKSPACE,
+    Language,
+    run_command,
+)
 from .limits import (
     DISPLAY_COMPILE_BYTES,
     DISPLAY_STDERR_BYTES,
@@ -63,6 +74,8 @@ _CLEANUP = (
     f"mkdir -p {RUN_DIR}",
 )
 _RUN_ENV = {"HOME": RUN_DIR, "LANG": "C.UTF-8", "TMPDIR": RUN_DIR}
+# The compiler's temporaries go to a builder-owned dir in /workspace: /tmp is a read-only mount (sandbox.TMP_TMPFS).
+_COMPILE_ENV = {"TMPDIR": COMPILE_TMP_DIR}
 
 
 @dataclass
@@ -201,7 +214,9 @@ class Executor:
         d, lang = self.docker, ctx.lang
         start = self.clock()
         cid = self._new_container(ctx, compile_step=True)
-        self._must(d.exec(cid, BUILDER_UID, ["mkdir", "-p", SRC_DIR, BUILD_DIR], b"", 15, 4096), "exec_failed")
+        self._must(
+            d.exec(cid, BUILDER_UID, ["mkdir", "-p", SRC_DIR, BUILD_DIR, COMPILE_TMP_DIR], b"", 15, 4096), "exec_failed"
+        )
         self._must(
             d.exec(
                 cid, BUILDER_UID, ["dd", f"of={SRC_DIR}/{lang.source_file}", "bs=65536", "status=none"],
@@ -210,7 +225,10 @@ class Executor:
             "exec_failed",
         )
         budget = min(lang.compile_wall_s, ctx.deadline - self.clock())
-        r = d.exec(cid, BUILDER_UID, list(lang.compile_cmd), b"", max(budget, 0.1), DISPLAY_COMPILE_BYTES * 4)
+        r = d.exec(
+            cid, BUILDER_UID, list(lang.compile_cmd), b"", max(budget, 0.1), DISPLAY_COMPILE_BYTES * 4,
+            env=_COMPILE_ENV,
+        )
         elapsed = round_ms((self.clock() - start) * 1000)
         if r.timed_out:
             return CompileResult(ok=False, message_trunc="Compilation exceeded the time limit.", time_ms=elapsed), None
