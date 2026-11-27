@@ -302,6 +302,9 @@ jobs:
       CONTAINERD_SHA256: "f811ab57d1f4bb0cce19df7d526da8c711d8ebea0447cc83da1999188e664122"
       GVISOR_URL: "https://storage.googleapis.com/gvisor/releases/release/20261102.0/x86_64/gvisor.tar.bz2"
       GVISOR_SHA512: "2e6671bb2d033b871c5811ab57e16ac570988b0e0054c525f911cfaf191bab3ca4efb08e0a98daa4b9e7d248f9e5776ef2ef2f8a6b82d829646a42924c98bb05"
+      GVISOR_RELEASE: "release-20261102.0"
+      # Every sidecar in that archive's gvisor-bin/ (listed from the verified archive; installed together).
+      GVISOR_SIDECARS: "checkpointgofer gvisor-proc-umounter gvisor-sentry-prewarmer gvisor_sentry runsc-fd-parking runsc-metric-server"
       RUNSC_SHA256: "c5a5a7ba1209b605d08874fdd4429035f95afcb2d482bc95ed3fb13d31a25098"
       SHIM_SHA256: "6187d6d34f4996e859353fbb4c56d5ed41fc35b5afa44bff766f4e4b424da5bb"
     steps:
@@ -322,14 +325,20 @@ jobs:
           echo "${DOCKER_CE_CLI_SHA256}  $(ls docker-ce-cli_*.deb)" | sha256sum --check --strict
           echo "${CONTAINERD_SHA256}  $(ls containerd.io_*.deb)" | sha256sum --check --strict
           sudo apt-get install -y --allow-downgrades ./docker-ce_*.deb ./docker-ce-cli_*.deb ./containerd.io_*.deb
-      - name: Install pinned gVisor (archive SHA-512 and binary SHA-256 verified)
+      # runsc needs its companion sidecars in gvisor-bin/ next to it (e.g. gvisor_sentry); without them every
+      # `docker run --runtime=runsc` fails ("sidecar gvisor_sentry not usable"). All files come from the ONE
+      # archive verified above (same release), never downloaded separately.
+      - name: Install pinned gVisor (archive SHA-512 and binary SHA-256 verified; runsc, shim and gvisor-bin/)
         run: |
           curl -fsSL -o "$RUNNER_TEMP/gvisor.tar.bz2" "$GVISOR_URL"
           echo "${GVISOR_SHA512}  $RUNNER_TEMP/gvisor.tar.bz2" | sha512sum --check --strict
-          tar -xjf "$RUNNER_TEMP/gvisor.tar.bz2" -C "$RUNNER_TEMP" runsc containerd-shim-runsc-v1
+          tar -xjf "$RUNNER_TEMP/gvisor.tar.bz2" -C "$RUNNER_TEMP" runsc containerd-shim-runsc-v1 gvisor-bin
           echo "${RUNSC_SHA256}  $RUNNER_TEMP/runsc" | sha256sum --check --strict
           echo "${SHIM_SHA256}  $RUNNER_TEMP/containerd-shim-runsc-v1" | sha256sum --check --strict
+          for f in $GVISOR_SIDECARS; do test -f "$RUNNER_TEMP/gvisor-bin/$f" || { echo "missing sidecar in archive: $f"; exit 1; }; done
           sudo install -m 0755 "$RUNNER_TEMP/runsc" "$RUNNER_TEMP/containerd-shim-runsc-v1" /usr/local/bin/
+          sudo install -d -m 0755 /usr/local/bin/gvisor-bin
+          sudo install -m 0755 "$RUNNER_TEMP"/gvisor-bin/* /usr/local/bin/gvisor-bin/
       - name: Register runsc (systrap platform, gVisor networking off) and restart Docker
         run: |
           current=/etc/docker/daemon.json
@@ -348,14 +357,26 @@ jobs:
           version: "0.13.8"
       - name: Install dependencies (locked)
         run: uv sync --frozen
-      # Diagnostic only: start ONE benign container (`sleep infinity`, no fixture, no user code) with the runner's own
-      # hardened argv (container_argv + assert_hardened, --runtime=runsc) and print Docker's exit code and sanitized,
-      # truncated stderr, which DockerCLI.create discards. Never gates the job; the escape suite still decides.
-      - name: Diagnose sandbox container start (benign, gVisor runtime)
-        continue-on-error: true
+      # Preflight (fails the job; never falls back to plain Docker): the gVisor install is complete and matches the
+      # pin, Docker has runsc registered, and ONE benign container (`sleep infinity`, no fixture, no user code) starts
+      # under runsc with the runner's own hardened argv (container_argv + assert_hardened). Docker's exit code and
+      # sanitized, truncated stderr are printed, since DockerCLI.create discards them.
+      - name: Preflight gVisor install and benign runsc smoke container
         run: |
+          set -euo pipefail
+          test -x /usr/local/bin/runsc || { echo "::error::/usr/local/bin/runsc missing or not executable"; exit 1; }
+          for f in $GVISOR_SIDECARS; do
+            test -x "/usr/local/bin/gvisor-bin/$f" || { echo "::error::sidecar /usr/local/bin/gvisor-bin/$f missing or not executable"; exit 1; }
+            cmp -s "$RUNNER_TEMP/gvisor-bin/$f" "/usr/local/bin/gvisor-bin/$f" || { echo "::error::sidecar $f differs from the pinned archive"; exit 1; }
+          done
+          echo "gvisor-bin: $(ls /usr/local/bin/gvisor-bin | tr '\n' ' ')"
+          /usr/local/bin/runsc --version | grep -F "$GVISOR_RELEASE" > /dev/null || { echo "::error::runsc is not $GVISOR_RELEASE"; exit 1; }
+          echo "runsc: $(/usr/local/bin/runsc --version | head -1)"
+          docker info --format '{{json .Runtimes}}' | jq -e '.runsc.path == "/usr/local/bin/runsc"' > /dev/null \
+            || { echo "::error::Docker has no runsc runtime at /usr/local/bin/runsc"; exit 1; }
+          echo "docker runtime runsc: registered"
           uv run python - <<'PY'
-          import re, shutil, subprocess, time, uuid
+          import re, shutil, subprocess, sys, time, uuid
           from runner.languages import BUILDER_UID, LANGUAGES
           from runner.sandbox import ContainerSpec, assert_hardened, container_argv
 
@@ -372,7 +393,8 @@ jobs:
                                user=BUILDER_UID, name=name, created_epoch=int(time.time()))
           argv = container_argv(spec)
           assert_hardened(argv)
-          print("diag argv flags:", " ".join(a for a in argv if a.startswith("--") and not a.startswith(("--name", "--label"))))
+          print("smoke argv flags:", " ".join(a for a in argv if a.startswith("--") and not a.startswith(("--name", "--label"))))
+          ok = False
           try:
               p = subprocess.run([docker, *argv], capture_output=True, timeout=120, check=False)
               print(f"docker run exit={p.returncode} container_id_printed={bool(p.stdout.strip())}")
@@ -380,7 +402,9 @@ jobs:
               if p.returncode == 0:
                   s = subprocess.run([docker, "inspect", "--format", "{{.State.Status}} runtime={{.HostConfig.Runtime}}", name],
                                      capture_output=True, timeout=30, check=False)
-                  print(f"container state: {clean(s.stdout)}")
+                  state = clean(s.stdout)
+                  print(f"container state: {state}")
+                  ok = state == "running runtime=runsc"
           except (OSError, subprocess.SubprocessError) as exc:
               print(f"docker run did not complete: {type(exc).__name__}")
           finally:
@@ -388,6 +412,10 @@ jobs:
                   subprocess.run([docker, "rm", "--force", name], capture_output=True, timeout=60, check=False)
               except (OSError, subprocess.SubprocessError) as exc:
                   print(f"cleanup did not complete: {type(exc).__name__}")
+          if not ok:
+              print("::error::benign smoke container did not start under runsc; refusing to run the escape suite")
+              sys.exit(1)
+          print("smoke: hardened container running under runsc")
           PY
       - name: Runner unit, privacy and configuration tests
         run: uv run pytest -m "not gvisor"
