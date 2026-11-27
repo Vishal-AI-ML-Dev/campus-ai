@@ -1,8 +1,10 @@
 """Structured LLM calls with a JSON fallback (same approach as resume._ats_invoke).
 
 1. Ask the provider for schema-bound output (function calling / JSON mode).
-2. If that fails or returns junk, make a plain call and extract the first JSON
-   object from the text.
+2. If that fails: first try the provider's rejected generation (Groq returns
+   it with a 400 ``tool_use_failed``, no extra request); otherwise make a plain
+   call that carries the JSON Schema as an instruction, and parse the first
+   JSON value in the text that validates.
 3. If that also fails, raise ``LLMUnavailable``; each graph node decides
    whether it has a deterministic fallback or must fail the request.
 
@@ -20,8 +22,10 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any, TypeVar
+from functools import lru_cache
+from typing import Any, TypeVar, get_origin
 
+from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, ValidationError
 
 import llm_metrics
@@ -39,12 +43,130 @@ class LLMUnavailable(RuntimeError):
     """The provider failed or returned unusable output for this step."""
 
 
+_MAX_JSON_CANDIDATES = 200
+_TOOL_WRAPPER_KEYS = ("arguments", "parameters")
+
+
+def _json_values(text: str) -> list[Any]:
+    """Every JSON object/array that decodes at some '{' or '[' in ``text``.
+
+    Tolerates prose, markdown fences and ``<function=...>`` wrappers around the
+    JSON, which a plain-text answer (or Groq's ``failed_generation``) often has.
+    """
+    decoder = json.JSONDecoder()
+    values: list[Any] = []
+    tried = 0
+    i = 0
+    while i < len(text) and tried < _MAX_JSON_CANDIDATES:
+        if text[i] in "{[":
+            tried += 1
+            try:
+                value, end = decoder.raw_decode(text, i)
+            except ValueError:
+                i += 1
+                continue
+            if isinstance(value, (dict, list)) and value:
+                values.append(value)
+            i = end
+        else:
+            i += 1
+    return values
+
+
+def _unwrap(schema: type[BaseModel], data: Any) -> Any:
+    """Peel tool-call / schema-name wrappers models put around the payload."""
+    fields = set(schema.model_fields)
+    for _ in range(4):
+        if (
+            isinstance(data, list)
+            and len(data) == 1
+            and isinstance(data[0], dict)
+            and "name" in data[0]
+            and any(k in data[0] for k in _TOOL_WRAPPER_KEYS)
+        ):
+            data = data[0]  # [{"name": ..., "arguments": {...}}]
+            continue
+        if not isinstance(data, dict) or fields & data.keys():
+            break
+        inner = next((data[k] for k in (*_TOOL_WRAPPER_KEYS, schema.__name__) if k in data), None)
+        if inner is None and len(data) == 1:
+            inner = next(iter(data.values()))
+        if isinstance(inner, str):
+            try:
+                inner = json.loads(inner)
+            except ValueError:
+                break
+        if not isinstance(inner, (dict, list)):
+            break
+        data = inner
+    if isinstance(data, list) and len(fields) == 1:
+        (only,) = fields
+        if get_origin(schema.model_fields[only].annotation) is list:
+            data = {only: data}  # a bare list for a single-list schema
+    return data
+
+
+def _parse_output(schema: type[M], text: str) -> M:
+    """First JSON value in ``text`` that validates against ``schema``."""
+    last: Exception = ValueError("no JSON object in model output")
+    for value in _json_values(text):
+        try:
+            return schema.model_validate(_unwrap(schema, value))
+        except ValidationError as exc:
+            last = exc
+    raise last
+
+
 def _extract_json(text: str) -> Any:
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end <= start:
+    """Kept for callers/tests: the first JSON object or array in ``text``."""
+    values = _json_values(text)
+    if not values:
         raise ValueError("no JSON object in model output")
-    return json.loads(text[start : end + 1])
+    return values[0]
+
+
+@lru_cache(maxsize=64)
+def _json_instruction(schema: type[BaseModel]) -> str:
+    schema_json = json.dumps(schema.model_json_schema(), separators=(",", ":"))
+    return (
+        "Return your answer as ONE JSON object that matches this JSON Schema. "
+        "Output only the JSON: no markdown, no code fences, no text before or "
+        "after it. Escape any double quotes inside strings.\n"
+        f"JSON Schema: {schema_json}"
+    )
+
+
+def _json_messages(schema: type[BaseModel], messages: list[Any]) -> list[Any]:
+    """The plain-call prompt: the original messages plus the output format.
+
+    The structured call carries the schema in its tool definition; a plain call
+    has no tool, so without this the model answers in prose (unparseable).
+    """
+    return [*messages, HumanMessage(content=_json_instruction(schema))]
+
+
+def _error_code(exc: BaseException) -> str:
+    """Provider error code (e.g. Groq ``tool_use_failed``) for logs - never text."""
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        err = body.get("error", body)
+        code = err.get("code") if isinstance(err, dict) else None
+        if isinstance(code, str):
+            safe = "".join(ch for ch in code if ch.isalnum() or ch in "_-.")[:40]
+            if safe:
+                return safe
+    status = getattr(exc, "status_code", None)
+    return str(status) if isinstance(status, int) else "-"
+
+
+def _failed_generation(exc: BaseException) -> str | None:
+    """Groq returns the rejected tool-call text with a 400 ``tool_use_failed``."""
+    body = getattr(exc, "body", None)
+    if not isinstance(body, dict):
+        return None
+    err = body.get("error", body)
+    text = err.get("failed_generation") if isinstance(err, dict) else None
+    return text if isinstance(text, str) and text.strip() else None
 
 
 def invoke_structured(schema: type[M], messages: list[Any], *, step: str) -> M:
@@ -86,16 +208,30 @@ def _invoke_structured(
         if isinstance(result, dict):
             return schema.model_validate(result), "ok"
     except Exception as exc:  # noqa: BLE001 - fall through to the JSON path
-        logger.warning("interview %s: structured output failed (%s)", step, type(exc).__name__)
+        logger.warning(
+            "interview %s: structured output failed (%s, code=%s)",
+            step,
+            type(exc).__name__,
+            _error_code(exc),
+        )
         # Phase 10.3: the quota is exhausted - a JSON-path retry would only
         # spend (or be refused) again. Flag it for the backend and stop here.
         if is_quota_error(exc):
             _flag_quota()
             raise LLMUnavailable(f"{step}: provider quota exhausted") from exc
+        # Groq rejects a tool call whose arguments break the JSON Schema (400
+        # tool_use_failed) but returns what the model generated. It is often
+        # valid after unwrapping; using it saves a second provider request.
+        generated = _failed_generation(exc)
+        if generated is not None:
+            try:
+                return _parse_output(schema, generated), "json_fallback"
+            except (ValidationError, ValueError):
+                logger.warning("interview %s: failed_generation unusable, retrying as JSON", step)
 
     try:
-        raw = get_chat_model().invoke(messages, config=cfg)
-        return schema.model_validate(_extract_json(str(raw.content))), "json_fallback"
+        raw = get_chat_model().invoke(_json_messages(schema, messages), config=cfg)
+        return _parse_output(schema, str(raw.content)), "json_fallback"
     except (ValidationError, ValueError) as exc:
         logger.warning("interview %s: unparseable model output (%s)", step, type(exc).__name__)
         raise LLMUnavailable(f"{step}: unusable model output") from exc
