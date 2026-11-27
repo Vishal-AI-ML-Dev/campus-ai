@@ -10,6 +10,7 @@ from runner.languages import LANGUAGES, RUN_UID
 from runner.sandbox import (
     ContainerSpec,
     DockerCLI,
+    TMP_TMPFS,
     SandboxFault,
     assert_hardened,
     container_argv,
@@ -38,6 +39,37 @@ def test_container_arguments_carry_every_control():
     joined = " ".join(argv)
     for bad in ("docker.sock", "/var/run", "--privileged", "--volume", "--mount", "--device", "-v "):
         assert bad not in joined
+
+
+def test_tmp_is_an_explicit_read_only_tmpfs():
+    """gVisor mounts a WRITABLE internal tmpfs over an empty, unmounted /tmp even with --read-only (runsc mountTmp);
+    an explicit read-only /tmp mount is what prevents it."""
+    argv = container_argv(spec())
+    tmp = [a for a in argv if a.startswith("--tmpfs=/tmp:")]
+    assert tmp == [TMP_TMPFS]
+    options = set(TMP_TMPFS.split(":", 1)[1].split(","))
+    assert {"ro", "nosuid", "noexec"} <= options and "rw" not in options and "exec" not in options
+
+
+@pytest.mark.parametrize("tmp", [
+    None,                                         # no /tmp mount: gVisor would add a writable one
+    "--tmpfs=/tmp",                               # writable default options
+    "--tmpfs=/tmp:rw,nosuid,nodev,size=1m",       # explicitly writable
+    "--tmpfs=/tmp:ro,exec,nosuid,nodev,size=1m",  # executable
+])
+def test_writable_or_missing_tmp_is_refused(tmp):
+    argv = [a for a in container_argv(spec()) if a != TMP_TMPFS]
+    if tmp is not None:
+        argv.insert(argv.index("--cpus=1"), tmp)
+    with pytest.raises(SandboxFault, match="unsafe_configuration"):
+        assert_hardened(argv)
+
+
+def test_a_second_tmp_mount_is_refused():
+    argv = container_argv(spec())
+    argv.insert(argv.index("--cpus=1"), "--tmpfs=/tmp:rw")
+    with pytest.raises(SandboxFault, match="unsafe_configuration"):
+        assert_hardened(argv)
 
 
 @pytest.mark.parametrize("flag", ["--runtime=runsc", "--network=none", "--cap-drop=ALL",
@@ -153,16 +185,38 @@ def _local_docker() -> str | None:
     return path if ok else None
 
 
-@pytest.mark.skipif(_local_docker() is None, reason="no local Docker daemon")
+def _local_docker_is_bare() -> bool:
+    """True when the local daemon has NO runsc runtime registered (plain Docker).
+
+    The CI sandbox job runs the "not gvisor" tests on the host it has just provisioned with the pinned
+    Docker + registered runsc + pulled images, where the self-check rightly PASSES; "bare Docker" cannot
+    be observed there. The refusal on a gVisor host is covered by the missing-binary test below.
+    """
+    path = _local_docker()
+    return path is not None and pins.RUNSC_RUNTIME_NAME not in DockerCLI(path).runtimes()
+
+
+@pytest.mark.skipif(not _local_docker_is_bare(), reason="needs a local Docker daemon WITHOUT a runsc runtime")
 def test_real_local_docker_without_gvisor_is_refused():
-    """Against this machine's real Docker daemon (no gVisor): the self-check must refuse to serve.
+    """Against this machine's real, bare Docker daemon (no runsc runtime): the self-check must refuse to serve.
 
     Only read-only Docker queries run here (version, info, image inspect). No container is created.
     """
     docker = DockerCLI(_local_docker())
     result = self_check(docker)
     assert not result.ok
-    assert "runsc_runtime_missing" in result.failures or "runsc_binary_missing" in result.failures
+    assert "runsc_runtime_missing" in result.failures
+
+
+@pytest.mark.skipif(_local_docker() is None, reason="no local Docker daemon")
+def test_real_local_docker_without_the_runsc_binary_is_refused(tmp_path):
+    """Any real daemon (bare, or the CI gVisor host): without the approved runsc binary, never serve.
+
+    Read-only Docker queries only. No container is created.
+    """
+    result = self_check(DockerCLI(_local_docker()), runsc_path=str(tmp_path / "no-runsc"))
+    assert not result.ok
+    assert "runsc_binary_missing" in result.failures
 
 
 @pytest.mark.skipif(_local_docker() is None, reason="no local Docker daemon")

@@ -16,6 +16,9 @@ int main(void) {
     report("unshare_mount_ns", unshare(CLONE_NEWNS) != 0);
     report("unshare_net_ns", unshare(CLONE_NEWNET) != 0);
     report("chroot", chroot("/") != 0);
-    report("still_uid_65534", getuid() != 65534 || geteuid() != 65534);
+    /* The program runs as RUN_UID 65534 (docker exec --user); 65533 is only the builder/keep-alive uid. The probe
+       is BLOCKED while both ids are still 65534 and ESCAPED if either changed. (Was inverted: a correctly confined
+       program reported ESCAPED.) */
+    report("still_uid_65534", getuid() == 65534 && geteuid() == 65534);
     return 0;
 }

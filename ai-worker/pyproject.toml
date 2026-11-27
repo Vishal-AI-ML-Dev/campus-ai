@@ -32,3 +32,11 @@ dependencies = [
 dev = [
     "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+# The worker is flat modules (face.py, llm.py, interview/, ...) in this folder.
+# The `pytest` entry point that CI runs (`uv run pytest`) does not add the CWD
+# to sys.path the way `python -m pytest` does, so tests that import a worker
+# module before any test has inserted the path (test_face_config.py is first)
+# failed to collect. Put the worker root on sys.path explicitly.
+pythonpath = ["."]

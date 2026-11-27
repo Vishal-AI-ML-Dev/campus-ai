@@ -14,6 +14,9 @@ WORKSPACE = "/workspace"
 SRC_DIR = f"{WORKSPACE}/src"
 BUILD_DIR = f"{WORKSPACE}/build"
 RUN_DIR = f"{WORKSPACE}/run"
+# Compiler scratch space (gcc/g++ write temporaries to $TMPDIR). /tmp is read-only, so the compile exec points TMPDIR
+# here: builder-owned, inside the /workspace tmpfs, and never part of the build tar (only src/ and build/ are copied).
+COMPILE_TMP_DIR = f"{WORKSPACE}/tmp"
 BUILDER_UID = 65533  # owns src/ and build/ (made read-only before tests run)
 RUN_UID = 65534  # runs the student's program; cannot modify src/ or build/
 

@@ -47,5 +47,10 @@ extend-exclude = ["alembic/versions"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Import `app`/`main` from backend/ regardless of how pytest is launched: the
+# `pytest` entry point (unlike `python -m pytest`) does not add the CWD, and
+# `--confcutdir=tests_pg_api` skips backend/conftest.py, which otherwise
+# put backend/ on sys.path.
+pythonpath = ["."]
 addopts = "-q"
 filterwarnings = ["ignore::DeprecationWarning"]
