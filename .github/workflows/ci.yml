@@ -318,13 +318,75 @@ jobs:
           sudo install -m 0644 "$RUNNER_TEMP/docker.asc" /etc/apt/keyrings/docker-pinned.asc
           echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker-pinned.asc] https://download.docker.com/linux/ubuntu noble stable" \
             | sudo tee /etc/apt/sources.list.d/docker-pinned.list > /dev/null
-          sudo apt-get update -q
+          # The runner image's Microsoft repository https://packages.microsoft.com/ubuntu/24.04/prod fails apt's
+          # signature check (403, "no longer signed"). Nothing in this transaction comes from it: every package
+          # resolves from Ubuntu or Docker. So THIS transaction alone reads a filtered copy of the apt sources that
+          # omits exactly that repository URI (other stanzas and URIs kept). /etc/apt is not modified and every
+          # remaining source keeps full signature verification.
+          apt_src="$RUNNER_TEMP/apt-sources"
+          python3 -I - "$apt_src" <<'PY'
+          import pathlib, re, sys
+          DROP = "https://packages.microsoft.com/ubuntu/24.04/prod"
+          out = pathlib.Path(sys.argv[1])
+          parts = out / "sources.list.d"
+          parts.mkdir(parents=True)
+
+          def dropped(uri):
+              return uri.rstrip("/") == DROP
+
+          def one_line_format(text, name):
+              kept = []
+              for line in text.splitlines():
+                  tok = line.split("#", 1)[0].split()
+                  if tok and tok[0] in ("deb", "deb-src"):
+                      rest = tok[1:]
+                      if rest and rest[0].startswith("["):
+                          while rest and not rest[0].endswith("]"):
+                              rest = rest[1:]
+                          rest = rest[1:]
+                      if rest and dropped(rest[0]):
+                          print(f"omitted for this transaction: {name}: {line.strip()}")
+                          continue
+                  kept.append(line)
+              return "\n".join(kept) + "\n"
+
+          def deb822_format(text, name):
+              kept = []
+              for stanza in re.split(r"\n[ \t]*\n", text):
+                  lines = stanza.splitlines()
+                  idx = next((i for i, l in enumerate(lines) if l.lower().startswith("uris:")), None)
+                  if idx is not None:
+                      end = idx + 1
+                      while end < len(lines) and lines[end][:1] in (" ", "\t"):
+                          end += 1
+                      uris = " ".join([lines[idx].split(":", 1)[1], *lines[idx + 1:end]]).split()
+                      keep = [u for u in uris if not dropped(u)]
+                      if len(keep) != len(uris):
+                          print(f"omitted for this transaction: {name}: URI {DROP}")
+                          if not keep:
+                              continue
+                          lines[idx:end] = ["URIs: " + " ".join(keep)]
+                  kept.append("\n".join(lines))
+              return "\n\n".join(kept) + "\n"
+
+          main = pathlib.Path("/etc/apt/sources.list")
+          (out / "sources.list").write_text(one_line_format(main.read_text(), main.name) if main.exists() else "")
+          for f in sorted(pathlib.Path("/etc/apt/sources.list.d").iterdir()):
+              if f.suffix == ".list":
+                  (parts / f.name).write_text(one_line_format(f.read_text(), f.name))
+              elif f.suffix == ".sources":
+                  (parts / f.name).write_text(deb822_format(f.read_text(), f.name))
+          if "https://download.docker.com/linux/ubuntu" not in (parts / "docker-pinned.list").read_text():
+              sys.exit("the pinned Docker source is missing from the filtered apt sources")
+          PY
+          apt_opts=(-o "Dir::Etc::sourcelist=$apt_src/sources.list" -o "Dir::Etc::sourceparts=$apt_src/sources.list.d")
+          sudo apt-get "${apt_opts[@]}" update -q
           cd "$RUNNER_TEMP"
-          apt-get download "docker-ce=${DOCKER_CE_VERSION}" "docker-ce-cli=${DOCKER_CE_VERSION}" "containerd.io=${CONTAINERD_VERSION}"
+          apt-get "${apt_opts[@]}" download "docker-ce=${DOCKER_CE_VERSION}" "docker-ce-cli=${DOCKER_CE_VERSION}" "containerd.io=${CONTAINERD_VERSION}"
           echo "${DOCKER_CE_SHA256}  $(ls docker-ce_*.deb)" | sha256sum --check --strict
           echo "${DOCKER_CE_CLI_SHA256}  $(ls docker-ce-cli_*.deb)" | sha256sum --check --strict
           echo "${CONTAINERD_SHA256}  $(ls containerd.io_*.deb)" | sha256sum --check --strict
-          sudo apt-get install -y --allow-downgrades ./docker-ce_*.deb ./docker-ce-cli_*.deb ./containerd.io_*.deb
+          sudo apt-get "${apt_opts[@]}" install -y --allow-downgrades ./docker-ce_*.deb ./docker-ce-cli_*.deb ./containerd.io_*.deb
       # runsc needs its companion sidecars in gvisor-bin/ next to it (e.g. gvisor_sentry); without them every
       # `docker run --runtime=runsc` fails ("sidecar gvisor_sentry not usable"). All files come from the ONE
       # archive verified above (same release), never downloaded separately.
