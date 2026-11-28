@@ -43,7 +43,7 @@ export default function SectionPicker({ onSectionChange }: Props) {
 
 	return (
 		<div className="space-y-2">
-			{error ? <p className="text-sm text-red-400">{error}</p> : null}
+			{error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
 			<div className="flex flex-wrap gap-3">
 				<label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
 					Department

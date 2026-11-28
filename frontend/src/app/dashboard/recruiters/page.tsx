@@ -30,10 +30,12 @@ export default function RecruitersAdminPage() {
     <div>
       <h2 className="text-3xl font-bold">Recruiters</h2>
       <p className="mt-2 text-slate-500 dark:text-slate-400">
-        Onboard companies, link drives and control candidate contact visibility.
+        {user.role === "tpo"
+          ? "Onboard companies, link drives and control candidate contact visibility."
+          : "Onboard companies and link drives. Candidate contact visibility is managed by the TPO."}
       </p>
       <div className="mt-8">
-        <RecruitersAdminPanel />
+        <RecruitersAdminPanel canRevealContacts={user.role === "tpo"} />
       </div>
     </div>
   );

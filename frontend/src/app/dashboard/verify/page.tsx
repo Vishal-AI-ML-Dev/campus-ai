@@ -285,7 +285,7 @@ export default function VerifyPage() {
 			</div>
 
 			{error && (
-				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 					{error}
 				</p>
 			)}
@@ -347,7 +347,7 @@ export default function VerifyPage() {
 											<button
 												onClick={() => decideSkill(skill, "flagged")}
 												disabled={busyKey === key}
-												className="rounded-lg border border-red-400/30 px-3 py-1.5 text-sm text-red-300 transition hover:bg-red-400/10 disabled:opacity-40"
+												className="rounded-lg border border-red-400/30 px-3 py-1.5 text-sm text-red-700 dark:text-red-300 transition hover:bg-red-400/10 disabled:opacity-40"
 											>
 												Flag
 											</button>
@@ -418,7 +418,7 @@ export default function VerifyPage() {
 											<button
 												onClick={() => decideMember(member, "flagged")}
 												disabled={busyKey === key}
-												className="rounded-lg border border-red-400/30 px-3 py-1.5 text-sm text-red-300 transition hover:bg-red-400/10 disabled:opacity-40"
+												className="rounded-lg border border-red-400/30 px-3 py-1.5 text-sm text-red-700 dark:text-red-300 transition hover:bg-red-400/10 disabled:opacity-40"
 											>
 												Flag
 											</button>
@@ -492,7 +492,7 @@ export default function VerifyPage() {
 											<button
 												onClick={() => decideEca(eca, "flagged")}
 												disabled={busyKey === key}
-												className="rounded-lg border border-red-400/30 px-3 py-1.5 text-sm text-red-300 transition hover:bg-red-400/10 disabled:opacity-40"
+												className="rounded-lg border border-red-400/30 px-3 py-1.5 text-sm text-red-700 dark:text-red-300 transition hover:bg-red-400/10 disabled:opacity-40"
 											>
 												Flag
 											</button>
@@ -577,7 +577,7 @@ export default function VerifyPage() {
 											<button
 												onClick={() => decideIntern(it, "flagged")}
 												disabled={busyKey === key}
-												className="rounded-lg border border-red-400/30 px-3 py-1.5 text-sm text-red-300 transition hover:bg-red-400/10 disabled:opacity-40"
+												className="rounded-lg border border-red-400/30 px-3 py-1.5 text-sm text-red-700 dark:text-red-300 transition hover:bg-red-400/10 disabled:opacity-40"
 											>
 												Flag
 											</button>

@@ -31,7 +31,7 @@ const CLASSES: Record<LegacyDecision, string> = {
 	selected:
 		"rounded-lg border border-emerald-400/30 px-3 py-1.5 text-sm text-emerald-600 dark:text-emerald-300 transition hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-40",
 	rejected:
-		"rounded-lg border border-red-400/30 px-3 py-1.5 text-sm text-red-300 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-40",
+		"rounded-lg border border-red-400/30 px-3 py-1.5 text-sm text-red-700 dark:text-red-300 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-40",
 }
 
 export default function LegacyDecisionButtons({

@@ -123,7 +123,7 @@ export default function RecruiterCandidatesPanel() {
       </div>
 
       {error && (
-        <p className="mt-6 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+        <p className="mt-6 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
           {error}
         </p>
       )}
@@ -357,7 +357,7 @@ function CandidateCard({
             {candidate.has_active_offer ? "Offer live" : "Extend offer"}
           </button>
         </div>
-        {err && <p className="mt-2 text-sm text-red-300">{err}</p>}
+        {err && <p className="mt-2 text-sm text-red-700 dark:text-red-300">{err}</p>}
       </div>
     </div>
   );
@@ -471,7 +471,7 @@ function OfferModal({
           </Field>
         </div>
 
-        {err && <p className="mt-3 text-sm text-red-300">{err}</p>}
+        {err && <p className="mt-3 text-sm text-red-700 dark:text-red-300">{err}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <button

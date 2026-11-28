@@ -61,7 +61,7 @@ const EMPTY_FORM: EcaForm = {
 const STATUS_STYLES: Record<EcaStatus, string> = {
 	pending: "bg-amber-500/15 text-amber-600 dark:text-amber-300",
 	verified: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
-	flagged: "bg-red-500/15 text-red-300",
+	flagged: "bg-red-500/15 text-red-700 dark:text-red-300",
 }
 
 const CATEGORY_STYLES: Record<Category, string> = {
@@ -159,7 +159,7 @@ export default function EcaPage() {
 			</p>
 
 			{error && (
-				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 					{error}
 				</p>
 			)}

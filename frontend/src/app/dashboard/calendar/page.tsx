@@ -275,7 +275,7 @@ export default function CalendarPage() {
 					</div>
 				</div>
 				{postError && (
-					<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+					<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 						{postError}
 					</p>
 				)}
@@ -289,7 +289,7 @@ export default function CalendarPage() {
 			</div>
 
 			{error && (
-				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 					{error}
 				</p>
 			)}
@@ -328,7 +328,7 @@ export default function CalendarPage() {
 									<button
 										onClick={() => remove(ev.id)}
 										disabled={deletingId === ev.id}
-										className="rounded-lg border border-red-400/30 px-3 py-1 text-xs text-red-300 transition hover:bg-red-400/10 disabled:opacity-40"
+										className="rounded-lg border border-red-400/30 px-3 py-1 text-xs text-red-700 dark:text-red-300 transition hover:bg-red-400/10 disabled:opacity-40"
 									>
 										{deletingId === ev.id ? "Deleting..." : "Delete"}
 									</button>

@@ -38,7 +38,7 @@ const EMPTY_FORM: SkillForm = { name: "", evidence_url: "", evidence_note: "" }
 const STATUS_STYLES: Record<SkillStatus, string> = {
 	pending: "bg-amber-500/15 text-amber-600 dark:text-amber-300",
 	verified: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
-	flagged: "bg-red-500/15 text-red-300",
+	flagged: "bg-red-500/15 text-red-700 dark:text-red-300",
 }
 
 export default function SkillsPage() {
@@ -117,7 +117,7 @@ export default function SkillsPage() {
 			</p>
 
 			{error && (
-				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 					{error}
 				</p>
 			)}

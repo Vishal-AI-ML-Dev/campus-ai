@@ -62,7 +62,7 @@ const chipBtn =
 function scoreColor(score: number): string {
 	if (score >= 75) return "text-emerald-600 dark:text-emerald-300"
 	if (score >= 50) return "text-amber-600 dark:text-amber-300"
-	return "text-red-300"
+	return "text-red-700 dark:text-red-300"
 }
 
 function barColor(score: number): string {
@@ -455,7 +455,7 @@ export default function ResumePage() {
 					)}
 				</div>
 				{genError && (
-					<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+					<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 						{genError}
 					</p>
 				)}
@@ -484,7 +484,7 @@ export default function ResumePage() {
 				</p>
 
 				{versionError && (
-					<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+					<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 						{versionError}
 					</p>
 				)}
@@ -611,7 +611,7 @@ export default function ResumePage() {
 					</button>
 				</div>
 				{atsError && (
-					<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+					<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 						{atsError}
 					</p>
 				)}
@@ -656,7 +656,7 @@ export default function ResumePage() {
 								</div>
 							</div>
 							<div>
-								<h4 className="text-sm font-semibold text-red-300">
+								<h4 className="text-sm font-semibold text-red-700 dark:text-red-300">
 									Missing keywords
 								</h4>
 								<div className="mt-2 flex flex-wrap gap-2">
@@ -664,7 +664,7 @@ export default function ResumePage() {
 										ats.missing_keywords.map((k) => (
 											<span
 												key={k}
-												className="rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-300"
+												className="rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-700 dark:text-red-300"
 											>
 												{k}
 											</span>

@@ -14,7 +14,8 @@
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { api } from "@/lib/api"
-import { useCurrentUser, NAV_BY_ROLE, type Role } from "@/lib/auth"
+import { useCurrentUser, type Role } from "@/lib/auth"
+import { useDashboardNav } from "@/components/AppShell"
 
 // Short blurb per quick-link, keyed by destination href.
 const BLURBS: Record<string, string> = {
@@ -37,6 +38,25 @@ const BLURBS: Record<string, string> = {
 	"/dashboard/recruiter-offers": "Offers your company has extended.",
 	"/dashboard/recruiters":
 		"Onboard companies, link drives and reveal candidate contacts.",
+	"/dashboard/timetable": "Weekly class timetable.",
+	"/dashboard/assignments": "Assignments, submissions and grades.",
+	"/dashboard/study-hub": "Course materials and study resources.",
+	"/dashboard/doubts": "Course doubt forum.",
+	"/dashboard/resume": "AI resume builder, ATS check and version history.",
+	"/dashboard/placements": "Browse open drives, check eligibility and apply.",
+	"/dashboard/leave": "Leave and on-duty requests.",
+	"/dashboard/analytics": "Attendance and performance risk analytics.",
+	"/dashboard/face-enroll": "Enrol student faces for attendance.",
+	"/dashboard/face-attendance": "Mark attendance from a class photo.",
+	"/dashboard/placement-analytics": "Placement funnel, rate, drive and company stats.",
+	"/dashboard/institute": "Institute-wide KPI snapshot.",
+	"/dashboard/announcements": "Post announcements to everyone or one role.",
+	"/dashboard/calendar": "Holidays, exams, events and deadlines.",
+	"/dashboard/audit": "Timeline of sensitive admin actions.",
+	"/dashboard/placement-hub": "Placement drives, campaigns and preparation.",
+	"/dashboard/mock-interview": "Practise HR and technical interviews and get a feedback report.",
+	"/dashboard/interview-operations": "Mock interview usage, latency and AI service health.",
+	"/dashboard/interview-company-profiles": "Company profiles that focus practice interviews.",
 }
 
 const ROLE_TAGLINE: Record<Role, string> = {
@@ -49,12 +69,12 @@ const ROLE_TAGLINE: Record<Role, string> = {
 
 export default function DashboardHome() {
 	const { user } = useCurrentUser()
+	// Same items as the sidebar (incl. enabled feature-flagged features).
+	const nav = useDashboardNav()
 	if (!user) return null
 
 	// All role links except the Overview card itself.
-	const cards = (NAV_BY_ROLE[user.role] ?? []).filter(
-		(item) => item.href !== "/dashboard",
-	)
+	const cards = nav.filter((item) => item.href !== "/dashboard")
 
 	return (
 		<div>

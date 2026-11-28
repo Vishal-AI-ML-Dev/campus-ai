@@ -10,6 +10,7 @@
  *   4. Link drives to a company + reveal/hide candidate contacts.
  */
 
+import { ErrorState, SkeletonList } from "@/components/ui/states";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError } from "@/lib/api";
 import {
@@ -40,15 +41,21 @@ function errText(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong";
 }
 
-export default function RecruitersAdminPanel() {
+export default function RecruitersAdminPanel({
+  canRevealContacts = true,
+}: {
+  /** Drive applicants (GET /drives/{id}/applications) are TPO-only on the backend. */
+  canRevealContacts?: boolean;
+} = {}) {
   const [companies, setCompanies] = useState<RecruiterCompany[]>([]);
   const [invites, setInvites] = useState<RecruiterInvite[]>([]);
   const [drives, setDrives] = useState<Drive[]>([]);
+  // Only the FIRST load replaces the panel with a loading line; later refreshes
+  // (after an invite, link or revoke) keep the sections and their inputs mounted.
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
       const [c, i, d] = await Promise.all([
@@ -71,16 +78,12 @@ export default function RecruitersAdminPanel() {
   }, [refresh]);
 
   if (loading) {
-    return <p className="mt-6 text-sm text-slate-500 dark:text-slate-400">Loading recruiters...</p>;
+    return <SkeletonList rows={3} />;
   }
 
   return (
     <div className="space-y-10">
-      {error && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
-          {error}
-        </div>
-      )}
+      {error && <ErrorState message={error} onRetry={refresh} />}
 
       <OnboardSection onDone={refresh} />
 
@@ -94,7 +97,7 @@ export default function RecruitersAdminPanel() {
         onChanged={refresh}
       />
 
-      <RevealContactSection drives={drives} companies={companies} />
+      {canRevealContacts && <RevealContactSection drives={drives} companies={companies} />}
     </div>
   );
 }
@@ -238,7 +241,7 @@ function OnboardSection({ onDone }: { onDone: () => void }) {
         </div>
 
         {err && (
-          <p className="sm:col-span-2 text-sm text-red-300">{err}</p>
+          <p className="sm:col-span-2 text-sm text-red-700 dark:text-red-300">{err}</p>
         )}
       </form>
 
@@ -348,7 +351,7 @@ function InvitesSection({
   return (
     <section>
       <h3 className="text-lg font-semibold">📨 Invites</h3>
-      {err && <p className="mt-2 text-sm text-red-300">{err}</p>}
+      {err && <p className="mt-2 text-sm text-red-700 dark:text-red-300">{err}</p>}
       {invites.length === 0 ? (
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">No invites yet.</p>
       ) : (
@@ -390,7 +393,7 @@ function InvitesSection({
                         type="button"
                         onClick={() => revoke(inv.id)}
                         disabled={busyId === inv.id}
-                        className="rounded-lg border border-red-500/30 px-3 py-1 text-xs text-red-300 hover:bg-red-500/10 disabled:opacity-50"
+                        className="rounded-lg border border-red-500/30 px-3 py-1 text-xs text-red-700 dark:text-red-300 hover:bg-red-500/10 disabled:opacity-50"
                       >
                         {busyId === inv.id ? "..." : "Revoke"}
                       </button>
@@ -445,7 +448,7 @@ function LinkDrivesSection({
         Once linked, the company&apos;s HR can view that drive&apos;s shortlisted
         and selected candidates.
       </p>
-      {err && <p className="mt-2 text-sm text-red-300">{err}</p>}
+      {err && <p className="mt-2 text-sm text-red-700 dark:text-red-300">{err}</p>}
       {drives.length === 0 ? (
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">No drives posted yet.</p>
       ) : (
@@ -597,7 +600,7 @@ function RevealContactSection({
             </select>
           </div>
 
-          {err && <p className="mt-2 text-sm text-red-300">{err}</p>}
+          {err && <p className="mt-2 text-sm text-red-700 dark:text-red-300">{err}</p>}
 
           {driveId != null &&
             (loading ? (

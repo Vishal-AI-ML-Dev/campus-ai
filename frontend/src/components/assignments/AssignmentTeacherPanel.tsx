@@ -142,7 +142,7 @@ export default function AssignmentTeacherPanel() {
 			<SectionPicker onSectionChange={handleSection} />
 
 			{error ? (
-				<p className="rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-400">
+				<p className="rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
 					{error}
 				</p>
 			) : null}

@@ -90,7 +90,7 @@ export default function FileUpload({
 					Attached: {uploaded}
 				</span>
 			)}
-			{error && <p className="mt-1 text-xs text-red-300">{error}</p>}
+			{error && <p className="mt-1 text-xs text-red-700 dark:text-red-300">{error}</p>}
 		</div>
 	)
 }
@@ -141,7 +141,7 @@ export function StoredFileLink({
 			>
 				{busy ? "Opening..." : (children ?? "View file")}
 			</button>
-			{error && <span className="ml-2 text-xs text-red-300">{error}</span>}
+			{error && <span className="ml-2 text-xs text-red-700 dark:text-red-300">{error}</span>}
 		</>
 	)
 }

@@ -51,7 +51,7 @@ type Subject = {
 function gpaColor(value: number): string {
 	if (value >= 8) return "text-emerald-600 dark:text-emerald-300"
 	if (value >= 6.5) return "text-amber-400"
-	return "text-red-400"
+	return "text-red-600 dark:text-red-400"
 }
 
 export default function AcademicsPage() {
@@ -101,7 +101,7 @@ export default function AcademicsPage() {
 			</p>
 
 			{error && (
-				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 					{error}
 				</p>
 			)}

@@ -196,7 +196,7 @@ export default function MentorPage() {
 	return (
 		<div className="flex h-[calc(100vh-8rem)] gap-4">
 			{/* Sidebar: saved conversations */}
-			<aside className="hidden w-64 shrink-0 flex-col rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-3 md:flex">
+			<aside className="hidden w-64 shrink-0 flex-col rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-3 lg:flex">
 				<button
 					type="button"
 					onClick={newChat}
@@ -239,7 +239,7 @@ export default function MentorPage() {
 
 			{/* Main chat column */}
 			<div className="flex min-w-0 flex-1 flex-col">
-				<div className="flex items-center justify-between">
+				<div className="flex flex-wrap items-center justify-between gap-2">
 					<div>
 						<h2 className="text-2xl font-bold">AI Career Mentor</h2>
 						<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -253,7 +253,7 @@ export default function MentorPage() {
 							type="button"
 							onClick={newChat}
 							disabled={loading}
-							className="rounded-lg border border-slate-200 dark:border-white/10 px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:border-indigo-400 disabled:opacity-50 md:hidden"
+							className="rounded-lg border border-slate-200 dark:border-white/10 px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:border-indigo-400 disabled:opacity-50 lg:hidden"
 						>
 							+ New
 						</button>
@@ -319,7 +319,7 @@ export default function MentorPage() {
 				</div>
 
 				{error && (
-					<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+					<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 						{error}
 					</p>
 				)}
