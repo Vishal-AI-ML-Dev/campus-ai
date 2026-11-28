@@ -53,7 +53,7 @@ type Result = {
 function gradeColor(gp: number): string {
 	if (gp >= 8) return "text-emerald-600 dark:text-emerald-300"
 	if (gp >= 6) return "text-amber-600 dark:text-amber-300"
-	return "text-red-300"
+	return "text-red-700 dark:text-red-300"
 }
 
 const inputClass =
@@ -252,7 +252,7 @@ function SubjectsTab({
 				</div>
 
 				{error && (
-					<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+					<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 						{error}
 					</p>
 				)}
@@ -497,7 +497,7 @@ function MarksTab({
 				</div>
 
 				{error && (
-					<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+					<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 						{error}
 					</p>
 				)}

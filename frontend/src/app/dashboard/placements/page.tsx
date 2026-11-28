@@ -65,7 +65,7 @@ const STATUS_STYLES: Record<AppStatus, string> = {
 	applied: "bg-slate-500/15 text-slate-600 dark:text-slate-300",
 	shortlisted: "bg-amber-500/15 text-amber-600 dark:text-amber-300",
 	selected: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
-	rejected: "bg-red-500/15 text-red-300",
+	rejected: "bg-red-500/15 text-red-700 dark:text-red-300",
 	// Phase 9.2: only set by a student withdrawal (placement management).
 	withdrawn: "bg-slate-500/10 text-slate-500 dark:text-slate-400",
 }
@@ -162,7 +162,7 @@ export default function PlacementsPage() {
 			</div>
 
 			{error && (
-				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 					{error}
 				</p>
 			)}
@@ -250,7 +250,7 @@ export default function PlacementsPage() {
 														className={`rounded-full px-2 py-0.5 text-xs ${
 														result.eligible
 															? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
-															: "bg-red-500/15 text-red-300"
+															: "bg-red-500/15 text-red-700 dark:text-red-300"
 													}`}
 													>
 														{result.eligible ? "You are eligible" : "Not eligible"}
@@ -268,7 +268,7 @@ export default function PlacementsPage() {
 															className={`rounded-md px-2 py-1 text-xs ${
 															reason.passed
 																? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
-																: "bg-red-500/10 text-red-300"
+																: "bg-red-500/10 text-red-700 dark:text-red-300"
 														}`}
 														>
 															{reason.passed ? "✓" : "✗"} {reason.criterion}:{" "}

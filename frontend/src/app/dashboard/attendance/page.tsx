@@ -30,7 +30,7 @@ type AttendanceStatus = "present" | "absent" | "late"
 const STATUS_STYLES: Record<AttendanceStatus, string> = {
 	present: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
 	late: "bg-amber-500/15 text-amber-600 dark:text-amber-300",
-	absent: "bg-red-500/15 text-red-300",
+	absent: "bg-red-500/15 text-red-700 dark:text-red-300",
 }
 
 const STATUS_ORDER: AttendanceStatus[] = ["present", "late", "absent"]
@@ -38,7 +38,7 @@ const STATUS_ORDER: AttendanceStatus[] = ["present", "late", "absent"]
 function percentColor(pct: number): string {
 	if (pct >= 75) return "text-emerald-600 dark:text-emerald-300"
 	if (pct >= 60) return "text-amber-400"
-	return "text-red-400"
+	return "text-red-600 dark:text-red-400"
 }
 
 /** Top-level page: route to the right view based on the signed-in role. */
@@ -252,7 +252,7 @@ function TeacherAttendance() {
 			</div>
 
 			{error && (
-				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 					{error}
 				</p>
 			)}
@@ -285,7 +285,7 @@ function TeacherAttendance() {
 							{" / "}
 							<span className="text-amber-600 dark:text-amber-300">{counts.late} late</span>
 							{" / "}
-							<span className="text-red-300">{counts.absent} absent</span>
+							<span className="text-red-700 dark:text-red-300">{counts.absent} absent</span>
 						</div>
 						<div className="flex gap-2">
 							{STATUS_ORDER.map((st) => (
@@ -403,7 +403,7 @@ function StudentAttendance() {
 			</p>
 
 			{error && (
-				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+				<p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 					{error}
 				</p>
 			)}
@@ -444,7 +444,7 @@ function StudentAttendance() {
 							</div>
 							<div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-6">
 								<p className="text-sm text-slate-500 dark:text-slate-400">Absent</p>
-								<p className="mt-1 text-4xl font-bold text-red-400">
+								<p className="mt-1 text-4xl font-bold text-red-600 dark:text-red-400">
 									{summary.absent}
 								</p>
 							</div>

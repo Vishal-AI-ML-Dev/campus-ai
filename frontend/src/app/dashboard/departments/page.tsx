@@ -125,7 +125,7 @@ export default function DepartmentsPage() {
 							</div>
 						</div>
 						{createDeptError && (
-							<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+							<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 								{createDeptError}
 							</p>
 						)}
@@ -141,7 +141,7 @@ export default function DepartmentsPage() {
 					<div className="mt-6">
 						<h3 className="text-lg font-semibold">Departments</h3>
 						{deptError && (
-							<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+							<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 								{deptError}
 							</p>
 						)}
@@ -276,7 +276,7 @@ function SectionsPanel({ department }: { department: Department }) {
 				</div>
 			</div>
 			{createError && (
-				<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+				<p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 					{createError}
 				</p>
 			)}
@@ -290,7 +290,7 @@ function SectionsPanel({ department }: { department: Department }) {
 
 			<div className="mt-6">
 				{error && (
-					<p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+					<p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
 						{error}
 					</p>
 				)}

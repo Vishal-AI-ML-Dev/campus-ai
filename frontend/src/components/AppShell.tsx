@@ -16,17 +16,81 @@
 
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { api, clearToken } from "@/lib/api"
-import { useCurrentUser, NAV_BY_ROLE } from "@/lib/auth"
+import { useCurrentUser, NAV_BY_ROLE, type NavItem } from "@/lib/auth"
 import ThemeToggle from "@/components/ThemeToggle"
 import NotificationBell from "@/components/notifications/NotificationBell"
 import { useMockInterviewNavItem } from "@/components/mock-interview/mockInterviewFlags"
 import { useInterviewOpsNavItem } from "@/components/interview-operations/opsApi"
 import { useCompanyProfilesNavItem } from "@/components/interview-company-profiles/companyProfilesApi"
 import { usePlacementHubNavItem } from "@/components/placement-hub/placementApi"
+import { Skeleton } from "@/components/ui/states"
+import { FACE_ENABLED } from "@/components/face/FaceUnavailableNotice"
+
+const FACE_NAV_HREFS = new Set(["/dashboard/face-enroll", "/dashboard/face-attendance"])
+
+/** Display names for roles ("tpo" is an acronym, so CSS capitalize gives "Tpo"). */
+const ROLE_LABEL: Record<string, string> = {
+	student: "Student",
+	teacher: "Teacher",
+	tpo: "TPO",
+	admin: "Admin",
+	recruiter: "Recruiter",
+}
+
+/**
+ * The signed-in user's full navigation (static role items + the flag-gated
+ * feature items that the server has confirmed), as rendered in the sidebar.
+ * Shared so the Overview quick-links never drift from the sidebar and the
+ * feature status requests are made once (here), not per consumer.
+ */
+const DashboardNavContext = createContext<NavItem[]>([])
+
+export function useDashboardNav(): NavItem[] {
+	return useContext(DashboardNavContext)
+}
+
+/** True when `pathname` is `href` or a sub-route of it (segment boundary, so
+ * /dashboard/face never lights up for /dashboard/face-enroll). */
+export function isNavItemActive(href: string, pathname: string): boolean {
+	if (href === "/dashboard") return pathname === "/dashboard"
+	return pathname === href || pathname.startsWith(`${href}/`)
+}
+
+/** Shell-shaped placeholder while the session loads (instead of a blank page). */
+function ShellSkeleton() {
+	return (
+		<div
+			className="flex min-h-screen bg-slate-50 dark:bg-slate-950"
+			role="status"
+			aria-label="Loading your dashboard"
+		>
+			<div className="hidden w-60 shrink-0 flex-col gap-3 border-r border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-slate-900 md:flex">
+				<Skeleton className="h-8 w-32" />
+				{[...Array(8).keys()].map((i) => (
+					<Skeleton key={i} className="h-6 w-full" />
+				))}
+			</div>
+			<div className="flex min-w-0 flex-1 flex-col">
+				<div className="border-b border-slate-200 px-4 py-4 dark:border-white/10 md:px-8">
+					<Skeleton className="h-6 w-48" />
+				</div>
+				<div className="space-y-4 px-4 py-6 md:px-8 md:py-8">
+					<Skeleton className="h-8 w-64" />
+					<Skeleton className="h-4 w-96 max-w-full" />
+					<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+						{[...Array(3).keys()].map((i) => (
+							<Skeleton key={i} className="h-28 w-full" />
+						))}
+					</div>
+				</div>
+			</div>
+		</div>
+	)
+}
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
 	const router = useRouter()
@@ -101,26 +165,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 		}
 	}, [navOpen, closeNav])
 
-	// While the provider is loading (or redirecting), show a simple splash.
-	if (loading || !user) {
-		return (
-			<div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400">
-				<p>Loading...</p>
-			</div>
-		)
-	}
+	// While the provider is loading (or redirecting), show the shell's outline.
+	if (loading || !user) return <ShellSkeleton />
 
-	const baseNav = NAV_BY_ROLE[user.role] ?? []
+	// Face pages only show an "unavailable" notice while the face build flag is
+	// off, so they are not advertised in the navigation (direct URLs still work).
+	const baseNav = (NAV_BY_ROLE[user.role] ?? []).filter(
+		(item) => FACE_ENABLED || !FACE_NAV_HREFS.has(item.href),
+	)
 	const nav = [...baseNav, placementHubNavItem, mockInterviewNavItem, interviewOpsNavItem, companyProfilesNavItem].filter(
 		(item): item is NonNullable<typeof item> => item !== null,
 	)
 
-	function isActive(href: string): boolean {
-		// "Overview" (/dashboard) should only match exactly; others match prefix.
-		return href === "/dashboard"
-			? pathname === "/dashboard"
-			: pathname.startsWith(href)
-	}
+	const isActive = (href: string) => isNavItemActive(href, pathname)
 
 	async function handleLogout() {
 		// Revoke the refresh-token family + clear the cookies on the backend, then
@@ -153,7 +210,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 				aria-label="Main navigation"
 				className={`${
 					navOpen ? "fixed inset-y-0 left-0 z-40 flex shadow-xl" : "hidden"
-				} w-60 shrink-0 flex-col overflow-y-auto border-r border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 md:static md:z-auto md:flex md:overflow-visible md:shadow-none`}
+				} w-60 shrink-0 flex-col overflow-y-auto border-r border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 md:sticky md:top-0 md:z-auto md:flex md:h-screen md:shadow-none`}
 			>
 				<div className="flex items-center gap-2 px-5 py-5 font-semibold">
 					<span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 text-sm font-bold">
@@ -217,17 +274,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 						>
 							<span aria-hidden="true">☰</span>
 						</button>
-						<h1 className="truncate text-lg font-semibold capitalize">{user.role} dashboard</h1>
+						<h1 className="truncate text-lg font-semibold">{ROLE_LABEL[user.role] ?? user.role} Dashboard</h1>
 					</div>
 					<div className="flex shrink-0 items-center gap-2 sm:gap-3">
 						<NotificationBell />
 						<ThemeToggle />
-						<span className="hidden rounded-full border border-slate-300 dark:border-white/15 bg-white dark:bg-slate-900 px-3 py-1 text-xs capitalize text-slate-600 dark:text-slate-300 sm:inline">
-							{user.role}
+						<span className="hidden rounded-full border border-slate-300 dark:border-white/15 bg-white dark:bg-slate-900 px-3 py-1 text-xs text-slate-600 dark:text-slate-300 sm:inline">
+							{ROLE_LABEL[user.role] ?? user.role}
 						</span>
 					</div>
 				</header>
-				<main className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-8">{children}</main>
+				<main className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-8">
+					<DashboardNavContext.Provider value={nav}>{children}</DashboardNavContext.Provider>
+				</main>
 			</div>
 		</div>
 	)

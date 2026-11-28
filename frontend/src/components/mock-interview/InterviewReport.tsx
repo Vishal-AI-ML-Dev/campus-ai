@@ -7,7 +7,7 @@
  * server-side), and the disclaimer is always shown.
  */
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { ApiError } from "@/lib/api"
 import { ErrorState, Spinner } from "@/components/ui/states"
 import {
@@ -231,25 +231,37 @@ export default function InterviewReportPanel({
 		null,
 	)
 	const [loading, setLoading] = useState(true)
+	// Only the newest load may update the view (a superseded or unmounted one is ignored).
+	const latest = useRef({ n: 0 })
 
 	const load = useCallback(() => {
+		const id = ++latest.current.n
 		setLoading(true)
 		setError(null)
 		loadOrGenerateReport(sessionId, { exists })
-			.then(setReport)
-			.catch((err) =>
+			.then((r) => {
+				if (id === latest.current.n) setReport(r)
+			})
+			.catch((err) => {
+				if (id !== latest.current.n) return
 				setError({
 					message: describeError(err, "Could not load your feedback report."),
 					requestId: err instanceof ApiError ? err.requestId : undefined,
 					// 409: no report can exist for this interview; retrying won't help.
 					final: err instanceof ApiError && err.status === 409,
-				}),
-			)
-			.finally(() => setLoading(false))
+				})
+			})
+			.finally(() => {
+				if (id === latest.current.n) setLoading(false)
+			})
 	}, [sessionId, exists])
 
 	useEffect(() => {
 		load()
+		const counter = latest.current
+		return () => {
+			counter.n++
+		}
 	}, [load])
 
 	if (loading)

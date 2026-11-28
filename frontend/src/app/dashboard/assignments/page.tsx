@@ -1,29 +1,15 @@
 "use client"
 
-import { useEffect, useState } from "react"
-
-import { api, ApiError } from "@/lib/api"
+import { useCurrentUser } from "@/lib/auth"
 
 import AssignmentStudentPanel from "@/components/assignments/AssignmentStudentPanel"
 import AssignmentTeacherPanel from "@/components/assignments/AssignmentTeacherPanel"
-import type { MeUser } from "@/components/assignments/assignmentsApi"
 
 // Role-aware Assignments page: staff get the create/grade panel, students get
-// the submit/grade-view panel. Role is read from /auth/me so we do not depend
-// on the auth context shape.
+// the submit/grade-view panel. The role comes from the signed-in user the
+// dashboard layout has already loaded (/auth/me), so there is no second fetch.
 export default function AssignmentsPage() {
-	const [me, setMe] = useState<MeUser | null>(null)
-	const [error, setError] = useState<string | null>(null)
-
-	useEffect(() => {
-		api
-			.get("/auth/me")
-			.then((d) => setMe(d as MeUser))
-			.catch((e) =>
-				setError(e instanceof ApiError ? e.message : "Failed to load profile"),
-			)
-	}, [])
-
+	const { user: me } = useCurrentUser()
 	const isStaff = me?.role === "teacher" || me?.role === "admin"
 
 	return (
@@ -37,15 +23,7 @@ export default function AssignmentsPage() {
 				</p>
 			</header>
 
-			{error ? (
-				<p className="rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-400">
-					{error}
-				</p>
-			) : null}
-
-			{!me ? (
-				<p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>
-			) : isStaff ? (
+			{!me ? null : isStaff ? (
 				<AssignmentTeacherPanel />
 			) : (
 				<AssignmentStudentPanel />

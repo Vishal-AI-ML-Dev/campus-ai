@@ -1,36 +1,24 @@
 "use client"
 
-// Study Hub route (/dashboard/study-hub). Reads /auth/me and shows the
+// Study Hub route (/dashboard/study-hub). Uses the signed-in user and shows the
 // teacher/admin manage panel or the student browse panel based on role.
 
-import { useEffect, useState } from "react"
-import { api, ApiError } from "@/lib/api"
+import { useCurrentUser } from "@/lib/auth"
 import MaterialTeacherPanel from "@/components/studyhub/MaterialTeacherPanel"
 import MaterialStudentPanel from "@/components/studyhub/MaterialStudentPanel"
-import type { MeUser } from "@/components/studyhub/studyHubApi"
 
 export default function StudyHubPage() {
-	const [me, setMe] = useState<MeUser | null>(null)
-	const [error, setError] = useState<string | null>(null)
-
-	useEffect(() => {
-		api
-			.get("/auth/me")
-			.then((data) => setMe(data as MeUser))
-			.catch((e) =>
-				setError(e instanceof ApiError ? e.message : "Failed to load profile")
-			)
-	}, [])
-
-	if (error) return <p className="text-sm text-red-600">{error}</p>
-	if (!me) return <p className="text-sm text-gray-500 dark:text-slate-400">Loading...</p>
+	// The dashboard layout has already loaded the signed-in user (/auth/me);
+	// reuse it instead of fetching it again (no extra "Loading..." flash).
+	const { user: me } = useCurrentUser()
+	if (!me) return null
 
 	const isStaff = me.role === "teacher" || me.role === "admin"
 
 	return (
 		<div className="mx-auto max-w-3xl space-y-6 p-6">
 			<div>
-				<h1 className="text-xl font-semibold text-gray-900 dark:text-slate-100">\uD83D\uDCDA Study Hub</h1>
+				<h1 className="text-xl font-semibold text-gray-900 dark:text-slate-100">📚 Study Hub</h1>
 				<p className="text-sm text-gray-500 dark:text-slate-400">
 					{isStaff
 						? "Upload and manage study materials for your sections."

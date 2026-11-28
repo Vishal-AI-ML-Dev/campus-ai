@@ -32,6 +32,8 @@ export type CurrentUser = {
   full_name: string;
   role: Role;
   is_active: boolean;
+  /** A student's class/section (null for staff); part of the /auth/me response. */
+  section_id?: number | null;
 };
 
 type AuthState = { user: CurrentUser | null; loading: boolean };
@@ -132,7 +134,7 @@ export const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { label: "Overview", href: "/dashboard", icon: "\u{1F3E0}" },
     { label: "Drives", href: "/dashboard/drives", icon: "\u{1F3E2}" },
     {
-      label: "Analytics",
+      label: "Placement Analytics",
       href: "/dashboard/placement-analytics",
       icon: "\u{1F4C8}",
     },
@@ -142,6 +144,8 @@ export const NAV_BY_ROLE: Record<Role, NavItem[]> = {
       icon: "\u{1F4E8}",
     },
     { label: "Recruiters", href: "/dashboard/recruiters", icon: "\u{1F91D}" },
+    // Class analytics + at-risk students (backend analytics staff_only includes tpo).
+    { label: "Student Analytics", href: "/dashboard/analytics", icon: "\u{1F4CA}" },
   ],
   recruiter: [
     { label: "Overview", href: "/dashboard", icon: "\u{1F3E0}" },
@@ -178,10 +182,12 @@ export const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { label: "Leave & OD", href: "/dashboard/leave", icon: "\u{1F3D6}\uFE0F" },
     { label: "Analytics", href: "/dashboard/analytics", icon: "\u{1F4C8}" },
     {
-      label: "Placement Stats",
+      label: "Placement Analytics",
       href: "/dashboard/placement-analytics",
       icon: "\u{1F3E2}",
     },
+    // Recruiter onboarding, invites and drive links (backend recruiters staff_only = tpo + admin).
+    { label: "Recruiters", href: "/dashboard/recruiters", icon: "\u{1F91D}" },
     { label: "Audit Log", href: "/dashboard/audit", icon: "\u{1F6E1}\uFE0F" },
   ],
 };
